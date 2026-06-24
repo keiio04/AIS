@@ -52,7 +52,7 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
 
 <div class="layout">
     <!-- SIDEBAR -->
-    <div class="sidebar">
+    <div class="sidebar" id="mainSidebar">
         <div class="sidebar-header">
             <div class="logo-container" style="flex-direction: column; align-items: flex-start; gap: 0.25rem;">
                 <div class="flex items-center gap-2">
@@ -93,7 +93,7 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                         if ($activeCompanyType === $bt):
                     ?>
                     <!-- Active Business Type with Modules -->
-                    <div style="border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 8px; padding: 0.5rem; margin-bottom: 0.5rem; background: rgba(59, 130, 246, 0.1);">
+                    <div style="padding: 0.25rem 0.5rem; margin-bottom: 0.5rem;">
                         <div class="flex justify-between items-center" onclick="toggleSidebarSection('modules_<?= $bt ?>')" style="margin-bottom: 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--sidebar-text); cursor: pointer;">
                             <div class="flex items-center gap-2">
                                 <div style="width: 6px; height: 6px; border-radius: 50%; background: #eab308;"></div>
@@ -185,6 +185,14 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
         </div>
         
         <script>
+            function toggleMainSidebar() {
+                const sb = document.getElementById('mainSidebar');
+                if (sb) {
+                    sb.classList.toggle('is-hidden');
+                    localStorage.setItem('main_sidebar_hidden', sb.classList.contains('is-hidden'));
+                }
+            }
+
             function toggleSidebarSection(id) {
                 const el = document.getElementById(id);
                 if (el) {
@@ -206,6 +214,11 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                 if (modulesEl && localStorage.getItem('sidebar_' + modulesEl.id) === 'true') {
                     modulesEl.classList.add('is-collapsed');
                 }
+
+                const mainSb = document.getElementById('mainSidebar');
+                if (mainSb && localStorage.getItem('main_sidebar_hidden') === 'true') {
+                    mainSb.classList.add('is-hidden');
+                }
             })();
         </script>
     </div>
@@ -214,10 +227,11 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
     <div class="main-wrapper">
         <!-- TOPBAR -->
         <div class="topbar">
-            <div class="topbar-left">
-                <div class="breadcrumb">
-                    <span>Accounting</span>
-                    <span style="color: var(--border-strong);">/</span>
+            <div class="topbar-left" style="display: flex; align-items: center;">
+                <button class="icon-btn" onclick="toggleMainSidebar()" title="Toggle Sidebar" style="margin-right: 1rem;">
+                    <i data-lucide="menu" style="width: 20px; height: 20px;"></i>
+                </button>
+                <div class="breadcrumb" style="font-size: 1.1rem; font-weight: 600;">
                     <span class="breadcrumb-current"><?= htmlspecialchars($pageTitle) ?></span>
                 </div>
             </div>

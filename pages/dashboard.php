@@ -104,9 +104,6 @@ function fmt($n) {
         <h1 class="page-title">Dashboard</h1>
         <p class="page-subtitle">Welcome back! Here's the financial overview for <strong><?= htmlspecialchars($activeCompanyName ?? 'your company') ?></strong> for <?= date('F Y') ?>.</p>
     </div>
-    <a href="journal_entries.php" class="btn btn-primary">
-        <i data-lucide="plus" style="width:16px;height:16px;"></i> New Journal Entry
-    </a>
 </div>
 
 <!-- Metric Cards -->
@@ -119,7 +116,7 @@ function fmt($n) {
         ['label'=>'Cash Balance', 'val'=>$cash, 'icon'=>'wallet', 'col'=>'#06b6d4', 'bg'=>'#ecfeff'],
     ];
     foreach($metrics as $m): ?>
-    <div class="metric-card" style="border-top: 3px solid <?= $m['col'] ?>; padding: 1.25rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); background: white; display: flex; flex-direction: column; gap: 0.75rem;">
+    <div class="metric-card" style="padding: 1.25rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); background: white; display: flex; flex-direction: column; gap: 0.75rem;">
         <div class="metric-card-header" style="display: flex; justify-content: space-between; align-items: center;">
             <span class="metric-card-label" style="text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #64748b; letter-spacing: 0.05em;"><?= $m['label'] ?></span>
             <div class="metric-card-icon" style="background-color: <?= $m['bg'] ?>; color: <?= $m['col'] ?>">
@@ -131,42 +128,74 @@ function fmt($n) {
     <?php endforeach; ?>
 </div>
 
-<!-- Charts Row -->
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
-    <div class="card" style="padding: 1.5rem;">
-        <h3 style="font-size: 0.9375rem;">Revenue vs Expenses</h3>
-        <p class="text-xs text-muted mt-1 mb-4">Current period overview</p>
-        <div style="position: relative; height: 240px; width: 100%;">
+<!-- Backdrop -->
+<div id="widgetBackdrop" class="widget-backdrop" onclick="closeAllWidgets()"></div>
+
+<!-- Widgets Container -->
+<div id="dashboard-widgets" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
+    <!-- Chart 1 -->
+    <div class="card widget" style="padding: 1.5rem; display: flex; flex-direction: column;">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <h3 style="font-size: 0.9375rem;">Revenue vs Expenses</h3>
+                <p class="text-xs text-muted mt-1">Current period overview</p>
+            </div>
+            <div class="flex gap-1">
+                <button class="icon-btn expand-btn" onclick="toggleWidget(this)" title="Expand"><i data-lucide="maximize" style="width: 16px; height: 16px;"></i></button>
+                <button class="icon-btn drag-handle" style="cursor: grab;" title="Drag to reorder"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px;"></i></button>
+            </div>
+        </div>
+        <div class="chart-container" style="position: relative; height: 240px; width: 100%;">
             <canvas id="revExpChart"></canvas>
         </div>
     </div>
-    <div class="card" style="padding: 1.5rem;">
-        <h3 style="font-size: 0.9375rem;">Asset Distribution</h3>
-        <p class="text-xs text-muted mt-1 mb-4">Breakdown by asset type</p>
-        <div style="position: relative; height: 240px; width: 100%;">
+    
+    <!-- Chart 2 -->
+    <div class="card widget" style="padding: 1.5rem; display: flex; flex-direction: column;">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <h3 style="font-size: 0.9375rem;">Asset Distribution</h3>
+                <p class="text-xs text-muted mt-1">Breakdown by asset type</p>
+            </div>
+            <div class="flex gap-1">
+                <button class="icon-btn expand-btn" onclick="toggleWidget(this)" title="Expand"><i data-lucide="maximize" style="width: 16px; height: 16px;"></i></button>
+                <button class="icon-btn drag-handle" style="cursor: grab;" title="Drag to reorder"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px;"></i></button>
+            </div>
+        </div>
+        <div class="chart-container" style="position: relative; height: 240px; width: 100%;">
             <canvas id="assetChart"></canvas>
         </div>
     </div>
-</div>
 
-<!-- Cash Flow Trend -->
-<div class="card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
-    <h3 style="font-size: 0.9375rem;">Cash Flow Trend</h3>
-    <p class="text-xs text-muted mt-1 mb-4">Monthly cash inflows vs outflows</p>
-    <div style="position: relative; height: 240px; width: 100%;">
-        <canvas id="cashFlowChart"></canvas>
-    </div>
-</div>
-
-<!-- Recent Transactions -->
-<div class="card" style="padding: 0;">
-    <div class="flex justify-between items-center" style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
-        <div>
-            <h3 style="font-size: 0.9375rem;">Recent Journal Entries</h3>
-            <p class="text-xs text-muted mt-1">Latest <?= count($recent) ?> transactions posted</p>
+    <!-- Cash Flow Trend -->
+    <div class="card widget" style="padding: 1.5rem; display: flex; flex-direction: column; grid-column: 1 / -1;">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <h3 style="font-size: 0.9375rem;">Cash Flow Trend</h3>
+                <p class="text-xs text-muted mt-1">Monthly cash inflows vs outflows</p>
+            </div>
+            <div class="flex gap-1">
+                <button class="icon-btn expand-btn" onclick="toggleWidget(this)" title="Expand"><i data-lucide="maximize" style="width: 16px; height: 16px;"></i></button>
+                <button class="icon-btn drag-handle" style="cursor: grab;" title="Drag to reorder"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px;"></i></button>
+            </div>
         </div>
-        <a href="journal_entries.php" class="btn btn-secondary btn-sm">View All</a>
+        <div class="chart-container" style="position: relative; height: 240px; width: 100%;">
+            <canvas id="cashFlowChart"></canvas>
+        </div>
     </div>
+
+    <!-- Recent Transactions -->
+    <div class="card widget" style="padding: 0; display: flex; flex-direction: column; grid-column: 1 / -1;">
+        <div class="flex justify-between items-center" style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <div>
+                <h3 style="font-size: 0.9375rem;">Recent Journal Entries</h3>
+                <p class="text-xs text-muted mt-1">Latest <?= count($recent) ?> transactions posted</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <a href="journal_entries.php" class="btn btn-secondary btn-sm">View All</a>
+                <button class="icon-btn drag-handle" style="cursor: grab;" title="Drag to reorder"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px;"></i></button>
+            </div>
+        </div>
     <table class="table">
         <thead>
             <tr>
@@ -200,10 +229,55 @@ function fmt($n) {
             <?php endif; ?>
         </tbody>
     </table>
-</div>
+    </div>
+</div> <!-- End Widgets Container -->
 
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+// Widget Logic
+function toggleWidget(btn) {
+    const widget = btn.closest('.widget');
+    const backdrop = document.getElementById('widgetBackdrop');
+    const isExpanded = widget.classList.contains('widget-expanded');
+    
+    if(isExpanded) {
+        widget.classList.remove('widget-expanded');
+        backdrop.classList.remove('show');
+        btn.innerHTML = '<i data-lucide="maximize" style="width: 16px; height: 16px;"></i>';
+    } else {
+        widget.classList.add('widget-expanded');
+        backdrop.classList.add('show');
+        btn.innerHTML = '<i data-lucide="minimize" style="width: 16px; height: 16px;"></i>';
+    }
+    lucide.createIcons();
+}
+
+function closeAllWidgets() {
+    document.querySelectorAll('.widget-expanded').forEach(w => {
+        w.classList.remove('widget-expanded');
+        const btn = w.querySelector('.expand-btn');
+        if(btn) btn.innerHTML = '<i data-lucide="maximize" style="width: 16px; height: 16px;"></i>';
+    });
+    document.getElementById('widgetBackdrop').classList.remove('show');
+    lucide.createIcons();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const widgetContainer = document.getElementById('dashboard-widgets');
+    if(widgetContainer) {
+        new Sortable(widgetContainer, {
+            handle: '.drag-handle',
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            onEnd: function() {
+                for (let id in Chart.instances) {
+                    Chart.instances[id].resize();
+                }
+            }
+        });
+    }
+});
 // Pass PHP data to JS
 const rev = <?= json_encode($revenue) ?>;
 const exp = <?= json_encode($expenses) ?>;

@@ -176,14 +176,6 @@ h4 { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
   overflow: hidden;
 }
 
-.metric-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--brand-500), var(--brand-700));
-  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-}
 
 .metric-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
 
@@ -198,6 +190,22 @@ h4 { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
 .metric-card-sub { font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.35rem; }
 .metric-card-sub .up { color: var(--success-color); }
 .metric-card-sub .down { color: var(--danger-color); }
+
+/* WIDGETS */
+.widget-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9998; backdrop-filter: blur(4px); display: none;
+}
+.widget-backdrop.show { display: block; }
+
+.widget-expanded {
+    position: fixed !important; inset: 2rem !important; z-index: 9999 !important;
+    width: auto !important; height: auto !important; margin: 0 !important;
+    display: flex !important; flex-direction: column !important;
+}
+.widget-expanded .chart-container {
+    flex: 1; height: auto !important; min-height: 0;
+}
+
 
 /* ============================================================
    BUTTONS
@@ -489,8 +497,12 @@ h4 { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: background-color 0.3s ease;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease;
   overflow: hidden;
+}
+
+.sidebar.is-hidden {
+  margin-left: -260px;
 }
 
 .sidebar-header {
