@@ -184,43 +184,7 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
             </div>
         </div>
         
-        <script>
-            function toggleMainSidebar() {
-                const sb = document.getElementById('mainSidebar');
-                if (sb) {
-                    sb.classList.toggle('is-hidden');
-                    localStorage.setItem('main_sidebar_hidden', sb.classList.contains('is-hidden'));
-                }
-            }
-
-            function toggleSidebarSection(id) {
-                const el = document.getElementById(id);
-                if (el) {
-                    el.classList.toggle('is-collapsed');
-                    localStorage.setItem('sidebar_' + id, el.classList.contains('is-collapsed'));
-                }
-            }
-            
-            // Restore states immediately to prevent animation on load
-            (function() {
-                ['admin', 'biz_type'].forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el && localStorage.getItem('sidebar_' + id) === 'true') {
-                        el.classList.add('is-collapsed');
-                    }
-                });
-                // Restore active modules
-                const modulesEl = document.querySelector('[id^="modules_"]');
-                if (modulesEl && localStorage.getItem('sidebar_' + modulesEl.id) === 'true') {
-                    modulesEl.classList.add('is-collapsed');
-                }
-
-                const mainSb = document.getElementById('mainSidebar');
-                if (mainSb && localStorage.getItem('main_sidebar_hidden') === 'true') {
-                    mainSb.classList.add('is-hidden');
-                }
-            })();
-        </script>
+        <script src="<?= BASE_URL ?>assets/js/script.js"></script>
     </div>
 
     <!-- MAIN WRAPPER -->
