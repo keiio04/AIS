@@ -107,7 +107,7 @@ function fmt($n) {
 </div>
 
 <!-- Metric Cards -->
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.75rem;">
+<div id="metric-cards-grid" class="metric-cards-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.75rem;">
     <?php
     $metrics = [
         ['label'=>'Total Revenue', 'val'=>$revenue, 'icon'=>'trending-up', 'col'=>'#10b981', 'bg'=>'#f0fdf4'],

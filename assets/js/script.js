@@ -8,7 +8,18 @@ function toggleMainSidebar() {
     const sb = document.getElementById('mainSidebar');
     if (sb) {
         sb.classList.toggle('is-hidden');
-        localStorage.setItem('main_sidebar_hidden', sb.classList.contains('is-hidden'));
+        const isHidden = sb.classList.contains('is-hidden');
+        localStorage.setItem('main_sidebar_hidden', isHidden);
+        document.body.classList.toggle('sidebar-hidden', isHidden);
+
+        // Resize charts after the sidebar CSS transition (300ms) finishes
+        setTimeout(function() {
+            if (typeof Chart !== 'undefined') {
+                Object.values(Chart.instances).forEach(function(chart) {
+                    chart.resize();
+                });
+            }
+        }, 320);
     }
 }
 
@@ -38,6 +49,7 @@ function toggleSidebarSection(id) {
     const mainSb = document.getElementById('mainSidebar');
     if (mainSb && localStorage.getItem('main_sidebar_hidden') === 'true') {
         mainSb.classList.add('is-hidden');
+        document.body.classList.add('sidebar-hidden');
     }
 })();
 
@@ -93,7 +105,9 @@ document.addEventListener('click', function(event) {
     }
 })();
 
-// ── Initialize Lucide Icons ───────────────────────────────────
-if (typeof lucide !== 'undefined') {
-    lucide.createIcons();
-}
+// ── Initialize Lucide Icons (after full DOM is ready) ────────
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+});

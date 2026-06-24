@@ -7,7 +7,7 @@
 define('DB_HOST', 'localhost');
 define('DB_USER', 'root');
 define('DB_PASS', '');
-define('DB_NAME', 'ais_db');
+define('DB_NAME', 'accounting_db');
 
 function get_db(): mysqli {
     static $conn = null;
@@ -21,3 +21,4 @@ function get_db(): mysqli {
     }
     return $conn;
 }
+?>
