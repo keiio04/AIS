@@ -1,7 +1,12 @@
 <?php
 require_once '../config.php';
 require_once '../db.php';
-require_once '../includes/header.php';
+require_once '../includes/session_guard.php';
+
+$db = get_db();
+try { $db->query("ALTER TABLE journal_entry_lines ADD COLUMN description VARCHAR(255) NULL AFTER account_id"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE activity_logs ADD COLUMN company_id INT NULL AFTER id"); } catch (Exception $e) {}
+
 
 $db = get_db();
 $company_id = $_SESSION['active_company_id'] ?? null;
@@ -26,32 +31,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if (empty(trim($ref_no))) {
         $ref_no = 'JV-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
     }
-    $description = $_POST['description'];
-    $particulars = $_POST['particulars'];
-    $type = $_POST['type'];
+    $description = '';
+    $particulars = '';
+    $type = 'Operating';
+    $tax_type = $_POST['tax_type'] ?? null;
+    $vendor_name = $_POST['vendor_name'] ?? null;
 
     $account_ids = $_POST['account_id'] ?? [];
+    $line_descriptions = $_POST['line_description'] ?? [];
     $debits = $_POST['debit'] ?? [];
     $credits = $_POST['credit'] ?? [];
 
     $db->begin_transaction();
     try {
-        $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, particulars, type) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param('isssss', $company_id, $ref_no, $date, $description, $particulars, $type);
+        $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, particulars, type, tax_type, vendor_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param('isssssss', $company_id, $ref_no, $date, $description, $particulars, $type, $tax_type, $vendor_name);
         $stmt->execute();
         $entry_id = $stmt->insert_id;
 
-        $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
+        $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, description, debit, credit) VALUES (?, ?, ?, ?, ?)");
         
         $total_debit = 0;
         for ($i = 0; $i < count($account_ids); $i++) {
             $acc_id = (int)$account_ids[$i];
+            $line_desc = $line_descriptions[$i] ?? '';
             $dr = (float)($debits[$i] ?: 0);
             $cr = (float)($credits[$i] ?: 0);
 
             if ($acc_id > 0 && ($dr > 0 || $cr > 0)) {
                 $total_debit += $dr;
-                $stmtLine->bind_param('iidd', $entry_id, $acc_id, $dr, $cr);
+                $stmtLine->bind_param('iisdd', $entry_id, $acc_id, $line_desc, $dr, $cr);
                 $stmtLine->execute();
             }
         }
@@ -101,6 +110,7 @@ $stmt->bind_param('i', $company_id);
 $stmt->execute();
 $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
+require_once '../includes/header.php';
 ?>
 
 <div class="page-header">
@@ -125,8 +135,8 @@ $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             <thead>
                 <tr>
                     <th style="width: 12%">Date</th>
-                    <th style="width: 25%">Particulars / Account Title</th>
-                    <th style="width: 20%">Explanation</th>
+                    <th style="width: 25%">Account Title</th>
+                    <th style="width: 20%">Description</th>
                     <th style="width: 15%">Ref No. / Account Code</th>
                     <th class="text-right" style="width: 11%">Debit</th>
                     <th class="text-right" style="width: 12%">Credit</th>
@@ -139,18 +149,28 @@ $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     $stmtLine->bind_param('i', $tx['id']);
                     $stmtLine->execute();
                     $lines = $stmtLine->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $totalDebit = 0;
+                    $totalCredit = 0;
                 ?>
-                <?php foreach($lines as $index => $line): ?>
+                <?php foreach($lines as $index => $line): 
+                    $totalDebit += $line['debit'];
+                    $totalCredit += $line['credit'];
+                ?>
                 <tr>
-                    <td><?= $index === 0 ? date('M d, Y', strtotime($tx['date'])) : '' ?></td>
+                    <td>
+                        <?= $index === 0 ? '<strong>' . date('M d, Y', strtotime($tx['date'])) . '</strong><br>' : '' ?>
+                        <?php if ($index === 0 && !empty($tx['vendor_name'])): ?>
+                            <div style="font-size: 0.75rem; color: #6b7280; margin-top: 4px;"><i data-lucide="user" style="width:10px;height:10px; display:inline;"></i> <?= htmlspecialchars($tx['vendor_name']) ?></div>
+                        <?php endif; ?>
+                        <?php if ($index === 0 && !empty($tx['tax_type'])): ?>
+                            <div style="margin-top: 4px;"><span style="font-size: 0.7rem; background: #e0f2fe; color: #0284c7; padding: 2px 6px; border-radius: 4px; font-weight: 500;"><?= htmlspecialchars($tx['tax_type']) ?></span></div>
+                        <?php endif; ?>
+                    </td>
                     <td style="padding-left: <?= $line['credit'] > 0 ? '2.5rem' : '1rem' ?>; font-weight: 500;">
                         <?= htmlspecialchars($line['name']) ?>
                     </td>
                     <td style="color: var(--text-muted); font-size: 0.85rem;">
-                        <?= $index === 0 ? htmlspecialchars($tx['description']) : '' ?>
-                        <?php if($index === 0 && $tx['particulars']): ?>
-                            <div style="font-size: 0.75rem; margin-top: 2px; color: #9ca3af;"><?= htmlspecialchars($tx['particulars']) ?></div>
-                        <?php endif; ?>
+                        <?= htmlspecialchars($line['description'] ?? '') ?>
                     </td>
                     <td style="font-family: monospace; font-size: 0.85rem;">
                         <?= $index === 0 && $tx['reference_no'] ? '<strong>'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
@@ -171,6 +191,12 @@ $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     </td>
                 </tr>
                 <?php endforeach; ?>
+                <tr style="background-color: #f8fafc;">
+                    <td colspan="4" class="text-right" style="font-weight: 600; padding-right: 1rem;">Total</td>
+                    <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalDebit, 2) ?></td>
+                    <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalCredit, 2) ?></td>
+                    <td></td>
+                </tr>
                 <tr><td colspan="7" style="border-bottom: 2px solid var(--border-color); padding: 0;"></td></tr>
                 <?php endforeach; ?>
                 <?php if(count($transactions) === 0): ?>
@@ -194,7 +220,7 @@ $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             <form id="entry-form" method="POST">
                 <input type="hidden" name="action" value="add_entry">
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 2fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                     <div class="form-group">
                         <label class="form-label">Date</label>
                         <input type="date" name="date" class="form-control" value="<?= date('Y-m-d') ?>" required>
@@ -203,33 +229,33 @@ $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <label class="form-label">Ref No. <span style="font-size: 0.75rem; font-weight: normal;">(Auto if blank)</span></label>
                         <input type="text" name="reference_no" class="form-control" placeholder="e.g. JV-001">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Explanation</label>
-                        <input type="text" name="description" class="form-control" placeholder="Brief explanation" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Type</label>
-                        <select name="type" class="form-control">
-                            <option value="Operating">Operating</option>
-                            <option value="Investing">Investing</option>
-                            <option value="Financing">Financing</option>
-                            <option value="Non-Cash">Non-Cash</option>
-                        </select>
-                    </div>
                 </div>
                 
-                <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label class="form-label">Particulars</label>
-                    <textarea name="particulars" class="form-control" placeholder="Detailed particulars of the transaction..." rows="2" style="resize: vertical; width: 100%;"></textarea>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                    <div class="form-group">
+                        <label class="form-label">Vendor / Payee Name <span style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted);">(Optional)</span></label>
+                        <input type="text" name="vendor_name" class="form-control" placeholder="e.g. Supplier XYZ">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tax Type <span style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted);">(Optional)</span></label>
+                        <select name="tax_type" class="form-control">
+                            <option value="">None / Non-Taxable</option>
+                            <option value="VAT">VAT (Value Added Tax)</option>
+                            <option value="Percentage Tax">Percentage Tax (Non-VAT)</option>
+                            <option value="Zero-Rated">Zero-Rated</option>
+                            <option value="Tax Exempt">Tax Exempt</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
                     <table class="table" style="margin: 0;">
                         <thead>
                             <tr>
-                                <th style="width: 40%;">Account</th>
-                                <th style="width: 25%;" class="text-right">Debit</th>
-                                <th style="width: 25%;" class="text-right">Credit</th>
+                                <th style="width: 30%;">Account</th>
+                                <th style="width: 30%;">Description</th>
+                                <th style="width: 15%;" class="text-right">Debit</th>
+                                <th style="width: 15%;" class="text-right">Credit</th>
                                 <th style="width: 10%;"></th>
                             </tr>
                         </thead>
@@ -243,6 +269,7 @@ $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                         <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Line
                                     </button>
                                 </td>
+                                <td class="text-right" style="font-weight: 600;">Total</td>
                                 <td class="text-right" id="total-dr" style="font-weight: 600;">₱0.00</td>
                                 <td class="text-right" id="total-cr" style="font-weight: 600;">₱0.00</td>
                                 <td></td>
@@ -285,6 +312,9 @@ function addLine() {
             <select name="account_id[]" class="form-control" onchange="checkValidity()" required>
                 ${createAccountOptions()}
             </select>
+        </td>
+        <td>
+            <input type="text" name="line_description[]" class="form-control" placeholder="Line description">
         </td>
         <td>
             <input type="number" step="0.01" min="0" name="debit[]" class="form-control text-right dr-input" placeholder="0" oninput="autoZero(this, 'cr'); calcTotals()">

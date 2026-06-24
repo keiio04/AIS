@@ -126,26 +126,35 @@ function getBal($cat, $raw) {
                 <tr>
                     <th>Code</th>
                     <th>Name</th>
-                    <th>Category</th>
                     <th>Type</th>
                     <th class="text-right">Current Balance</th>
                     <th class="text-center">Actions</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach($accounts as $acc): 
-                    $bal = getBal($acc['category'], $acc['raw_balance']);
-                    $badge = 'neutral';
-                    if($acc['category'] === 'Assets') $badge = 'primary';
-                    if($acc['category'] === 'Liabilities') $badge = 'danger';
-                    if($acc['category'] === 'Equity') $badge = 'warning';
-                    if($acc['category'] === 'Revenue') $badge = 'success';
+                <?php 
+                $grouped_accounts = [];
+                foreach($accounts as $acc) {
+                    $grouped_accounts[$acc['category']][] = $acc;
+                }
+                
+                if (count($accounts) === 0): ?>
+                <tr><td colspan="5" class="text-center text-secondary" style="padding: 2rem;">No accounts found.</td></tr>
+                <?php else: 
+                    foreach($grouped_accounts as $catName => $catAccounts): 
                 ?>
-                <tr>
-                    <td style="font-family: monospace; font-weight: 600; color: var(--primary-color); font-size: 0.875rem;"><?= htmlspecialchars($acc['code']) ?></td>
+                <tr style="background-color: #f1f5f9;">
+                    <td colspan="5" style="font-weight: 700; font-size: 0.95rem; color: #334155; padding-top: 0.75rem; padding-bottom: 0.75rem; letter-spacing: 0.05em;">
+                        <?= htmlspecialchars(strtoupper($catName)) ?>
+                    </td>
+                </tr>
+                <?php foreach($catAccounts as $acc): 
+                    $bal = getBal($acc['category'], $acc['raw_balance']);
+                ?>
+                <tr style="color: #000;">
+                    <td style="font-family: monospace; font-weight: 600; font-size: 0.875rem; padding-left: 2rem;"><?= htmlspecialchars($acc['code']) ?></td>
                     <td style="font-weight: 500;"><?= htmlspecialchars($acc['name']) ?></td>
-                    <td><span class="badge badge-<?= $badge ?>"><?= htmlspecialchars($acc['category']) ?></span></td>
-                    <td style="color: var(--text-secondary); font-size: 0.8125rem;"><?= htmlspecialchars($acc['sub_category'] ?: '—') ?></td>
+                    <td style="font-size: 0.8125rem;"><?= htmlspecialchars($acc['sub_category'] ?: '—') ?></td>
                     <td class="text-right" style="font-weight: 600;">₱<?= number_format(abs($bal), 2) ?></td>
                     <td>
                         <div class="flex justify-center gap-2">
@@ -159,9 +168,7 @@ function getBal($cat, $raw) {
                     </td>
                 </tr>
                 <?php endforeach; ?>
-                <?php if(count($accounts) === 0): ?>
-                <tr><td colspan="6" class="text-center text-secondary" style="padding: 2rem;">No accounts found.</td></tr>
-                <?php endif; ?>
+                <?php endforeach; endif; ?>
             </tbody>
         </table>
     </div>

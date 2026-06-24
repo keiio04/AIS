@@ -100,18 +100,14 @@ $trashed = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 </div>
 
 <?php else: ?>
-<div class="card" style="padding: 0; overflow: hidden; border: 1px solid #fca5a5;">
-    <div style="background: #fef2f2; padding: 0.75rem 1rem; border-bottom: 1px solid #fca5a5; display: flex; align-items: center; gap: 0.5rem;">
-        <i data-lucide="alert-triangle" style="width:15px;height:15px; color: #ef4444;"></i>
-        <span style="font-size: 0.85rem; color: #991b1b;">Items in the trash are excluded from all reports. Restore them to include in balances again.</span>
-    </div>
-    <div class="table-container">
+<div style="padding: 0; overflow: hidden;">
+    <div class="table-container" style="box-shadow: none; background: transparent;">
         <table class="table">
             <thead>
                 <tr>
                     <th style="width: 12%">Date</th>
-                    <th style="width: 20%">Particulars / Account Title</th>
-                    <th style="width: 20%">Explanation</th>
+                    <th style="width: 20%">Account Title</th>
+                    <th style="width: 20%">Description</th>
                     <th style="width: 13%">Ref No.</th>
                     <th class="text-right" style="width: 10%">Debit</th>
                     <th class="text-right" style="width: 10%">Credit</th>
@@ -127,20 +123,20 @@ $trashed = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     $lines = $stmtLine->get_result()->fetch_all(MYSQLI_ASSOC);
                 ?>
                 <?php foreach($lines as $index => $line): ?>
-                <tr style="opacity: 0.75;">
+                <tr style="color: #000;">
                     <td><?= $index === 0 ? date('M d, Y', strtotime($tx['date'])) : '' ?></td>
-                    <td style="padding-left: <?= $line['credit'] > 0 ? '2.5rem' : '1rem' ?>; font-weight: 500; color: #6b7280;">
+                    <td style="padding-left: <?= $line['credit'] > 0 ? '2.5rem' : '1rem' ?>; font-weight: 500;">
                         <?= htmlspecialchars($line['name']) ?>
                     </td>
-                    <td style="color: var(--text-muted); font-size: 0.85rem;">
-                        <?= $index === 0 ? htmlspecialchars($tx['description']) : '' ?>
+                    <td style="font-size: 0.85rem;">
+                        <?= htmlspecialchars($line['description'] ?? '') ?>
                     </td>
-                    <td style="font-family: monospace; font-size: 0.85rem; color: #6b7280;">
+                    <td style="font-family: monospace; font-size: 0.85rem;">
                         <?= $index === 0 ? htmlspecialchars($tx['reference_no'] ?: '—') : '' ?>
                     </td>
-                    <td class="text-right" style="color: #6b7280;"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
-                    <td class="text-right" style="color: #6b7280;"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
-                    <td style="font-size: 0.8rem; color: #ef4444;">
+                    <td class="text-right"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
+                    <td class="text-right"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
+                    <td style="font-size: 0.8rem;">
                         <?= $index === 0 ? date('M d, Y H:i', strtotime($tx['deleted_at'])) : '' ?>
                     </td>
                     <td style="text-align: center; vertical-align: middle;">

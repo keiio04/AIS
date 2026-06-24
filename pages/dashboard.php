@@ -99,11 +99,20 @@ function fmt($n) {
 }
 ?>
 
-<div class="page-header">
-    <div class="page-header-text">
-        <h1 class="page-title">Dashboard</h1>
-        <p class="page-subtitle">Welcome back! Here's the financial overview for <strong><?= htmlspecialchars($activeCompanyName ?? 'your company') ?></strong> for <?= date('F Y') ?>.</p>
-    </div>
+<?php
+date_default_timezone_set('Asia/Manila');
+$hour = date('H');
+if ($hour < 12) {
+    $greeting = "Good morning";
+} elseif ($hour < 18) {
+    $greeting = "Good afternoon";
+} else {
+    $greeting = "Good evening";
+}
+$userName = htmlspecialchars($_SESSION['user_name'] ?? 'User');
+?>
+<div style="text-align: center; margin-bottom: 2.5rem; margin-top: 1rem;">
+    <h2 style="font-size: 1.75rem; font-weight: 500; color: var(--text-primary); letter-spacing: -0.01em;"><?= $greeting ?>, <?= $userName ?>!</h2>
 </div>
 
 <!-- Metric Cards -->
@@ -132,54 +141,36 @@ function fmt($n) {
 <div id="widgetBackdrop" class="widget-backdrop" onclick="closeAllWidgets()"></div>
 
 <!-- Widgets Container -->
-<div id="dashboard-widgets" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
+<div id="dashboard-widgets" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
     <!-- Chart 1 -->
     <div class="card widget" style="padding: 1.5rem; display: flex; flex-direction: column;">
-        <div class="flex justify-between items-start mb-4">
-            <div>
-                <h3 style="font-size: 0.9375rem;">Revenue vs Expenses</h3>
-                <p class="text-xs text-muted mt-1">Current period overview</p>
-            </div>
-            <div class="flex gap-1">
-                <button class="icon-btn expand-btn" onclick="toggleWidget(this)" title="Expand"><i data-lucide="maximize" style="width: 16px; height: 16px;"></i></button>
-                <button class="icon-btn drag-handle" style="cursor: grab;" title="Drag to reorder"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px;"></i></button>
-            </div>
+        <div style="margin-bottom: 1rem;">
+            <h3 style="font-size: 0.9375rem;">Revenue vs Expenses</h3>
+            <p class="text-xs text-muted mt-1">Current period overview</p>
         </div>
-        <div class="chart-container" style="position: relative; height: 240px; width: 100%;">
+        <div class="chart-container" style="position: relative; height: 240px; width: 100%; overflow: hidden;">
             <canvas id="revExpChart"></canvas>
         </div>
     </div>
     
     <!-- Chart 2 -->
     <div class="card widget" style="padding: 1.5rem; display: flex; flex-direction: column;">
-        <div class="flex justify-between items-start mb-4">
-            <div>
-                <h3 style="font-size: 0.9375rem;">Asset Distribution</h3>
-                <p class="text-xs text-muted mt-1">Breakdown by asset type</p>
-            </div>
-            <div class="flex gap-1">
-                <button class="icon-btn expand-btn" onclick="toggleWidget(this)" title="Expand"><i data-lucide="maximize" style="width: 16px; height: 16px;"></i></button>
-                <button class="icon-btn drag-handle" style="cursor: grab;" title="Drag to reorder"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px;"></i></button>
-            </div>
+        <div style="margin-bottom: 1rem;">
+            <h3 style="font-size: 0.9375rem;">Asset Distribution</h3>
+            <p class="text-xs text-muted mt-1">Breakdown by asset type</p>
         </div>
-        <div class="chart-container" style="position: relative; height: 240px; width: 100%;">
+        <div class="chart-container" style="position: relative; height: 240px; width: 100%; overflow: hidden;">
             <canvas id="assetChart"></canvas>
         </div>
     </div>
 
     <!-- Cash Flow Trend -->
     <div class="card widget" style="padding: 1.5rem; display: flex; flex-direction: column; grid-column: 1 / -1;">
-        <div class="flex justify-between items-start mb-4">
-            <div>
-                <h3 style="font-size: 0.9375rem;">Cash Flow Trend</h3>
-                <p class="text-xs text-muted mt-1">Monthly cash inflows vs outflows</p>
-            </div>
-            <div class="flex gap-1">
-                <button class="icon-btn expand-btn" onclick="toggleWidget(this)" title="Expand"><i data-lucide="maximize" style="width: 16px; height: 16px;"></i></button>
-                <button class="icon-btn drag-handle" style="cursor: grab;" title="Drag to reorder"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px;"></i></button>
-            </div>
+        <div style="margin-bottom: 1rem;">
+            <h3 style="font-size: 0.9375rem;">Cash Flow Trend</h3>
+            <p class="text-xs text-muted mt-1">Monthly cash inflows vs outflows</p>
         </div>
-        <div class="chart-container" style="position: relative; height: 240px; width: 100%;">
+        <div class="chart-container" style="position: relative; height: 240px; width: 100%; overflow: hidden;">
             <canvas id="cashFlowChart"></canvas>
         </div>
     </div>
@@ -193,7 +184,6 @@ function fmt($n) {
             </div>
             <div class="flex items-center gap-2">
                 <a href="journal_entries.php" class="btn btn-secondary btn-sm">View All</a>
-                <button class="icon-btn drag-handle" style="cursor: grab;" title="Drag to reorder"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px;"></i></button>
             </div>
         </div>
     <table class="table">
