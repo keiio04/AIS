@@ -140,16 +140,8 @@ foreach ($display_categories as $category):
 ?>
 
 
-                <!-- Opening Balance Row -->
-                <tr>
-                    <td colspan="7" class="text-right" style="color: var(--text-secondary); font-size: 0.85rem; padding: 0.75rem 0.5rem;">
-                        Opening Balance
-                    </td>
-                    <td class="text-right" style="font-weight: 600; padding: 0.75rem 0.5rem;">
-                        <?= $runningBalance != 0 ? number_format($runningBalance, 2) : '-' ?>
-                    </td>
-                </tr>
-                
+
+
                 <!-- Transaction Lines -->
                 <?php foreach ($lines as $line): 
                     if ($category === 'Assets' || $category === 'Expenses') {
