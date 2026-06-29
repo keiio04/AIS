@@ -12,38 +12,32 @@ if (!$company_id) {
     exit;
 }
 
-// Fetch all accounts for filter dropdown
-$stmt = $db->prepare("SELECT id, code, name FROM accounts WHERE company_id = ? ORDER BY code ASC");
-$stmt->bind_param('i', $company_id);
-$stmt->execute();
-$allAccounts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$elements = ['Assets', 'Liabilities', 'Equity', 'Revenue', 'Expenses'];
+$selected_category = $_GET['category'] ?? '';
 
-$selected_account_id = $_GET['account_id'] ?? '';
-
-// Build query for accounts to display
-$accQuery = "SELECT * FROM accounts WHERE company_id = ?";
-$params = [$company_id];
-$types = "i";
-
-if ($selected_account_id) {
-    $accQuery .= " AND id = ?";
-    $params[] = $selected_account_id;
-    $types .= "i";
+// Build list of categories to display
+$display_categories = [];
+if ($selected_category && in_array($selected_category, $elements)) {
+    $display_categories[] = $selected_category;
+} else {
+    $display_categories = $elements;
 }
-$accQuery .= " ORDER BY code ASC";
 
-$stmtAcc = $db->prepare($accQuery);
-$stmtAcc->bind_param($types, ...$params);
-$stmtAcc->execute();
-$accounts = $stmtAcc->get_result()->fetch_all(MYSQLI_ASSOC);
-
-// Prepare statement for fetching entries for a specific account
+// Prepare statement for fetching entries for a specific category
 $stmtLines = $db->prepare("
-    SELECT l.debit, l.credit, e.date, e.description, e.reference_no
+    SELECT l.debit, l.credit, e.date, e.description, e.reference_no, a.code, a.name as account_name
     FROM journal_entry_lines l
     JOIN journal_entries e ON l.journal_entry_id = e.id
-    WHERE l.account_id = ? AND e.deleted_at IS NULL
+    JOIN accounts a ON l.account_id = a.id
+    WHERE a.company_id = ? AND a.category = ? AND e.deleted_at IS NULL
     ORDER BY e.date ASC, e.id ASC
+");
+
+// Prepare statement for opening balances
+$stmtOB = $db->prepare("
+    SELECT SUM(opening_balance) as total_ob 
+    FROM accounts 
+    WHERE company_id = ? AND category = ?
 ");
 
 ?>
@@ -51,18 +45,18 @@ $stmtLines = $db->prepare("
 <div class="page-header">
     <div class="page-header-text">
         <h1 class="page-title">General Ledger</h1>
-        <p class="page-subtitle">Track running balances for all accounts.</p>
+        <p class="page-subtitle">Track running balances per accounting element.</p>
     </div>
 </div>
 
 <div class="card" style="margin-bottom: 1.5rem;">
     <form method="GET" style="max-width: 400px;">
-        <label class="form-label">Filter by Account</label>
-        <select name="account_id" class="form-control" onchange="this.form.submit()">
-            <option value="">-- All Accounts with Entries --</option>
-            <?php foreach($allAccounts as $a): ?>
-                <option value="<?= $a['id'] ?>" <?= $selected_account_id == $a['id'] ? 'selected' : '' ?>>
-                    <?= htmlspecialchars($a['code'] . ' - ' . $a['name']) ?>
+        <label class="form-label">Filter by Element</label>
+        <select name="category" class="form-control" onchange="this.form.submit()">
+            <option value="">-- All Elements --</option>
+            <?php foreach($elements as $el): ?>
+                <option value="<?= $el ?>" <?= $selected_category == $el ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($el) ?>
                 </option>
             <?php endforeach; ?>
         </select>
@@ -72,26 +66,32 @@ $stmtLines = $db->prepare("
 <?php 
 $displayedAny = false;
 
-foreach ($accounts as $acc): 
-    $stmtLines->bind_param('i', $acc['id']);
+foreach ($display_categories as $category): 
+    // Get Opening Balance
+    $stmtOB->bind_param('is', $company_id, $category);
+    $stmtOB->execute();
+    $obRow = $stmtOB->get_result()->fetch_assoc();
+    $runningBalance = (float)($obRow['total_ob'] ?? 0);
+
+    // Get Lines
+    $stmtLines->bind_param('is', $company_id, $category);
     $stmtLines->execute();
     $lines = $stmtLines->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    // Only show accounts with activity OR non-zero opening balance (if no specific account selected)
-    if (!$selected_account_id && count($lines) === 0 && $acc['opening_balance'] == 0) {
+    // Only show if there's activity or non-zero opening balance
+    if (!$selected_category && count($lines) === 0 && $runningBalance == 0) {
         continue;
     }
     
     $displayedAny = true;
-    $runningBalance = $acc['opening_balance'];
 ?>
 <div class="card" style="padding: 0; margin-bottom: 1.5rem; overflow: hidden;">
     <div style="padding: 1.5rem; border-bottom: 1px solid var(--border-color); background-color: var(--bg-secondary);">
         <h2 style="font-size: 1.25rem; margin-bottom: 0.25rem;">
-            <?= htmlspecialchars($acc['code'] . ' - ' . $acc['name']) ?>
+            <?= htmlspecialchars($category) ?>
         </h2>
         <div class="text-muted" style="font-size: 0.875rem;">
-            Category: <?= htmlspecialchars($acc['category']) ?> <?= $acc['sub_category'] ? ' > ' . htmlspecialchars($acc['sub_category']) : '' ?>
+            General Ledger for all <?= htmlspecialchars($category) ?> accounts
         </div>
     </div>
     
@@ -99,17 +99,19 @@ foreach ($accounts as $acc):
         <table class="table" style="margin: 0;">
             <thead>
                 <tr>
-                    <th>Date</th>
-                    <th>Description</th>
-                    <th>Ref (General Journal Page)</th>
-                    <th class="text-right">Debit</th>
-                    <th class="text-right">Credit</th>
-                    <th class="text-right">Balance</th>
+                    <th style="width: 12%">Date</th>
+                    <th style="width: 20%">Account</th>
+                    <th style="width: 25%">Description</th>
+                    <th style="width: 13%">Ref No.</th>
+                    <th class="text-right" style="width: 10%">Debit</th>
+                    <th class="text-right" style="width: 10%">Credit</th>
+                    <th class="text-right" style="width: 10%">Balance</th>
                 </tr>
             </thead>
             <tbody>
                 <!-- Opening Balance Row -->
                 <tr style="background-color: var(--bg-tertiary); font-weight: 600;">
+                    <td>-</td>
                     <td>-</td>
                     <td>Opening Balance</td>
                     <td style="font-family: monospace; font-size: 0.8rem;">-</td>
@@ -120,7 +122,7 @@ foreach ($accounts as $acc):
                 
                 <!-- Transaction Lines -->
                 <?php foreach ($lines as $line): 
-                    if ($acc['category'] === 'Assets' || $acc['category'] === 'Expenses') {
+                    if ($category === 'Assets' || $category === 'Expenses') {
                         $runningBalance += $line['debit'];
                         $runningBalance -= $line['credit'];
                     } else {
@@ -130,8 +132,12 @@ foreach ($accounts as $acc):
                 ?>
                 <tr>
                     <td><?= $line['date'] ?></td>
-                    <td><?= htmlspecialchars($line['description']) ?></td>
-                    <td style="font-family: monospace; font-size: 0.8rem;"><?= htmlspecialchars($line['reference_no']) ?></td>
+                    <td>
+                        <span style="color: var(--primary-color); font-family: monospace; font-size: 0.8rem;"><?= htmlspecialchars($line['code']) ?></span><br>
+                        <?= htmlspecialchars($line['account_name']) ?>
+                    </td>
+                    <td><?= htmlspecialchars($line['description'] ?? '') ?></td>
+                    <td style="font-family: monospace; font-size: 0.8rem;"><?= htmlspecialchars($line['reference_no'] ?? '') ?></td>
                     <td class="text-right"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
                     <td class="text-right"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
                     <td class="text-right" style="font-weight: 500;">₱<?= number_format($runningBalance, 2) ?></td>
@@ -145,7 +151,7 @@ foreach ($accounts as $acc):
 
 <?php if (!$displayedAny): ?>
 <div style="text-align: center; padding: 3rem 1rem;">
-    <p style="color: var(--text-muted);">No transactions yet for this account.</p>
+    <p style="color: var(--text-muted);">No transactions found for the selected element.</p>
 </div>
 <?php endif; ?>
 
