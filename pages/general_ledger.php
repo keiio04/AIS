@@ -138,12 +138,7 @@ foreach ($display_categories as $category):
     
     $displayedAny = true;
 ?>
-                <!-- Category Header -->
-                <tr>
-                    <td colspan="8" style="padding: 1.5rem 0.5rem 0.5rem 0.5rem; font-weight: 700; font-size: 1rem; color: var(--text-primary); text-transform: uppercase; border-bottom: 1px solid var(--border-color);">
-                        ELEMENT: <?= htmlspecialchars($category) ?>
-                    </td>
-                </tr>
+
 
                 <!-- Opening Balance Row -->
                 <tr>
