@@ -26,6 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $result = $stmt->get_result();
             $user   = $result->fetch_assoc();
             if ($user && password_verify($pass, $user['password'])) {
+                session_regenerate_id(true);
                 $_SESSION['user_id']   = $user['id'];
                 $_SESSION['user_name'] = $user['name'];
                 $_SESSION['user_email']= $user['email'];
@@ -40,8 +41,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $_SESSION['active_company_id'] = $coRow['active_company_id'];
                 }
 
-                $db->prepare("INSERT INTO activity_logs (user_id, action) VALUES (?, 'Logged in')")->execute([$user['id']]);
-                header('Location: ' . BASE_URL . 'pages/dashboard.php');
+                $stmtLog = $db->prepare("INSERT INTO activity_logs (user_id, action, module, description) VALUES (?, 'Login', 'Authentication', 'User successfully logged in')");
+                $stmtLog->execute([$user['id']]);
+                
+                if ($user['role'] === 'Admin') {
+                    header('Location: ' . BASE_URL . 'admin/dashboard.php');
+                } else {
+                    header('Location: ' . BASE_URL . 'pages/dashboard.php');
+                }
                 exit;
             } else {
                 $error = 'Invalid email or password.';
@@ -248,6 +255,13 @@ body { margin: 0; padding: 0; }
           <div class="auth-field">
             <label class="auth-field-label">Email Address</label>
             <input type="email" name="email" class="auth-field-input" placeholder="you@example.com" value="<?= htmlspecialchars($_POST['email']??'') ?>" required>
+          </div>
+          <div class="auth-field">
+            <label class="auth-field-label">I am a...</label>
+            <select name="role" class="auth-field-input" required>
+              <option value="Student" <?= (isset($_POST['role']) && $_POST['role'] === 'Student') ? 'selected' : '' ?>>Student</option>
+              <option value="Instructor" <?= (isset($_POST['role']) && $_POST['role'] === 'Instructor') ? 'selected' : '' ?>>Instructor</option>
+            </select>
           </div>
           <div class="auth-field">
             <label class="auth-field-label">Password</label>

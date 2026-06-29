@@ -1,7 +1,7 @@
 <?php
 require_once '../config.php';
 require_once '../db.php';
-require_once '../includes/session_guard.php';
+require_once '../includes/auth.php';
 require_once '../includes/account_seeds.php';
 
 $db      = get_db();
@@ -33,9 +33,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $period_type = $_POST['period_type']  ?? 'Calendar';
         $fiscal_month = $_POST['fiscal_start_month'] ?? null;
         $fiscal_date  = $_POST['fiscal_start_date'] ?? null;
-        $is_tax_registered = (int)($_POST['is_tax_registered'] ?? 0);
-        $tax_type = $_POST['tax_type'] ?? null;
-        if (!$is_tax_registered) $tax_type = null;
 
         $fiscal_end = 'December 31';
         if ($period_type === 'Fiscal' && $fiscal_month && $fiscal_date) {
@@ -52,8 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Company name is required.';
             $msgType = 'danger';
         } else {
-            $ins = $db->prepare("INSERT INTO companies (user_id, name, address, business_type, period_type, fiscal_start_month, fiscal_start_date, fiscal_year_end, is_tax_registered, tax_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $ins->bind_param('isssssisis', $userId, $name, $addr, $btype, $period_type, $fiscal_month, $fiscal_date, $fiscal_end, $is_tax_registered, $tax_type);
+            $ins = $db->prepare("INSERT INTO companies (user_id, name, address, business_type, period_type, fiscal_start_month, fiscal_start_date, fiscal_year_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $ins->bind_param('isssssis', $userId, $name, $addr, $btype, $period_type, $fiscal_month, $fiscal_date, $fiscal_end);
             $ins->execute();
             $newId = $db->insert_id;
 
@@ -68,10 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $activeCompanyId = $newId;
 
             // Log
-            $logMsg = "Created company: $name ($btype)";
-            $logStmt = $db->prepare("INSERT INTO activity_logs (user_id, action) VALUES (?, ?)");
-            $logStmt->bind_param('is', $userId, $logMsg);
-            $logStmt->execute();
+            log_activity($db, $userId, 'Create', 'Company Setup', "Created company: $name ($btype)");
 
             $message = "Company \"$name\" created successfully! Chart of Accounts has been loaded.";
             header('Location: ' . BASE_URL . 'pages/company_setup.php?msg=created');
@@ -87,9 +81,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $period_type = $_POST['period_type']  ?? 'Calendar';
         $fiscal_month = $_POST['fiscal_start_month'] ?? null;
         $fiscal_date  = $_POST['fiscal_start_date'] ?? null;
-        $is_tax_registered = (int)($_POST['is_tax_registered'] ?? 0);
-        $tax_type = $_POST['tax_type'] ?? null;
-        if (!$is_tax_registered) $tax_type = null;
 
         $fiscal_end = 'December 31';
         if ($period_type === 'Fiscal' && $fiscal_month && $fiscal_date) {
@@ -103,13 +94,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($cid && $name) {
-            $upd = $db->prepare("UPDATE companies SET name=?, address=?, period_type=?, fiscal_start_month=?, fiscal_start_date=?, fiscal_year_end=?, is_tax_registered=?, tax_type=? WHERE id=? AND user_id=?");
-            $upd->bind_param('ssssisisii', $name, $addr, $period_type, $fiscal_month, $fiscal_date, $fiscal_end, $is_tax_registered, $tax_type, $cid, $userId);
+            $upd = $db->prepare("UPDATE companies SET name=?, address=?, period_type=?, fiscal_start_month=?, fiscal_start_date=?, fiscal_year_end=? WHERE id=? AND user_id=?");
+            $upd->bind_param('ssssisii', $name, $addr, $period_type, $fiscal_month, $fiscal_date, $fiscal_end, $cid, $userId);
             $upd->execute();
-            $logMsg = "Updated company: $name";
-            $logStmt = $db->prepare("INSERT INTO activity_logs (user_id, action) VALUES (?, ?)");
-            $logStmt->bind_param('is', $userId, $logMsg);
-            $logStmt->execute();
+            log_activity($db, $userId, 'Update', 'Company Setup', "Updated company: $name");
             header('Location: ' . BASE_URL . 'pages/company_setup.php?msg=updated');
             exit;
         }
@@ -151,10 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['active_company_id'] = null;
                 unset($_SESSION['active_company_id']);
             }
-            $logMsg = "Deleted company: $cname";
-            $logStmt = $db->prepare("INSERT INTO activity_logs (user_id, action) VALUES (?, ?)");
-            $logStmt->bind_param('is', $userId, $logMsg);
-            $logStmt->execute();
+            log_activity($db, $userId, 'Delete', 'Company Setup', "Deleted company: $cname");
             header('Location: ' . BASE_URL . 'pages/company_setup.php?msg=deleted');
             exit;
         }
@@ -258,13 +243,6 @@ require_once '../includes/header.php';
             <?php else: ?>
                 Calendar Year
             <?php endif; ?>
-            <span style="margin: 0 6px;">|</span>
-            <i data-lucide="file-text" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i>
-            <?php if ($co['is_tax_registered']): ?>
-                <span style="color: var(--primary-color); font-weight: 500;">Registered (<?= htmlspecialchars($co['tax_type']) ?>)</span>
-            <?php else: ?>
-                Non-Tax Registered
-            <?php endif; ?>
           </div>
         </td>
         <td>
@@ -275,7 +253,7 @@ require_once '../includes/header.php';
         <td style="color: var(--text-muted); font-size: 0.9rem;"><?= htmlspecialchars($co['address'] ?? '—') ?></td>
         <td>
           <div class="flex gap-2" style="align-items: center;">
-            <button onclick="openEditModal(<?= $co['id'] ?>, '<?= htmlspecialchars(addslashes($co['name'])) ?>', '<?= htmlspecialchars(addslashes($co['address'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['period_type'] ?? 'Calendar')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_month'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_date'] ?? '')) ?>', <?= $co['is_tax_registered'] ?? 0 ?>, '<?= htmlspecialchars(addslashes($co['tax_type'] ?? '')) ?>')"
+            <button onclick="openEditModal(<?= $co['id'] ?>, '<?= htmlspecialchars(addslashes($co['name'])) ?>', '<?= htmlspecialchars(addslashes($co['address'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['period_type'] ?? 'Calendar')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_month'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_date'] ?? '')) ?>')"
               style="background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 4px;" title="Edit">
               <i data-lucide="pencil" style="width:16px;height:16px;"></i>
             </button>
@@ -354,22 +332,6 @@ require_once '../includes/header.php';
             <input type="number" name="fiscal_start_date" class="form-input" min="1" max="31" placeholder="Day (e.g. 1)">
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Tax Registered? <span class="required">*</span></label>
-          <select name="is_tax_registered" class="form-input" onchange="toggleTax(this, 'addTaxFields')">
-            <option value="0">No</option>
-            <option value="1">Yes</option>
-          </select>
-        </div>
-        <div class="form-group hidden" id="addTaxFields">
-          <label class="form-label">Tax Type <span class="required">*</span></label>
-          <select name="tax_type" class="form-input">
-            <option value="">Select Tax Type</option>
-            <option value="VAT">VAT</option>
-            <option value="Percentage">Percentage Tax</option>
-          </select>
-          <p class="form-hint" style="color:var(--primary-color);">Selecting VAT applies a global rule: VAT is registered for all entries and transactions.</p>
-        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="closeModal('addModal')">Cancel</button>
@@ -426,25 +388,6 @@ require_once '../includes/header.php';
             <input type="number" name="fiscal_start_date" id="editFiscalDate" class="form-input" min="1" max="31" placeholder="Day (e.g. 1)">
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Tax Registered? <span class="required">*</span></label>
-          <select name="is_tax_registered" id="editTaxRegistered" class="form-input" onchange="toggleTax(this, 'editTaxFields')">
-            <option value="0">No</option>
-            <option value="1">Yes</option>
-          </select>
-        </div>
-        <div class="form-group hidden" id="editTaxFields">
-          <label class="form-label">Tax Type <span class="required">*</span></label>
-          <select name="tax_type" id="editTaxType" class="form-input">
-            <option value="">Select Tax Type</option>
-            <option value="VAT">VAT</option>
-            <option value="Percentage">Percentage Tax</option>
-          </select>
-          <p class="form-hint" style="color:var(--primary-color);">Selecting VAT applies a global rule: VAT is registered for all entries and transactions.</p>
-        </div>
-        <div class="alert alert-info" style="font-size:0.8rem;">
-          ℹ Business Type cannot be changed after creation (it would affect the Chart of Accounts).
-        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="closeModal('editModal')">Cancel</button>
@@ -475,17 +418,14 @@ document.addEventListener('click', function(e) {
   }
 });
 
-function openEditModal(id, name, address, period_type = 'Calendar', fmonth = '', fdate = '', is_tax_registered = 0, tax_type = '') {
+function openEditModal(id, name, address, period_type = 'Calendar', fmonth = '', fdate = '') {
   document.getElementById('editId').value      = id;
   document.getElementById('editName').value    = name;
   document.getElementById('editAddress').value = address;
   document.getElementById('editPeriodType').value = period_type;
   document.getElementById('editFiscalMonth').value = fmonth;
   document.getElementById('editFiscalDate').value = fdate;
-  document.getElementById('editTaxRegistered').value = is_tax_registered;
-  document.getElementById('editTaxType').value = tax_type;
   toggleFiscal(document.getElementById('editPeriodType'), 'editFiscalFields');
-  toggleTax(document.getElementById('editTaxRegistered'), 'editTaxFields');
   openModal('editModal');
 }
 
@@ -498,14 +438,7 @@ function toggleFiscal(selectEl, targetId) {
     }
 }
 
-function toggleTax(selectEl, targetId) {
-    const target = document.getElementById(targetId);
-    if (selectEl.value === '1') {
-        target.classList.remove('hidden');
-    } else {
-        target.classList.add('hidden');
-    }
-}
+
 
 function updateBtypeHint(val) {
   const hints = {

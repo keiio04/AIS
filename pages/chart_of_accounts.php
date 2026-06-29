@@ -1,6 +1,7 @@
 <?php
 require_once '../config.php';
 require_once '../db.php';
+require_once '../includes/admin_auth.php';
 require_once '../includes/header.php';
 
 $db = get_db();
@@ -29,10 +30,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt = $db->prepare("INSERT INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES (?, ?, ?, ?, ?, ?, ?)");
             $stmt->bind_param('isssssd', $company_id, $code, $name, $category, $sub_category, $description, $opening_balance);
             $stmt->execute();
+            log_activity($db, $_SESSION['user_id'], 'Create', 'Chart of Accounts', "Added account: $code - $name");
+            $success = "Account added successfully.";
         } else if ($action === 'edit' && $id) {
             $stmt = $db->prepare("UPDATE accounts SET code=?, name=?, category=?, sub_category=?, description=?, opening_balance=? WHERE id=? AND company_id=?");
             $stmt->bind_param('sssssdii', $code, $name, $category, $sub_category, $description, $opening_balance, $id, $company_id);
             $stmt->execute();
+            log_activity($db, $_SESSION['user_id'], 'Update', 'Chart of Accounts', "Updated account: $code - $name");
+            $success = "Account updated successfully.";
         }
         header("Location: chart_of_accounts.php");
         exit;
@@ -51,7 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         } else {
             $stmt = $db->prepare("DELETE FROM accounts WHERE id = ? AND company_id = ?");
             $stmt->bind_param('ii', $id, $company_id);
-            $stmt->execute();
+            if ($stmt->execute()) {
+                log_activity($db, $_SESSION['user_id'], 'Delete', 'Chart of Accounts', "Deleted account ID: $id");
+                $success = "Account deleted successfully.";
+            }
             header("Location: chart_of_accounts.php");
             exit;
         }

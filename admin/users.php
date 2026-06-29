@@ -1,15 +1,10 @@
 <?php
 require_once '../config.php';
 require_once '../db.php';
+require_once '../includes/admin_auth.php';
 require_once '../includes/header.php';
 
 $db = get_db();
-
-if ($_SESSION['user_role'] !== 'Admin' && $_SESSION['user_role'] !== 'Super Admin') {
-    echo '<div class="alert alert-danger" style="margin: 2rem;">Access Denied. You do not have permission to view this page.</div>';
-    require_once '../includes/footer.php';
-    exit;
-}
 
 // Handle Form Submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -23,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt = $db->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)");
             $stmt->bind_param('ssss', $name, $email, $password, $role);
             $stmt->execute();
+            log_activity($db, $_SESSION['user_id'], 'Create', 'User Management', "Created user: $email ($role)");
             $success = "User added successfully. Default password is 'password123'.";
         } catch (Exception $e) {
             $error = "Error adding user: " . $e->getMessage();
@@ -33,6 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt = $db->prepare("DELETE FROM users WHERE id = ?");
             $stmt->bind_param('i', $id);
             $stmt->execute();
+            log_activity($db, $_SESSION['user_id'], 'Delete', 'User Management', "Deleted user ID: $id");
             $success = "User deleted successfully.";
         } else {
             $error = "You cannot delete your own account.";

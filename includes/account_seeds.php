@@ -26,7 +26,7 @@ function get_service_accounts(): array {
         ['2-120','Accrued Expenses Payable','Liabilities','Current Liabilities','Expenses incurred but not yet paid'],
         ['2-130','Unearned Revenue','Liabilities','Current Liabilities','Advance payments received from clients'],
         ['2-140','SSS / PhilHealth / Pag-IBIG Payable','Liabilities','Current Liabilities','Government contributions payable'],
-        ['2-150','Income Tax Payable','Liabilities','Current Liabilities','Estimated income tax owed'],
+
         ['2-200','Long-term Notes Payable','Liabilities','Non-Current Liabilities','Notes payable due beyond one year'],
         // EQUITY
         ['3-100',"Owner's Capital",'Equity',"Owner's Capital",'Initial and additional investments by owner'],
@@ -74,7 +74,7 @@ function get_merchandising_accounts(): array {
         ['2-120','Accrued Expenses Payable','Liabilities','Current Liabilities','Expenses incurred but unpaid'],
         ['2-130','Unearned Revenue','Liabilities','Current Liabilities','Advance payments received'],
         ['2-140','SSS / PhilHealth / Pag-IBIG Payable','Liabilities','Current Liabilities','Government contributions owed'],
-        ['2-150','Income Tax Payable','Liabilities','Current Liabilities','Income tax owed'],
+
         ['2-200','Long-term Notes Payable','Liabilities','Non-Current Liabilities','Debt due in more than one year'],
         // EQUITY
         ['3-100',"Owner's Capital",'Equity',"Owner's Capital",'Owner investment in the business'],
@@ -128,7 +128,7 @@ function get_manufacturing_accounts(): array {
         ['2-110','Accrued Factory Payroll','Liabilities','Current Liabilities','Unpaid wages of factory workers'],
         ['2-120','Accrued Expenses Payable','Liabilities','Current Liabilities','Other accrued expenses'],
         ['2-130','SSS / PhilHealth / Pag-IBIG Payable','Liabilities','Current Liabilities','Government contributions owed'],
-        ['2-140','Income Tax Payable','Liabilities','Current Liabilities','Income tax owed'],
+
         ['2-200','Notes Payable — Long-term','Liabilities','Non-Current Liabilities','Long-term debt obligations'],
         ['2-210','Mortgage Payable','Liabilities','Non-Current Liabilities','Factory building mortgage'],
         // EQUITY

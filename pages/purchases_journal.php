@@ -1,7 +1,7 @@
 <?php
 require_once '../config.php';
 require_once '../db.php';
-require_once '../includes/session_guard.php';
+require_once '../includes/auth.php';
 
 $db = get_db();
 try { $db->query("ALTER TABLE journal_entry_lines ADD COLUMN description VARCHAR(255) NULL AFTER account_id"); } catch (Exception $e) {}

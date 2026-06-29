@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/session_guard.php';
+require_once __DIR__ . '/auth.php';
 
 // Calculate initials
 $userName = $_SESSION['user_name'] ?? 'Admin';
@@ -152,6 +152,7 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                 </div>
             </div>
 
+            <?php if ($userRole === 'Admin'): ?>
             <div class="nav-section">
                 <div class="nav-section-title" onclick="toggleSidebarSection('admin')">
                     <span>Administration</span>
@@ -166,9 +167,19 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                     </a>
                 </div>
             </div>
+            <?php endif; ?>
 
 
         </nav>
+
+        <?php if ($userRole === 'Admin'): ?>
+        <div style="padding: 0 0.75rem; margin-bottom: 0.5rem;">
+            <a href="<?= BASE_URL ?>admin/dashboard.php" class="nav-item" style="width: 100%; background: rgba(59,130,246,0.1); color: #60a5fa; justify-content: center; text-decoration: none;">
+                <i data-lucide="settings" style="width: 15px; height: 15px;"></i>
+                <span>Admin Panel</span>
+            </a>
+        </div>
+        <?php endif; ?>
 
         <div style="padding: 0 0.75rem; padding-top: 0.5rem; pointer-events: <?= $activeCompanyId ? 'auto' : 'none' ?>; opacity: <?= $activeCompanyId ? '1' : '0.5' ?>;">
             <a href="<?= BASE_URL ?>pages/trash_bin.php" class="nav-item <?= $current_page==='trash_bin'?'active':'' ?>" style="margin-bottom: 0;">
@@ -176,15 +187,6 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                 <span>Trash Bin</span>
             </a>
         </div>
-
-        <?php if ($userRole === 'Super Admin' || $userRole === 'Admin'): ?>
-        <div style="padding: 0 0.75rem; margin-bottom: 0.5rem;">
-            <a href="<?= BASE_URL ?>admin/users.php" class="nav-item" style="width: 100%; background: rgba(59,130,246,0.1); color: #60a5fa; justify-content: center; text-decoration: none;">
-                <i data-lucide="settings" style="width: 15px; height: 15px;"></i>
-                <span>Admin Panel</span>
-            </a>
-        </div>
-        <?php endif; ?>
 
         <div class="sidebar-footer">
             <div class="flex items-center justify-between">

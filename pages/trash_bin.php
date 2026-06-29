@@ -1,6 +1,7 @@
 <?php
 require_once '../config.php';
 require_once '../db.php';
+require_once '../includes/auth.php';
 
 $db = get_db();
 $company_id = $_SESSION['active_company_id'] ?? null;

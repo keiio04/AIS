@@ -1,19 +1,14 @@
 <?php
 require_once '../config.php';
 require_once '../db.php';
+require_once '../includes/admin_auth.php';
 require_once '../includes/header.php';
 
 $db = get_db();
 
-if ($_SESSION['user_role'] !== 'Admin' && $_SESSION['user_role'] !== 'Super Admin') {
-    echo '<div class="alert alert-danger" style="margin: 2rem;">Access Denied. You do not have permission to view this page.</div>';
-    require_once '../includes/footer.php';
-    exit;
-}
-
 // Fetch logs
 $query = "
-    SELECT l.id, l.action, l.created_at, u.name as user_name
+    SELECT l.id, l.action, l.module, l.description, l.created_at, u.name as user_name, u.role as user_role
     FROM activity_logs l
     JOIN users u ON l.user_id = u.id
     ORDER BY l.created_at DESC
@@ -41,9 +36,12 @@ $logs = $res->fetch_all(MYSQLI_ASSOC);
         <table class="table">
             <thead>
                 <tr>
-                    <th style="width: 200px;">Timestamp</th>
+                    <th style="width: 180px;">Timestamp</th>
                     <th style="width: 200px;">User</th>
-                    <th>Action</th>
+                    <th style="width: 120px;">Role</th>
+                    <th style="width: 150px;">Module</th>
+                    <th style="width: 150px;">Action</th>
+                    <th>Description</th>
                 </tr>
             </thead>
             <tbody>
@@ -60,12 +58,15 @@ $logs = $res->fetch_all(MYSQLI_ASSOC);
                             <?= htmlspecialchars($log['user_name']) ?>
                         </div>
                     </td>
-                    <td><?= htmlspecialchars($log['action']) ?></td>
+                    <td><span class="badge badge-neutral"><?= htmlspecialchars($log['user_role'] ?? 'Unknown') ?></span></td>
+                    <td><?= htmlspecialchars($log['module'] ?? '-') ?></td>
+                    <td><span class="badge badge-info"><?= htmlspecialchars($log['action']) ?></span></td>
+                    <td class="text-sm"><?= htmlspecialchars($log['description'] ?? '-') ?></td>
                 </tr>
                 <?php endforeach; ?>
                 <?php if(count($logs) === 0): ?>
                 <tr>
-                    <td colspan="3" class="text-center text-muted" style="padding: 2rem;">No activity logs found.</td>
+                    <td colspan="6" class="text-center text-muted" style="padding: 2rem;">No activity logs found.</td>
                 </tr>
                 <?php endif; ?>
             </tbody>
