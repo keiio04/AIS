@@ -263,10 +263,10 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                             <div style="font-weight: 600; font-size: 0.875rem; color: var(--text-primary);"><?= htmlspecialchars($userName) ?></div>
                             <div style="font-size: 0.75rem; color: var(--text-muted);"><?= htmlspecialchars($userRole) ?></div>
                         </div>
-                        <a href="<?= BASE_URL ?>admin/users.php" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; color: var(--text-primary); font-size: 0.875rem; text-decoration: none;">
+                        <a href="<?= BASE_URL ?>pages/profile.php" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; color: var(--text-primary); font-size: 0.875rem; text-decoration: none;">
                             <i data-lucide="user" style="width: 16px; height: 16px;"></i> Profile
                         </a>
-                        <a href="<?= BASE_URL ?>pages/company_setup.php" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; color: var(--text-primary); font-size: 0.875rem; text-decoration: none;">
+                        <a href="<?= BASE_URL ?>pages/profile.php" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; color: var(--text-primary); font-size: 0.875rem; text-decoration: none;">
                             <i data-lucide="settings" style="width: 16px; height: 16px;"></i> Settings
                         </a>
                         <div style="height: 1px; background: var(--border-color); margin: 0.5rem 0;"></div>
