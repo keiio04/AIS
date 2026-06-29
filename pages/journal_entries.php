@@ -138,13 +138,14 @@ require_once '../includes/header.php';
         <table class="table">
             <thead>
                 <tr>
-                    <th style="width: 12%">Date</th>
-                    <th style="width: 25%">Account Title</th>
-                    <th style="width: 20%">Description</th>
-                    <th style="width: 15%">Ref No. / Account Code</th>
-                    <th class="text-right" style="width: 11%">Debit</th>
-                    <th class="text-right" style="width: 12%">Credit</th>
-                    <th style="width: 5%"></th>
+                    <th style="width: 10%">Date</th>
+                    <th style="width: 22%">Account Title</th>
+                    <th style="width: 15%">Name</th>
+                    <th style="width: 18%">Description</th>
+                    <th style="width: 13%">Ref No. / Account Code</th>
+                    <th class="text-right" style="width: 10%">Debit</th>
+                    <th class="text-right" style="width: 10%">Credit</th>
+                    <th style="width: 2%"></th>
                 </tr>
             </thead>
             <tbody>
@@ -168,12 +169,13 @@ require_once '../includes/header.php';
                         <?= htmlspecialchars($line['name']) ?>
                     </td>
                     <td style="color: var(--text-muted); font-size: 0.85rem;">
-                        <?= htmlspecialchars($line['description'] ?? '') ?>
                         <?php 
                         $disp_vendor = !empty($line['vendor_name']) ? $line['vendor_name'] : ($index === 0 && !empty($tx['vendor_name']) ? $tx['vendor_name'] : '');
-                        if (!empty($disp_vendor)): ?>
-                            <div style="font-size: 0.75rem; color: #6b7280; margin-top: 4px;"><i data-lucide="user" style="width:10px;height:10px; display:inline;"></i> <?= htmlspecialchars($disp_vendor) ?></div>
-                        <?php endif; ?>
+                        echo htmlspecialchars($disp_vendor);
+                        ?>
+                    </td>
+                    <td style="color: var(--text-muted); font-size: 0.85rem;">
+                        <?= htmlspecialchars($line['description'] ?? '') ?>
                     </td>
                     <td style="font-family: monospace; font-size: 0.85rem;">
                         <?php if ($index === 0): ?>
@@ -198,16 +200,16 @@ require_once '../includes/header.php';
                 </tr>
                 <?php endforeach; ?>
                 <tr style="background-color: #f8fafc;">
-                    <td colspan="4" class="text-right" style="font-weight: 600; padding-right: 1rem;">Total</td>
+                    <td colspan="5" class="text-right" style="font-weight: 600; padding-right: 1rem;">Total</td>
                     <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalDebit, 2) ?></td>
                     <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalCredit, 2) ?></td>
                     <td></td>
                 </tr>
-                <tr><td colspan="7" style="border-bottom: 2px solid var(--border-color); padding: 0;"></td></tr>
+                <tr><td colspan="8" style="border-bottom: 2px solid var(--border-color); padding: 0;"></td></tr>
                 <?php endforeach; ?>
                 <?php if(count($transactions) === 0): ?>
                 <tr>
-                    <td colspan="7" class="text-center text-muted" style="padding: 2rem;">No journal entries found.</td>
+                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;">No journal entries found.</td>
                 </tr>
                 <?php endif; ?>
             </tbody>
