@@ -65,11 +65,22 @@ if ($min_date && $max_date) {
 
 ?>
 
-<div class="page-header" style="justify-content: flex-end; margin-bottom: 0;">
-    <!-- Print button -->
-    <button class="btn btn-secondary" onclick="window.print()">
-        <i data-lucide="printer" style="width:15px;height:15px;"></i> Print
-    </button>
+<div class="page-header no-print" style="margin-bottom: 0;">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <form method="GET" style="margin: 0;">
+            <select name="category" class="form-control" style="width: 200px;" onchange="this.form.submit()">
+                <option value="">-- All Elements --</option>
+                <?php foreach($elements as $el): ?>
+                    <option value="<?= $el ?>" <?= $selected_category == $el ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($el) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </form>
+        <button class="btn btn-secondary" onclick="window.print()">
+            <i data-lucide="printer" style="width:15px;height:15px;"></i> Print
+        </button>
+    </div>
 </div>
 
 <div class="card" style="padding: 0; margin-bottom: 2rem; overflow: hidden; box-shadow: none; border: 1px solid var(--border-color); background: transparent;">
@@ -87,19 +98,7 @@ if ($min_date && $max_date) {
         </p>
     </div>
 
-    <!-- Filter (Hidden when printing) -->
-    <div class="no-print" style="padding: 0 2rem 1rem 2rem; text-align: center;">
-        <form method="GET" style="display: inline-block;">
-            <select name="category" class="form-control" style="width: 250px; display: inline-block;" onchange="this.form.submit()">
-                <option value="">-- All Elements --</option>
-                <?php foreach($elements as $el): ?>
-                    <option value="<?= $el ?>" <?= $selected_category == $el ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($el) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </form>
-    </div>
+
 
     <div style="padding: 0 2rem 2rem 2rem;">
         <table class="table" style="margin: 0; border-bottom: 1px solid var(--border-color);">
