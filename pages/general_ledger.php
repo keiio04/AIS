@@ -101,24 +101,23 @@ foreach ($display_categories as $category):
     $displayedAny = true;
 ?>
                 <!-- Category Header Row -->
-                <tr style="background-color: var(--bg-secondary);">
-                    <td colspan="7" style="padding: 1rem 1.5rem;">
-                        <h2 style="font-size: 1.1rem; margin: 0; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
-                            <i data-lucide="folder" style="width: 18px; height: 18px; color: var(--primary-color);"></i>
+                <tr>
+                    <td colspan="7" style="padding: 2rem 1rem 1rem 1rem; border-bottom: 2px solid var(--primary-color); background: transparent;">
+                        <h2 style="font-size: 1.25rem; margin: 0; font-weight: 800; color: var(--primary-color); display: flex; align-items: center; gap: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                            <i data-lucide="folder-open" style="width: 22px; height: 22px;"></i>
                             <?= htmlspecialchars($category) ?>
                         </h2>
                     </td>
                 </tr>
 
                 <!-- Opening Balance Row -->
-                <tr style="background-color: var(--bg-tertiary); font-weight: 600;">
-                    <td>-</td>
-                    <td>-</td>
-                    <td>Opening Balance</td>
-                    <td style="font-family: monospace; font-size: 0.8rem;">-</td>
-                    <td class="text-right"></td>
-                    <td class="text-right"></td>
-                    <td class="text-right">₱<?= number_format($runningBalance, 2) ?></td>
+                <tr style="background: rgba(59, 130, 246, 0.04);">
+                    <td colspan="6" class="text-right" style="font-weight: 600; color: var(--text-muted); font-size: 0.85rem; padding: 1rem 1.5rem; text-transform: uppercase; letter-spacing: 0.03em;">
+                        Opening Balance
+                    </td>
+                    <td class="text-right" style="font-weight: 700; color: var(--text-primary); padding: 1rem 1.5rem; font-size: 0.95rem;">
+                        ₱<?= number_format($runningBalance, 2) ?>
+                    </td>
                 </tr>
                 
                 <!-- Transaction Lines -->
@@ -131,22 +130,48 @@ foreach ($display_categories as $category):
                         $runningBalance -= $line['debit'];
                     }
                 ?>
-                <tr>
-                    <td><?= $line['date'] ?></td>
-                    <td>
-                        <span style="color: var(--primary-color); font-family: monospace; font-size: 0.8rem;"><?= htmlspecialchars($line['code']) ?></span><br>
-                        <?= htmlspecialchars($line['account_name']) ?>
+                <tr style="transition: all 0.2s ease; border-bottom: 1px solid var(--border-color);">
+                    <td style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem 1.5rem;">
+                        <?= date('M d, Y', strtotime($line['date'])) ?>
                     </td>
-                    <td><?= htmlspecialchars($line['description'] ?? '') ?></td>
-                    <td style="font-family: monospace; font-size: 0.8rem;"><?= htmlspecialchars($line['reference_no'] ?? '') ?></td>
-                    <td class="text-right"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
-                    <td class="text-right"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
-                    <td class="text-right" style="font-weight: 500;">₱<?= number_format($runningBalance, 2) ?></td>
+                    <td style="padding: 1rem 1.5rem;">
+                        <span style="display: inline-block; background: var(--bg-tertiary); padding: 0.15rem 0.4rem; border-radius: 4px; color: var(--text-muted); font-family: monospace; font-size: 0.75rem; margin-bottom: 0.3rem;">
+                            <?= htmlspecialchars($line['code']) ?>
+                        </span><br>
+                        <strong style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary);">
+                            <?= htmlspecialchars($line['account_name']) ?>
+                        </strong>
+                    </td>
+                    <td style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem 1.5rem;">
+                        <?= htmlspecialchars($line['description'] ?? '') ?>
+                    </td>
+                    <td style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted); padding: 1rem 1.5rem;">
+                        <?= htmlspecialchars($line['reference_no'] ?? '') ?>
+                    </td>
+                    <td class="text-right" style="padding: 1rem 1.5rem; color: var(--text-primary); font-weight: 500;">
+                        <?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '<span style="color: var(--border-color);">-</span>' ?>
+                    </td>
+                    <td class="text-right" style="padding: 1rem 1.5rem; color: var(--text-primary); font-weight: 500;">
+                        <?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '<span style="color: var(--border-color);">-</span>' ?>
+                    </td>
+                    <td class="text-right" style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary); padding: 1rem 1.5rem; background: rgba(0,0,0,0.015);">
+                        ₱<?= number_format($runningBalance, 2) ?>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
                 
-                <!-- End spacing for visual separation -->
-                <tr><td colspan="7" style="height: 10px; padding: 0; background: var(--bg-primary);"></td></tr>
+                <!-- Ending Balance Row -->
+                <tr style="border-top: 2px solid var(--border-color); background: rgba(59, 130, 246, 0.08);">
+                    <td colspan="6" class="text-right" style="padding: 1.25rem 1.5rem; font-weight: 700; color: var(--primary-color); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                        Ending Balance
+                    </td>
+                    <td class="text-right" style="padding: 1.25rem 1.5rem; font-weight: 800; color: var(--primary-color); font-size: 1.1rem;">
+                        ₱<?= number_format($runningBalance, 2) ?>
+                    </td>
+                </tr>
+                
+                <!-- Spacer -->
+                <tr><td colspan="7" style="height: 3rem; border: none; background: transparent;"></td></tr>
                 
 <?php endforeach; ?>
 
