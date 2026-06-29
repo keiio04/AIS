@@ -63,6 +63,21 @@ $stmtOB = $db->prepare("
     </form>
 </div>
 
+<div class="card" style="padding: 0; margin-bottom: 1.5rem; overflow: hidden;">
+    <div class="table-container">
+        <table class="table" style="margin: 0;">
+            <thead>
+                <tr>
+                    <th style="width: 12%">Date</th>
+                    <th style="width: 20%">Account</th>
+                    <th style="width: 25%">Description</th>
+                    <th style="width: 13%">Ref No.</th>
+                    <th class="text-right" style="width: 10%">Debit</th>
+                    <th class="text-right" style="width: 10%">Credit</th>
+                    <th class="text-right" style="width: 10%">Balance</th>
+                </tr>
+            </thead>
+            <tbody>
 <?php 
 $displayedAny = false;
 
@@ -85,30 +100,16 @@ foreach ($display_categories as $category):
     
     $displayedAny = true;
 ?>
-<div class="card" style="padding: 0; margin-bottom: 1.5rem; overflow: hidden;">
-    <div style="padding: 1.5rem; border-bottom: 1px solid var(--border-color); background-color: var(--bg-secondary);">
-        <h2 style="font-size: 1.25rem; margin-bottom: 0.25rem;">
-            <?= htmlspecialchars($category) ?>
-        </h2>
-        <div class="text-muted" style="font-size: 0.875rem;">
-            General Ledger for all <?= htmlspecialchars($category) ?> accounts
-        </div>
-    </div>
-    
-    <div class="table-container">
-        <table class="table" style="margin: 0;">
-            <thead>
-                <tr>
-                    <th style="width: 12%">Date</th>
-                    <th style="width: 20%">Account</th>
-                    <th style="width: 25%">Description</th>
-                    <th style="width: 13%">Ref No.</th>
-                    <th class="text-right" style="width: 10%">Debit</th>
-                    <th class="text-right" style="width: 10%">Credit</th>
-                    <th class="text-right" style="width: 10%">Balance</th>
+                <!-- Category Header Row -->
+                <tr style="background-color: var(--bg-secondary);">
+                    <td colspan="7" style="padding: 1rem 1.5rem;">
+                        <h2 style="font-size: 1.1rem; margin: 0; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="folder" style="width: 18px; height: 18px; color: var(--primary-color);"></i>
+                            <?= htmlspecialchars($category) ?>
+                        </h2>
+                    </td>
                 </tr>
-            </thead>
-            <tbody>
+
                 <!-- Opening Balance Row -->
                 <tr style="background-color: var(--bg-tertiary); font-weight: 600;">
                     <td>-</td>
@@ -143,16 +144,22 @@ foreach ($display_categories as $category):
                     <td class="text-right" style="font-weight: 500;">₱<?= number_format($runningBalance, 2) ?></td>
                 </tr>
                 <?php endforeach; ?>
+                
+                <!-- End spacing for visual separation -->
+                <tr><td colspan="7" style="height: 10px; padding: 0; background: var(--bg-primary);"></td></tr>
+                
+<?php endforeach; ?>
+
+            <?php if (!$displayedAny): ?>
+                <tr>
+                    <td colspan="7" class="text-center text-muted" style="padding: 3rem 1rem;">
+                        No transactions found for the selected element.
+                    </td>
+                </tr>
+            <?php endif; ?>
             </tbody>
         </table>
     </div>
 </div>
-<?php endforeach; ?>
-
-<?php if (!$displayedAny): ?>
-<div style="text-align: center; padding: 3rem 1rem;">
-    <p style="color: var(--text-muted);">No transactions found for the selected element.</p>
-</div>
-<?php endif; ?>
 
 <?php require_once '../includes/footer.php'; ?>
