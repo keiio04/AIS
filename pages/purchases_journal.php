@@ -429,4 +429,7 @@ document.getElementById('entryModal').addEventListener('click', function(e) {
 });
 </script>
 
+<script>window.AUTOSAVE_KEY = 'autosave_purchases_journal';</script>
+<script src="<?= BASE_URL ?>includes/autosave.js"></script>
+
 <?php require_once '../includes/footer.php'; ?>
