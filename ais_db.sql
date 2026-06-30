@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS `companies` (
     `name` VARCHAR(150) NOT NULL,
     `address` TEXT,
     `business_type` ENUM('Service','Merchandising','Manufacturing') NOT NULL DEFAULT 'Service',
+    `period_type` ENUM('Calendar','Fiscal') NOT NULL DEFAULT 'Calendar',
+    `fiscal_start_month` VARCHAR(20) DEFAULT NULL,
+    `fiscal_start_date` INT DEFAULT NULL,
     `fiscal_year_end` VARCHAR(20) DEFAULT 'December 31',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
@@ -51,6 +54,8 @@ CREATE TABLE IF NOT EXISTS `journal_entries` (
     `description` VARCHAR(255),
     `particulars` TEXT,
     `type` ENUM('Operating','Investing','Financing','Non-Cash') DEFAULT 'Operating',
+    `journal_id` VARCHAR(5) NOT NULL DEFAULT 'GJ',
+    `vendor_name` VARCHAR(150) DEFAULT NULL,
     `deleted_at` TIMESTAMP NULL DEFAULT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
@@ -61,6 +66,8 @@ CREATE TABLE IF NOT EXISTS `journal_entry_lines` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `journal_entry_id` INT NOT NULL,
     `account_id` INT NOT NULL,
+    `description` VARCHAR(255) DEFAULT NULL,
+    `vendor_name` VARCHAR(150) DEFAULT NULL,
     `debit` DECIMAL(15,2) DEFAULT 0.00,
     `credit` DECIMAL(15,2) DEFAULT 0.00,
     FOREIGN KEY (`journal_entry_id`) REFERENCES `journal_entries`(`id`) ON DELETE CASCADE,
@@ -81,10 +88,14 @@ CREATE TABLE IF NOT EXISTS `notes_to_fs` (
 -- Activity logs table
 CREATE TABLE IF NOT EXISTS `activity_logs` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `company_id` INT DEFAULT NULL,
     `user_id` INT,
     `action` VARCHAR(255),
+    `module` VARCHAR(100) DEFAULT NULL,
+    `description` TEXT DEFAULT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Seed default admin user (only if none exist)
