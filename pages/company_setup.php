@@ -331,7 +331,7 @@ require_once '../includes/header.php';
       <div class="modal-body">
         <div class="form-group">
           <label class="form-label">Company Name <span class="required">*</span></label>
-          <input type="text" name="name" class="form-input" placeholder="e.g. LSPU Enterprises" required>
+          <input type="text" name="name" class="form-input" required>
         </div>
         <div class="form-group">
           <label class="form-label">Business Type <span class="required">*</span></label>
@@ -340,11 +340,11 @@ require_once '../includes/header.php';
             <option value="Merchandising">Merchandising Business (Buy and Sell)</option>
             <option value="Manufacturing">Manufacturing Business (Raw Materials → Products)</option>
           </select>
-          <p class="form-hint" id="btypeHint">This determines the default Chart of Accounts that will be loaded.</p>
+
         </div>
         <div class="form-group">
           <label class="form-label">Address</label>
-          <input type="text" name="address" class="form-input" placeholder="e.g. San Pablo City, Laguna">
+          <input type="text" name="address" class="form-input">
         </div>
         <div class="form-group">
           <label class="form-label">Tax Registered?</label>
@@ -367,7 +367,7 @@ require_once '../includes/header.php';
               <input type="radio" name="tax_type" value="Percentage Tax" id="addTaxPCT" style="width: auto;"> Percentage Tax (3%)
             </label>
           </div>
-          <p class="form-hint" style="margin-top: 0.5rem;">⚠️ Kung <strong>VAT</strong> ang pipiliin, ito ay magiging <strong>global rule</strong> — lahat ng entries at transaksyon ng company na ito ay VAT-registered.</p>
+
         </div>
         <div class="form-group">
           <label class="form-label">Period Type <span class="required">*</span></label>
@@ -375,7 +375,7 @@ require_once '../includes/header.php';
             <option value="Calendar">Calendar Year</option>
             <option value="Fiscal">Fiscal Year</option>
           </select>
-          <p class="form-hint">Calendar Year ends on December 31.</p>
+
         </div>
         <div class="form-group hidden" id="addFiscalFields">
           <label class="form-label">Fiscal Year Start <span class="required">*</span></label>
@@ -448,7 +448,7 @@ require_once '../includes/header.php';
               <input type="radio" name="tax_type" value="Percentage Tax" id="editTaxPCT" style="width: auto;"> Percentage Tax (3%)
             </label>
           </div>
-          <p class="form-hint" style="margin-top: 0.5rem;">⚠️ Kung <strong>VAT</strong> ang pipiliin, ito ay magiging <strong>global rule</strong> — lahat ng entries at transaksyon ng company na ito ay VAT-registered.</p>
+
         </div>
         <div class="form-group">
           <label class="form-label">Period Type <span class="required">*</span></label>

@@ -322,19 +322,19 @@ require_once '../includes/header.php';
                         <input type="date" name="date" id="entryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Ref No. <span style="font-size: 0.75rem; font-weight: normal;">(Auto if blank)</span></label>
-                        <input type="text" name="reference_no" id="entryRefNo" class="form-control" placeholder="e.g. JV-001">
+                        <label class="form-label">Ref No.</label>
+                        <input type="text" name="reference_no" id="entryRefNo" class="form-control">
                     </div>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label class="form-label">Name <span style="font-size: 0.75rem; font-weight: normal;">(Payee / Vendor / Customer for this entry)</span></label>
-                    <input type="text" name="vendor_name" id="entryVendor" class="form-control" placeholder="e.g. Meralco">
+                    <label class="form-label">Name</label>
+                    <input type="text" name="vendor_name" id="entryVendor" class="form-control">
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label class="form-label">Description <span style="font-size: 0.75rem; font-weight: normal;">(Overall explanation for this journal entry)</span></label>
-                    <textarea name="description" id="entryDescription" class="form-control" rows="3" style="resize: vertical;" placeholder="e.g. To record payment of utilities for the month of June 2026..."></textarea>
+                    <label class="form-label">Description</label>
+                    <textarea name="description" id="entryDescription" class="form-control" rows="3" style="resize: vertical;"></textarea>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1.5rem;">
@@ -350,9 +350,7 @@ require_once '../includes/header.php';
                         </label>
                     </div>
                     <?php if ($companyIsTaxRegistered): ?>
-                    <p class="form-hint">This company is registered for tax, so all entries must be <strong>Taxable</strong>.</p>
-                    <?php else: ?>
-                    <p class="form-hint">This company is not registered for tax, so new entries default to <strong>Not Taxable</strong>.</p>
+
                     <?php endif; ?>
                 </div>
 

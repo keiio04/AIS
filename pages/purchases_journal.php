@@ -234,8 +234,8 @@ require_once '../includes/header.php';
                         <input type="date" name="date" class="form-control" value="<?= date('Y-m-d') ?>" required>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Ref No. <span style="font-size: 0.75rem; font-weight: normal;">(Auto if blank)</span></label>
-                        <input type="text" name="reference_no" class="form-control" placeholder="e.g. JV-001">
+                        <label class="form-label">Ref No.</label>
+                        <input type="text" name="reference_no" class="form-control">
                     </div>
                 </div>
 
