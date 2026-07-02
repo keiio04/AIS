@@ -13,15 +13,22 @@ $activeCompanyName = null;
 $activeCompanyType = 'Service';
 if ($activeCompanyId) {
     $db = get_db();
-    $stmt = $db->prepare("SELECT name, business_type FROM companies WHERE id = ?");
+    $stmt = $db->prepare("SELECT name, business_type, tax_registered, tax_type FROM companies WHERE id = ?");
     $stmt->bind_param('i', $activeCompanyId);
     $stmt->execute();
     $res = $stmt->get_result()->fetch_assoc();
     if ($res) {
         $activeCompanyName = $res['name'];
         $activeCompanyType = $res['business_type'];
+        // Load tax info into session if not yet set
+        if (!isset($_SESSION['company_tax_type'])) {
+            $_SESSION['company_tax_registered'] = $res['tax_registered'];
+            $_SESSION['company_tax_type'] = $res['tax_type'];
+        }
     }
 }
+$companyTaxType = $_SESSION['company_tax_type'] ?? null;
+$companyTaxRegistered = $_SESSION['company_tax_registered'] ?? 0;
 
 $current_page = basename($_SERVER['PHP_SELF'], '.php');
 
@@ -216,9 +223,16 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                 <button class="icon-btn" onclick="toggleMainSidebar()" title="Toggle Sidebar" style="margin-right: 1rem;">
                     <i data-lucide="menu" style="width: 20px; height: 20px;"></i>
                 </button>
-                <div class="breadcrumb" style="font-size: 1.1rem; font-weight: 600;">
-                    <span class="breadcrumb-current"><?= htmlspecialchars($pageTitle) ?></span>
-                </div>
+                <div class="breadcrumb" style="font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.6rem;">
+                <span class="breadcrumb-current"><?= htmlspecialchars($pageTitle) ?></span>
+                <?php if ($companyTaxRegistered && $companyTaxType): ?>
+                  <?php if ($companyTaxType === 'VAT'): ?>
+                    <span style="font-size: 0.65rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 2px 8px; border-radius: 99px; letter-spacing: 0.04em; border: 1px solid #bfdbfe;">VAT</span>
+                  <?php elseif ($companyTaxType === 'Percentage Tax'): ?>
+                    <span style="font-size: 0.65rem; font-weight: 700; color: #92400e; background: #fef3c7; padding: 2px 8px; border-radius: 99px; letter-spacing: 0.04em; border: 1px solid #fde68a;">% TAX</span>
+                  <?php endif; ?>
+                <?php endif; ?>
+            </div>
             </div>
 
             <div class="topbar-search" style="position: relative;">

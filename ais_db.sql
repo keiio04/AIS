@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS `companies` (
     `name` VARCHAR(150) NOT NULL,
     `address` TEXT,
     `business_type` ENUM('Service','Merchandising','Manufacturing') NOT NULL DEFAULT 'Service',
+    `tax_registered` TINYINT(1) NOT NULL DEFAULT 0,
+    `tax_type` ENUM('VAT','Percentage Tax') DEFAULT NULL,
     `period_type` ENUM('Calendar','Fiscal') NOT NULL DEFAULT 'Calendar',
     `fiscal_start_month` VARCHAR(20) DEFAULT NULL,
     `fiscal_start_date` INT DEFAULT NULL,

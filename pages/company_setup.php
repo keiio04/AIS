@@ -6,6 +6,7 @@ require_once '../includes/account_seeds.php';
 
 $db      = get_db();
 try { $db->query("ALTER TABLE companies ADD COLUMN tax_registered TINYINT(1) NOT NULL DEFAULT 0 AFTER business_type"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE companies ADD COLUMN tax_type ENUM('VAT','Percentage Tax') DEFAULT NULL AFTER tax_registered"); } catch (Exception $e) {}
 $userId  = $_SESSION['user_id'];
 $message = '';
 $msgType = 'success';
@@ -31,7 +32,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name  = trim($_POST['name']          ?? '');
         $btype = $_POST['business_type']      ?? 'Service';
         $addr  = trim($_POST['address']       ?? '');
-        $tax_registered = isset($_POST['tax_registered']) ? 1 : 0;
+        $tax_registered = ($_POST['tax_registered'] ?? 'no') === 'yes' ? 1 : 0;
+        $tax_type = null;
+        if ($tax_registered) {
+            $raw_type = $_POST['tax_type'] ?? '';
+            if (in_array($raw_type, ['VAT', 'Percentage Tax'])) {
+                $tax_type = $raw_type;
+            }
+        }
         $period_type = $_POST['period_type']  ?? 'Calendar';
         $fiscal_month = $_POST['fiscal_start_month'] ?? null;
         $fiscal_date  = $_POST['fiscal_start_date'] ?? null;
@@ -51,8 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Company name is required.';
             $msgType = 'danger';
         } else {
-            $ins = $db->prepare("INSERT INTO companies (user_id, name, address, business_type, tax_registered, period_type, fiscal_start_month, fiscal_start_date, fiscal_year_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $ins->bind_param('isssissis', $userId, $name, $addr, $btype, $tax_registered, $period_type, $fiscal_month, $fiscal_date, $fiscal_end);
+            $ins = $db->prepare("INSERT INTO companies (user_id, name, address, business_type, tax_registered, tax_type, period_type, fiscal_start_month, fiscal_start_date, fiscal_year_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $ins->bind_param('isssiissss', $userId, $name, $addr, $btype, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end);
             $ins->execute();
             $newId = $db->insert_id;
 
@@ -64,6 +72,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtAct->bind_param('ii', $newId, $userId);
             $stmtAct->execute();
             $_SESSION['active_company_id'] = $newId;
+            $_SESSION['company_tax_registered'] = $tax_registered;
+            $_SESSION['company_tax_type'] = $tax_type;
             $activeCompanyId = $newId;
 
             // Log
@@ -80,12 +90,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cid   = (int)($_POST['company_id']   ?? 0);
         $name  = trim($_POST['name']          ?? '');
         $addr  = trim($_POST['address']       ?? '');
-        $tax_registered = isset($_POST['tax_registered']) ? 1 : 0;
+        $tax_registered = ($_POST['tax_registered'] ?? 'no') === 'yes' ? 1 : 0;
+        $tax_type = null;
+        if ($tax_registered) {
+            $raw_type = $_POST['tax_type'] ?? '';
+            if (in_array($raw_type, ['VAT', 'Percentage Tax'])) {
+                $tax_type = $raw_type;
+            }
+        }
         $period_type = $_POST['period_type']  ?? 'Calendar';
         $fiscal_month = $_POST['fiscal_start_month'] ?? null;
         $fiscal_date  = $_POST['fiscal_start_date'] ?? null;
 
-$fiscal_end = 'December 31';
+        $fiscal_end = 'December 31';
         if ($period_type === 'Fiscal' && $fiscal_month && $fiscal_date) {
             $start_str = $fiscal_month . ' ' . $fiscal_date . ' 2023';
             $end_time = strtotime($start_str . ' +1 year -1 day');
@@ -97,9 +114,14 @@ $fiscal_end = 'December 31';
         }
 
         if ($cid && $name) {
-            $upd = $db->prepare("UPDATE companies SET name=?, address=?, tax_registered=?, period_type=?, fiscal_start_month=?, fiscal_start_date=?, fiscal_year_end=? WHERE id=? AND user_id=?");
-            $upd->bind_param('ssissisii', $name, $addr, $tax_registered, $period_type, $fiscal_month, $fiscal_date, $fiscal_end, $cid, $userId);
+            $upd = $db->prepare("UPDATE companies SET name=?, address=?, tax_registered=?, tax_type=?, period_type=?, fiscal_start_month=?, fiscal_start_date=?, fiscal_year_end=? WHERE id=? AND user_id=?");
+            $upd->bind_param('ssisssssii', $name, $addr, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end, $cid, $userId);
             $upd->execute();
+            // Update session if editing active company
+            if ($cid == $activeCompanyId) {
+                $_SESSION['company_tax_registered'] = $tax_registered;
+                $_SESSION['company_tax_type'] = $tax_type;
+            }
             log_activity($db, $userId, 'Update', 'Company Setup', "Updated company: $name");
             header('Location: ' . BASE_URL . 'pages/company_setup.php?msg=updated');
             exit;
@@ -113,8 +135,14 @@ $fiscal_end = 'December 31';
             $sw = $db->prepare("UPDATE users SET active_company_id = ? WHERE id = ?");
             $sw->bind_param('ii', $cid, $userId);
             $sw->execute();
-            // Update session immediately
+            // Load tax info for switched company into session
+            $taxStmt = $db->prepare("SELECT tax_registered, tax_type FROM companies WHERE id = ?");
+            $taxStmt->bind_param('i', $cid);
+            $taxStmt->execute();
+            $taxRow = $taxStmt->get_result()->fetch_assoc();
             $_SESSION['active_company_id'] = $cid;
+            $_SESSION['company_tax_registered'] = $taxRow['tax_registered'] ?? 0;
+            $_SESSION['company_tax_type'] = $taxRow['tax_type'] ?? null;
             header('Location: ' . BASE_URL . 'pages/company_setup.php?msg=switched');
             exit;
         }
@@ -254,14 +282,21 @@ require_once '../includes/header.php';
             <?= htmlspecialchars($co['business_type']) ?>
           </span>
           <?php if (!empty($co['tax_registered'])): ?>
-            <br><span style="font-size: 0.7rem; font-weight: 600; color: #166534; background: #dcfce7; padding: 1px 6px; border-radius: 4px; display: inline-block; margin-top: 4px;">Tax Registered</span>
+            <br>
+            <?php if ($co['tax_type'] === 'VAT'): ?>
+              <span style="font-size: 0.7rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 1px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; letter-spacing: 0.03em;">VAT Registered</span>
+            <?php elseif ($co['tax_type'] === 'Percentage Tax'): ?>
+              <span style="font-size: 0.7rem; font-weight: 700; color: #92400e; background: #fef3c7; padding: 1px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; letter-spacing: 0.03em;">% Tax Registered</span>
+            <?php else: ?>
+              <span style="font-size: 0.7rem; font-weight: 600; color: #166534; background: #dcfce7; padding: 1px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;">Tax Registered</span>
+            <?php endif; ?>
           <?php endif; ?>
         </td>
         <td style="color: var(--text-muted); font-size: 0.9rem;"><?= htmlspecialchars($co['address'] ?? '—') ?></td>
 
 <td>
           <div class="flex gap-2" style="align-items: center;">
-            <button onclick="openEditModal(<?= $co['id'] ?>, '<?= htmlspecialchars(addslashes($co['name'])) ?>', '<?= htmlspecialchars(addslashes($co['address'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['period_type'] ?? 'Calendar')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_month'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_date'] ?? '')) ?>', <?= (int)($co['tax_registered'] ?? 0) ?>)"
+            <button onclick="openEditModal(<?= $co['id'] ?>, '<?= htmlspecialchars(addslashes($co['name'])) ?>', '<?= htmlspecialchars(addslashes($co['address'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['period_type'] ?? 'Calendar')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_month'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_date'] ?? '')) ?>', <?= (int)($co['tax_registered'] ?? 0) ?>, '<?= htmlspecialchars(addslashes($co['tax_type'] ?? '')) ?>')"
               style="background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 4px;" title="Edit">
               <i data-lucide="pencil" style="width:16px;height:16px;"></i>
             </button>
@@ -312,11 +347,27 @@ require_once '../includes/header.php';
           <input type="text" name="address" class="form-input" placeholder="e.g. San Pablo City, Laguna">
         </div>
         <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 500; cursor: pointer;">
-            <input type="checkbox" name="tax_registered" value="1" style="width: auto;">
-            Registered for Tax (VAT/Non-VAT)
-          </label>
-          <p class="form-hint">If checked, new journal entries for this company will default to <strong>Taxable</strong>.</p>
+          <label class="form-label">Tax Registered?</label>
+          <div style="display: flex; gap: 1.5rem; margin-top: 0.35rem;">
+            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: 500;">
+              <input type="radio" name="tax_registered" value="no" id="addTaxNo" onchange="toggleTaxOptions('add')" checked style="width: auto;"> No
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: 500;">
+              <input type="radio" name="tax_registered" value="yes" id="addTaxYes" onchange="toggleTaxOptions('add')" style="width: auto;"> Yes
+            </label>
+          </div>
+        </div>
+        <div class="form-group hidden" id="addTaxTypeGroup">
+          <label class="form-label">Tax Type</label>
+          <div style="display: flex; gap: 1.5rem; margin-top: 0.35rem;">
+            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: 500;">
+              <input type="radio" name="tax_type" value="VAT" id="addTaxVAT" checked style="width: auto;"> VAT (12%)
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: 500;">
+              <input type="radio" name="tax_type" value="Percentage Tax" id="addTaxPCT" style="width: auto;"> Percentage Tax (3%)
+            </label>
+          </div>
+          <p class="form-hint" style="margin-top: 0.5rem;">⚠️ Kung <strong>VAT</strong> ang pipiliin, ito ay magiging <strong>global rule</strong> — lahat ng entries at transaksyon ng company na ito ay VAT-registered.</p>
         </div>
         <div class="form-group">
           <label class="form-label">Period Type <span class="required">*</span></label>
@@ -377,11 +428,27 @@ require_once '../includes/header.php';
           <input type="text" name="address" id="editAddress" class="form-input">
         </div>
         <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 500; cursor: pointer;">
-            <input type="checkbox" name="tax_registered" id="editTaxRegistered" value="1" style="width: auto;">
-            Registered for Tax (VAT/Non-VAT)
-          </label>
-          <p class="form-hint">If checked, new journal entries for this company will default to <strong>Taxable</strong>.</p>
+          <label class="form-label">Tax Registered?</label>
+          <div style="display: flex; gap: 1.5rem; margin-top: 0.35rem;">
+            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: 500;">
+              <input type="radio" name="tax_registered" value="no" id="editTaxNo" onchange="toggleTaxOptions('edit')" style="width: auto;"> No
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: 500;">
+              <input type="radio" name="tax_registered" value="yes" id="editTaxYes" onchange="toggleTaxOptions('edit')" style="width: auto;"> Yes
+            </label>
+          </div>
+        </div>
+        <div class="form-group hidden" id="editTaxTypeGroup">
+          <label class="form-label">Tax Type</label>
+          <div style="display: flex; gap: 1.5rem; margin-top: 0.35rem;">
+            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: 500;">
+              <input type="radio" name="tax_type" value="VAT" id="editTaxVAT" style="width: auto;"> VAT (12%)
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: 500;">
+              <input type="radio" name="tax_type" value="Percentage Tax" id="editTaxPCT" style="width: auto;"> Percentage Tax (3%)
+            </label>
+          </div>
+          <p class="form-hint" style="margin-top: 0.5rem;">⚠️ Kung <strong>VAT</strong> ang pipiliin, ito ay magiging <strong>global rule</strong> — lahat ng entries at transaksyon ng company na ito ay VAT-registered.</p>
         </div>
         <div class="form-group">
           <label class="form-label">Period Type <span class="required">*</span></label>
@@ -442,16 +509,45 @@ document.addEventListener('click', function(e) {
   }
 });
 
-function openEditModal(id, name, address, period_type = 'Calendar', fmonth = '', fdate = '', taxRegistered = 0) {
+function openEditModal(id, name, address, period_type = 'Calendar', fmonth = '', fdate = '', taxRegistered = 0, taxType = '') {
   document.getElementById('editId').value      = id;
   document.getElementById('editName').value    = name;
   document.getElementById('editAddress').value = address;
-  document.getElementById('editTaxRegistered').checked = !!Number(taxRegistered);
+
+  // Set tax registered radio
+  const isRegistered = !!Number(taxRegistered);
+  document.getElementById('editTaxNo').checked  = !isRegistered;
+  document.getElementById('editTaxYes').checked = isRegistered;
+
+  // Show/hide tax type group
+  const taxGroup = document.getElementById('editTaxTypeGroup');
+  if (isRegistered) {
+    taxGroup.classList.remove('hidden');
+    // Set tax type radio
+    if (taxType === 'Percentage Tax') {
+      document.getElementById('editTaxPCT').checked = true;
+    } else {
+      document.getElementById('editTaxVAT').checked = true;
+    }
+  } else {
+    taxGroup.classList.add('hidden');
+  }
+
   document.getElementById('editPeriodType').value = period_type;
   document.getElementById('editFiscalMonth').value = fmonth;
   document.getElementById('editFiscalDate').value = fdate;
   toggleFiscal(document.getElementById('editPeriodType'), 'editFiscalFields');
   openModal('editModal');
+}
+
+function toggleTaxOptions(prefix) {
+  const isYes = document.getElementById(prefix + 'TaxYes').checked;
+  const group = document.getElementById(prefix + 'TaxTypeGroup');
+  if (isYes) {
+    group.classList.remove('hidden');
+  } else {
+    group.classList.add('hidden');
+  }
 }
 
 function toggleFiscal(selectEl, targetId) {
