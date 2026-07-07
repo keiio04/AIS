@@ -27,7 +27,14 @@ function get_db(): mysqli {
             $errorDetails .= "Database: " . DB_NAME . "<br>";
             die("<html><body><h1>500 Internal Server Error</h1><p>{$errorDetails}</p>{$padding}</body></html>");
         }
+        
+        // Enable exceptions for queries so we can see what's actually failing in Railway
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+        
         $conn->set_charset('utf8mb4');
+        
+        // Disable ONLY_FULL_GROUP_BY for Railway compatibility
+        $conn->query("SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''))");
     }
     return $conn;
 }
