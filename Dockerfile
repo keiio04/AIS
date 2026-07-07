@@ -1,15 +1,11 @@
-FROM php:8.3-apache
+FROM php:8.3-cli
 
-RUN apt-get update && apt-get install -y \
-    libzip-dev \
-    unzip \
-    && docker-php-ext-install mysqli pdo pdo_mysql \
-    && a2enmod rewrite \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN docker-php-ext-install mysqli pdo pdo_mysql
 
-COPY . /var/www/html/
+WORKDIR /app
 
-WORKDIR /var/www/html/
+COPY . .
 
-RUN chown -R www-data:www-data /var/www/html
+EXPOSE 8080
+
+CMD ["sh", "-c", "php -S 0.0.0.0:${PORT:-8080}"]
