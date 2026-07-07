@@ -43,6 +43,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $debits = $_POST['debit'] ?? [];
     $credits = $_POST['credit'] ?? [];
 
+    // ── Server-side journal type validation ──────────────────────────
+    $valid_acc_ids = array_filter(array_map('intval', $account_ids));
+    if (!empty($valid_acc_ids)) {
+        $in = implode(',', $valid_acc_ids);
+        $cat_res = $db->query("SELECT category, name FROM accounts WHERE id IN ($in) AND company_id = $company_id");
+        $cats = []; $names = [];
+        while ($row = $cat_res->fetch_assoc()) { $cats[] = $row['category']; $names[] = strtolower($row['name']); }
+        $has_cash    = in_array('Assets', $cats) && (bool)preg_grep('/cash|bank/i', $names);
+        $has_rev     = in_array('Revenue', $cats);
+        $has_exp     = in_array('Expenses', $cats);
+        $has_payable = in_array('Liabilities', $cats);
+        // Block cash transactions (belong in Cash Receipts)
+        if ($has_cash) {
+            $error = "This entry contains a Cash/Bank account and belongs in the Cash Receipts Journal, not the Sales Journal.";
+        // Block purchase-type entries
+        } elseif ($has_exp && $has_payable) {
+            $error = "This entry looks like a credit purchase and belongs in the Purchases Journal, not the Sales Journal.";
+        // Must have Revenue
+        } elseif (!$has_rev) {
+            $error = "Sales Journal requires at least one Revenue account.";
+        }
+    }
+    // ────────────────────────────────────────────────────────────────
+
+    if (!isset($error)) {
     $db->begin_transaction();
     try {
         $journal_id = 'SJ';
@@ -83,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $db->rollback();
         $error = "Failed to save journal entry: " . $e->getMessage();
     }
+    } // end if !isset($error)
     } elseif ($_POST['action'] === 'delete') {
     $delete_id = (int)$_POST['id'];
     $stmtDel = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?");

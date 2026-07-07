@@ -43,6 +43,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $debits = $_POST['debit'] ?? [];
     $credits = $_POST['credit'] ?? [];
 
+    // ── Server-side journal type validation ──────────────────────────
+    $valid_acc_ids = array_filter(array_map('intval', $account_ids));
+    if (!empty($valid_acc_ids)) {
+        $in = implode(',', $valid_acc_ids);
+        $cat_res = $db->query("SELECT category, name FROM accounts WHERE id IN ($in) AND company_id = $company_id");
+        $cats = []; $names = [];
+        while ($row = $cat_res->fetch_assoc()) { $cats[] = $row['category']; $names[] = strtolower($row['name']); }
+        $has_cash    = in_array('Assets', $cats) && (bool)preg_grep('/cash|bank/i', $names);
+        $has_rev     = in_array('Revenue', $cats);
+        $has_exp     = in_array('Expenses', $cats);
+        $has_payable = in_array('Liabilities', $cats);
+        // Block if it has Revenue (Sales) or Cash (should be CDJ)
+        if ($has_rev) {
+            $error = "This entry contains a Revenue account and belongs in the Sales Journal, not the Purchases Journal.";
+        } elseif ($has_cash) {
+            $error = "This entry contains a Cash/Bank account and belongs in the Cash Disbursements Journal, not the Purchases Journal.";
+        } elseif (!$has_payable) {
+            $error = "Purchases Journal requires at least one Payable or Liability account.";
+        }
+    }
+    // ────────────────────────────────────────────────────────────────
+
+    if (!isset($error)) {
     $db->begin_transaction();
     try {
         $journal_id = 'PJ';
@@ -83,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $db->rollback();
         $error = "Failed to save journal entry: " . $e->getMessage();
     }
+    } // end if !isset($error)
     } elseif ($_POST['action'] === 'delete') {
     $delete_id = (int)$_POST['id'];
     $stmtDel = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?");
