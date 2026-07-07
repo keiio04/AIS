@@ -288,22 +288,148 @@ const accounts = <?= json_encode($accountsList) ?>;
 
 let lineCount = 0;
 
-function createAccountOptions() {
-    let html = '<option value="">Select Account...</option>';
-    accounts.forEach(acc => {
-        html += `<option value="${acc.id}">${acc.code} - ${acc.name}</option>`;
-    });
-    return html;
+// ── Smart Account Search (combobox) ─────────────────────────────────
+let activeAccountRow = null;
+let accountDropdownEl = null;
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+
+function getAccountDropdownEl() {
+    if (!accountDropdownEl) {
+        accountDropdownEl = document.createElement('div');
+        accountDropdownEl.id = 'account-dropdown-global';
+        accountDropdownEl.style.cssText = 'display:none; position:fixed; z-index:9999; background:#fff; border:1px solid var(--border-color); border-radius:6px; max-height:220px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.12);';
+        document.body.appendChild(accountDropdownEl);
+    }
+    return accountDropdownEl;
+}
+
+function positionAccountDropdown(inputEl) {
+    const rect = inputEl.getBoundingClientRect();
+    const el = getAccountDropdownEl();
+    el.style.left = rect.left + 'px';
+    el.style.top = (rect.bottom + 2) + 'px';
+    el.style.width = rect.width + 'px';
+}
+
+function getAccountMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return accounts.slice(0, 50);
+    return accounts.filter(acc =>
+        acc.code.toLowerCase().includes(q) || acc.name.toLowerCase().includes(q)
+    ).slice(0, 50);
+}
+
+function renderAccountList(tr, matches, highlightIndex = -1) {
+    activeAccountRow = tr;
+    const inputEl = tr.querySelector('.account-search-input');
+    const listEl = getAccountDropdownEl();
+    positionAccountDropdown(inputEl);
+    if (matches.length === 0) {
+        listEl.innerHTML = '<div style="padding:0.6rem 0.75rem; color:var(--text-muted); font-size:0.85rem;">No matching accounts</div>';
+    } else {
+        listEl.innerHTML = matches.map((acc, idx) => `
+            <div class="account-option" data-idx="${idx}" data-id="${acc.id}"
+                 style="padding:0.5rem 0.75rem; cursor:pointer; font-size:0.85rem;"
+                 onmousedown="selectAccountOption(this)"
+                 onmouseover="this.style.background='var(--bg-secondary)'"
+                 onmouseout="this.style.background=''">
+                <span style="color:var(--primary-color); font-family:monospace; font-weight:600;">${escapeHtml(acc.code)}</span>
+                &nbsp;—&nbsp;${escapeHtml(acc.name)}
+            </div>
+        `).join('');
+    }
+    listEl.style.display = 'block';
+    listEl._matches = matches;
+    updateAccountHighlight(highlightIndex);
+}
+
+function updateAccountHighlight(highlightIndex) {
+    const listEl = getAccountDropdownEl();
+    listEl._highlightIndex = highlightIndex;
+    listEl.querySelectorAll('.account-option').forEach(opt => {
+        const idx = parseInt(opt.dataset.idx, 10);
+        opt.style.background = (idx === highlightIndex) ? 'var(--bg-secondary)' : '';
+    });
+}
+
+function onAccountSearchInput(inputEl) {
+    const tr = inputEl.closest('tr');
+    tr.querySelector('.account-id-input').value = '';
+    const matches = getAccountMatches(inputEl.value);
+    renderAccountList(tr, matches, matches.length ? 0 : -1);
+    checkValidity();
+}
+
+function selectAccountOption(optEl) {
+    const tr = activeAccountRow;
+    if (!tr) return;
+    const idx = parseInt(optEl.dataset.idx, 10);
+    const listEl = getAccountDropdownEl();
+    const acc = listEl._matches[idx];
+    if (!acc) return;
+    tr.querySelector('.account-search-input').value = `${acc.code} - ${acc.name}`;
+    tr.querySelector('.account-id-input').value = acc.id;
+    listEl.style.display = 'none';
+    checkValidity();
+}
+
+function onAccountSearchKeydown(e, inputEl) {
+    const tr = inputEl.closest('tr');
+    const listEl = getAccountDropdownEl();
+    if (listEl.style.display === 'none') {
+        if (e.key === 'ArrowDown' || e.key === 'Enter') onAccountSearchInput(inputEl);
+        return;
+    }
+    const matches = listEl._matches || [];
+    let idx = listEl._highlightIndex ?? -1;
+    if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, matches.length - 1); updateAccountHighlight(idx); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); updateAccountHighlight(idx); }
+    else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (idx >= 0 && matches[idx]) {
+            const acc = matches[idx];
+            inputEl.value = `${acc.code} - ${acc.name}`;
+            tr.querySelector('.account-id-input').value = acc.id;
+            listEl.style.display = 'none';
+            checkValidity();
+            const nextInput = tr.querySelector('.dr-input');
+            if (nextInput) nextInput.focus();
+        }
+    } else if (e.key === 'Escape') { listEl.style.display = 'none'; }
+}
+
+function onAccountSearchBlur(inputEl) {
+    setTimeout(() => {
+        const tr = inputEl.closest('tr');
+        const listEl = getAccountDropdownEl();
+        listEl.style.display = 'none';
+        if (!tr.querySelector('.account-id-input').value) inputEl.value = '';
+        checkValidity();
+    }, 150);
+}
+
+window.addEventListener('scroll', function() {
+    const listEl = accountDropdownEl;
+    if (listEl && listEl.style.display === 'block' && activeAccountRow) {
+        const inputEl = activeAccountRow.querySelector('.account-search-input');
+        if (inputEl) positionAccountDropdown(inputEl);
+    }
+}, true);
 
 function addLine() {
     const tr = document.createElement('tr');
     tr.id = `line-${lineCount}`;
     tr.innerHTML = `
-        <td>
-            <select name="account_id[]" class="form-control" onchange="checkValidity()" required>
-                ${createAccountOptions()}
-            </select>
+        <td style="position: relative;">
+            <input type="text" class="form-control account-search-input" placeholder="Type code or name..." autocomplete="off"
+                   oninput="onAccountSearchInput(this)"
+                   onfocus="onAccountSearchInput(this)"
+                   onkeydown="onAccountSearchKeydown(event, this)"
+                   onblur="onAccountSearchBlur(this)">
+            <input type="hidden" name="account_id[]" class="account-id-input" value="">
         </td>
         <td>
             <input type="text" name="line_vendor[]" class="form-control">
@@ -393,8 +519,8 @@ function checkValidity() {
 
     document.querySelectorAll('.dr-input').forEach(el => drTotal += parseFloat(el.value) || 0);
     document.querySelectorAll('.cr-input').forEach(el => crTotal += parseFloat(el.value) || 0);
-    document.querySelectorAll('select[name="account_id[]"]').forEach(el => {
-        if(!el.value) allAccountsSelected = false;
+    document.querySelectorAll('.account-id-input').forEach(el => {
+        if (!el.value) allAccountsSelected = false;
     });
 
     const isBalanced = drTotal > 0 && Math.abs(drTotal - crTotal) < 0.01;
