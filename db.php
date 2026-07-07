@@ -13,10 +13,19 @@ define('DB_PORT', getenv('MYSQLPORT') ?: (getenv('DB_PORT') ?: 3306));
 function get_db(): mysqli {
     static $conn = null;
     if ($conn === null) {
-        $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
+        // Suppress warnings from mysqli constructor to handle them manually
+        mysqli_report(MYSQLI_REPORT_OFF);
+        
+        $conn = @new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
         if ($conn->connect_error) {
             http_response_code(500);
-            die(json_encode(['error' => 'Database connection failed: ' . $conn->connect_error]));
+            $padding = str_repeat('<!-- Chrome padding to disable friendly error pages -->', 20);
+            $errorDetails = "Database connection failed!<br>";
+            $errorDetails .= "Error: " . $conn->connect_error . "<br>";
+            $errorDetails .= "Host: " . DB_HOST . ":" . DB_PORT . "<br>";
+            $errorDetails .= "User: " . DB_USER . "<br>";
+            $errorDetails .= "Database: " . DB_NAME . "<br>";
+            die("<html><body><h1>500 Internal Server Error</h1><p>{$errorDetails}</p>{$padding}</body></html>");
         }
         $conn->set_charset('utf8mb4');
     }
