@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msgType = 'danger';
         } else {
             $ins = $db->prepare("INSERT INTO companies (user_id, name, address, business_type, tax_registered, tax_type, period_type, fiscal_start_month, fiscal_start_date, fiscal_year_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $ins->bind_param('isssiissss', $userId, $name, $addr, $btype, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end);
+            $ins->bind_param('isssisssss', $userId, $name, $addr, $btype, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end);
             $ins->execute();
             $newId = $db->insert_id;
 
