@@ -19,7 +19,7 @@ if (!$company_id) {
 }
 
 // Fetch all accounts for the dropdowns
-$stmt = $db->prepare("SELECT id, code, name FROM accounts WHERE company_id = ? ORDER BY code ASC");
+$stmt = $db->prepare("SELECT id, code, name, category FROM accounts WHERE company_id = ? ORDER BY code ASC");
 $stmt->bind_param('i', $company_id);
 $stmt->execute();
 $accountsList = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -552,6 +552,71 @@ function closeModal() {
 // Close on overlay click
 document.getElementById('entryModal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
+});
+
+// ── Journal Type Detection & Toast ─────────────────────────────────
+function _isCash(acc)    { return acc.category === 'Assets' && /cash|bank/i.test(acc.name); }
+
+function _getLines() {
+    const lines = [];
+    document.querySelectorAll('#lines-container tr').forEach(tr => {
+        const accId = tr.querySelector('.account-id-input')?.value;
+        const dr = parseFloat(tr.querySelector('.dr-input')?.value) || 0;
+        const cr = parseFloat(tr.querySelector('.cr-input')?.value) || 0;
+        if (accId) {
+            const acc = accounts.find(a => String(a.id) === String(accId));
+            if (acc) lines.push({ acc, dr, cr });
+        }
+    });
+    return lines;
+}
+
+function _detectMismatch(lines) {
+    if (!lines.length) return null;
+    const hasCash  = lines.some(l => _isCash(l.acc));
+    const hasPay   = lines.some(l => _isPayable(l.acc));
+    const hasExp   = lines.some(l => _isExpense(l.acc));
+    const hasRev   = lines.some(l => _isRevenue(l.acc));
+    const hasRec   = lines.some(l => _isReceivable(l.acc));
+
+    // No Cash/Bank — check if it belongs elsewhere
+    if (!hasCash) {
+        if (hasRev && hasRec)
+            return { journal: 'Sales Journal', url: 'sales_journal.php', reason: 'Credit sales must be recorded in the' };
+        if (hasExp && hasPay)
+            return { journal: 'Purchases Journal', url: 'purchases_journal.php', reason: 'Credit purchases must be recorded in the' };
+        return { journal: 'Cash Receipts Journal', url: null, reason: 'A Cash or Bank account is required for cash receipts.' };
+    }
+    return null;
+}
+
+function _showJournalToast(mismatch) {
+    const old = document.getElementById('jt-toast'); if (old) old.remove();
+    const t = document.createElement('div');
+    t.id = 'jt-toast';
+    t.style.cssText = 'position:fixed;top:1.5rem;right:1.5rem;z-index:999999;background:#1e293b;color:#f1f5f9;padding:1rem 1.25rem;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:.5rem;max-width:400px;border-left:4px solid #ef4444;font-family:inherit;font-size:.875rem;';
+    const redirectBtn = mismatch.url ? `<a href="${mismatch.url}" style="background:#3b82f6;color:#fff;padding:.35rem .9rem;border-radius:6px;font-size:.78rem;font-weight:600;text-decoration:none;white-space:nowrap;">Move to ${mismatch.journal}</a>` : '';
+    const bodyText = mismatch.url ? `${mismatch.reason} <strong style="color:#93c5fd;">${mismatch.journal}</strong>.` : mismatch.reason;
+    t.innerHTML = `<style>@keyframes jtIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}#jt-toast{animation:jtIn .3s cubic-bezier(.22,1,.36,1)}</style>
+        <div style="display:flex;align-items:center;gap:.5rem;font-weight:700;color:#fca5a5;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            Cannot Save Entry
+        </div>
+        <div style="color:#cbd5e1;line-height:1.5;margin-top:0.25rem;">${bodyText}</div>
+        <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap;align-items:center;">
+            ${redirectBtn}
+            <button onclick="document.getElementById('jt-toast').remove();" style="background:transparent;color:#6b7280;padding:.35rem .5rem;border-radius:6px;font-size:.9rem;border:none;cursor:pointer;margin-left:auto;">✕</button>
+        </div>`;
+    document.body.appendChild(t);
+    setTimeout(() => { if (t.parentElement) t.remove(); }, 12000);
+}
+
+document.getElementById('entry-form').addEventListener('submit', function(e) {
+    document.querySelectorAll('.dr-input, .cr-input').forEach(el => {
+        el.value = el.value.replace(/,/g, '');
+    });
+    const mismatch = _detectMismatch(_getLines());
+    if (mismatch) { e.preventDefault(); _showJournalToast(mismatch); }
 });
 </script>
 
