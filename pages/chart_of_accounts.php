@@ -1,7 +1,7 @@
 <?php
 require_once '../config.php';
 require_once '../db.php';
-require_once '../includes/admin_auth.php';
+require_once '../includes/auth.php';
 require_once '../includes/header.php';
 
 $db = get_db();

@@ -114,4 +114,4 @@ FROM `users` u WHERE u.email = 'admin@ais.com' AND NOT EXISTS (
     SELECT 1 FROM `companies` c WHERE c.user_id = u.id
 );
 
--- End of accounting_db.sql
+

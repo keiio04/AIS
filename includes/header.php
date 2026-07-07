@@ -159,13 +159,13 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                 </div>
             </div>
 
-            <?php if ($userRole === 'Admin'): ?>
+            <?php if (in_array($userRole, ['Admin', 'Instructor', 'Student'])): ?>
             <div class="nav-section">
-                <div class="nav-section-title" onclick="toggleSidebarSection('admin')">
-                    <span>Administration</span>
+                <div class="nav-section-title" onclick="toggleSidebarSection('setup')">
+                    <span>Setup & Accounts</span>
                     <i data-lucide="chevron-down" style="width: 13px; height: 13px;"></i>
                 </div>
-                <div id="admin" class="nav-subitems collapse-smooth">
+                <div id="setup" class="nav-subitems collapse-smooth">
                     <a href="<?= BASE_URL ?>pages/company_setup.php" class="nav-subitem <?= $current_page==='company_setup'?'active':'' ?>">
                         <div class="flex items-center gap-2"><i data-lucide="building-2" style="width: 15px; height: 15px;"></i><span>Company Setup</span></div>
                     </a>
