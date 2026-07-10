@@ -365,19 +365,21 @@ require_once '../includes/header.php';
                     <textarea name="description" id="entryDescription" class="form-control" rows="3" style="resize: vertical;"></textarea>
                 </div>
 
+                <?php if ($companyIsTaxRegistered): ?>
                 <div class="form-group" style="margin-bottom: 1.5rem;">
                     <label class="form-label">Taxability</label>
                     <div style="display: flex; gap: 1.5rem; align-items: center;">
                         <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; cursor: pointer;">
-                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" <?= $companyIsTaxRegistered ? 'checked' : 'disabled' ?>>
+                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" checked>
                             Taxable (12% VAT Auto-Compute)
                         </label>
-                        <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; <?= $companyIsTaxRegistered ? 'opacity: 0.5; cursor: not-allowed;' : 'cursor: pointer;' ?>">
-                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" onchange="onTaxChange()" <?= !$companyIsTaxRegistered ? 'checked' : '' ?>>
+                        <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; opacity: 0.5; cursor: not-allowed;">
+                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" onchange="onTaxChange()">
                             Not Taxable
                         </label>
                     </div>
                 </div>
+                <?php endif; ?>
 
                 <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
                     <table class="table" style="margin: 0;">

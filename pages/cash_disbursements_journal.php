@@ -316,17 +316,19 @@ require_once '../includes/header.php';
                 </div>
 
                 
+                <?php if ($companyIsTaxRegistered): ?>
                 <div style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem;">
                     <div style="font-weight: 600; color: var(--text-primary);">Tax Settings:</div>
                     <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" <?= $companyIsTaxRegistered ? 'checked' : 'disabled' ?>>
+                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" checked>
                         Taxable (12% VAT Auto-Compute)
                     </label>
-                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: <?= $companyIsTaxRegistered ? 'pointer' : 'not-allowed' ?>;">
-                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" onchange="onTaxChange()" <?= !$companyIsTaxRegistered ? 'checked' : '' ?>>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; opacity: 0.5; cursor: not-allowed;">
+                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" onchange="onTaxChange()">
                         Not Taxable
                     </label>
                 </div>
+                <?php endif; ?>
                 
                 <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
                     <table class="table" style="margin: 0;">
