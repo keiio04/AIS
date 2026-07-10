@@ -31,7 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'add') {
         $name  = trim($_POST['name']          ?? '');
         $btype = $_POST['business_type']      ?? 'Service';
-        $addr  = trim($_POST['address']       ?? '');
         $tax_registered = ($_POST['tax_registered'] ?? 'no') === 'yes' ? 1 : 0;
         $tax_type = null;
         if ($tax_registered) {
@@ -59,8 +58,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Company name is required.';
             $msgType = 'danger';
         } else {
-            $ins = $db->prepare("INSERT INTO companies (user_id, name, address, business_type, tax_registered, tax_type, period_type, fiscal_start_month, fiscal_start_date, fiscal_year_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $ins->bind_param('isssisssss', $userId, $name, $addr, $btype, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end);
+            $ins = $db->prepare("INSERT INTO companies (user_id, name, business_type, tax_registered, tax_type, period_type, fiscal_start_month, fiscal_start_date, fiscal_year_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $ins->bind_param('isssissss', $userId, $name, $btype, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end);
             $ins->execute();
             $newId = $db->insert_id;
 
@@ -89,7 +88,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'edit') {
         $cid   = (int)($_POST['company_id']   ?? 0);
         $name  = trim($_POST['name']          ?? '');
-        $addr  = trim($_POST['address']       ?? '');
         $tax_registered = ($_POST['tax_registered'] ?? 'no') === 'yes' ? 1 : 0;
         $tax_type = null;
         if ($tax_registered) {
@@ -114,8 +112,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($cid && $name) {
-            $upd = $db->prepare("UPDATE companies SET name=?, address=?, tax_registered=?, tax_type=?, period_type=?, fiscal_start_month=?, fiscal_start_date=?, fiscal_year_end=? WHERE id=? AND user_id=?");
-            $upd->bind_param('ssisssssii', $name, $addr, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end, $cid, $userId);
+            $upd = $db->prepare("UPDATE companies SET name=?, tax_registered=?, tax_type=?, period_type=?, fiscal_start_month=?, fiscal_start_date=?, fiscal_year_end=? WHERE id=? AND user_id=?");
+            $upd->bind_param('sisssssii', $name, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end, $cid, $userId);
             $upd->execute();
             // Update session if editing active company
             if ($cid == $activeCompanyId) {
@@ -158,21 +156,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $r->execute();
             $cname = $r->get_result()->fetch_assoc()['name'] ?? 'Unknown';
 
-            $del = $db->prepare("DELETE FROM companies WHERE id=? AND user_id=?");
-            $del->bind_param('ii', $cid, $userId);
-            $del->execute();
+            $db->begin_transaction();
+            try {
+                // 1. Delete journal_entry_lines (references accounts & journal_entries)
+                $db->query("DELETE jel FROM journal_entry_lines jel
+                            JOIN journal_entries je ON jel.journal_entry_id = je.id
+                            WHERE je.company_id = $cid");
 
-            // If deleted was active, clear it from session too
-            if ($activeCompanyId == $cid) {
-                $clrStmt = $db->prepare("UPDATE users SET active_company_id = NULL WHERE id = ?");
-                $clrStmt->bind_param('i', $userId);
-                $clrStmt->execute();
-                $_SESSION['active_company_id'] = null;
-                unset($_SESSION['active_company_id']);
+                // 2. Delete journal_entries
+                $db->query("DELETE FROM journal_entries WHERE company_id = $cid");
+
+                // 3. Delete accounts
+                $db->query("DELETE FROM accounts WHERE company_id = $cid");
+
+                // 4. Delete the company itself
+                $del = $db->prepare("DELETE FROM companies WHERE id=? AND user_id=?");
+                $del->bind_param('ii', $cid, $userId);
+                $del->execute();
+
+                $db->commit();
+            } catch (Exception $e) {
+                $db->rollback();
+                $error = "Failed to delete company: " . $e->getMessage();
             }
-            log_activity($db, $userId, 'Delete', 'Company Setup', "Deleted company: $cname");
-            header('Location: ' . BASE_URL . 'pages/company_setup.php?msg=deleted');
-            exit;
+
+            if (!isset($error)) {
+                // If deleted was active, clear it from session too
+                if ($activeCompanyId == $cid) {
+                    $clrStmt = $db->prepare("UPDATE users SET active_company_id = NULL WHERE id = ?");
+                    $clrStmt->bind_param('i', $userId);
+                    $clrStmt->execute();
+                    $_SESSION['active_company_id'] = null;
+                    unset($_SESSION['active_company_id']);
+                }
+                log_activity($db, $userId, 'Delete', 'Company Setup', "Deleted company: $cname");
+                header('Location: ' . BASE_URL . 'pages/company_setup.php?msg=deleted');
+                exit;
+            }
         }
     }
 }
@@ -212,7 +232,6 @@ require_once '../includes/header.php';
 <div class="alert alert-<?= $msgType ?>" style="margin-bottom: 1rem;"><?= htmlspecialchars($message) ?></div>
 <?php endif; ?>
 
-
 <div class="page-header">
   <div>
     <h1 class="page-title">Company Setup</h1>
@@ -239,11 +258,10 @@ require_once '../includes/header.php';
   <table class="table" style="width: 100%;">
     <thead>
       <tr>
-        <th style="width: 12%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Status</th>
-        <th style="width: 28%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Company Name</th>
-        <th style="width: 20%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Business Type</th>
-        <th style="width: 28%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Address</th>
-        <th style="width: 12%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Actions</th>
+        <th style="width: 15%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Status</th>
+        <th style="width: 45%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Company Name</th>
+        <th style="width: 25%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Business Type</th>
+        <th style="width: 15%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -292,11 +310,9 @@ require_once '../includes/header.php';
             <?php endif; ?>
           <?php endif; ?>
         </td>
-        <td style="color: var(--text-muted); font-size: 0.9rem;"><?= htmlspecialchars($co['address'] ?? '—') ?></td>
-
-<td>
+        <td>
           <div class="flex gap-2" style="align-items: center;">
-            <button onclick="openEditModal(<?= $co['id'] ?>, '<?= htmlspecialchars(addslashes($co['name'])) ?>', '<?= htmlspecialchars(addslashes($co['address'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['period_type'] ?? 'Calendar')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_month'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_date'] ?? '')) ?>', <?= (int)($co['tax_registered'] ?? 0) ?>, '<?= htmlspecialchars(addslashes($co['tax_type'] ?? '')) ?>')"
+            <button onclick="openEditModal(<?= $co['id'] ?>, '<?= htmlspecialchars(addslashes($co['name'])) ?>', '<?= htmlspecialchars(addslashes($co['period_type'] ?? 'Calendar')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_month'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_date'] ?? '')) ?>', <?= (int)($co['tax_registered'] ?? 0) ?>, '<?= htmlspecialchars(addslashes($co['tax_type'] ?? '')) ?>')"
               style="background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 4px;" title="Edit">
               <i data-lucide="pencil" style="width:16px;height:16px;"></i>
             </button>
@@ -318,8 +334,6 @@ require_once '../includes/header.php';
 </div>
 <?php endif; ?>
 
-
-<!-- ── Add Company Modal ── -->
 <div class="modal-overlay hidden" id="addModal">
   <div class="modal">
     <div class="modal-header">
@@ -340,11 +354,6 @@ require_once '../includes/header.php';
             <option value="Merchandising">Merchandising Business (Buy and Sell)</option>
             <option value="Manufacturing">Manufacturing Business (Raw Materials → Products)</option>
           </select>
-
-        </div>
-        <div class="form-group">
-          <label class="form-label">Address</label>
-          <input type="text" name="address" class="form-input">
         </div>
         <div class="form-group">
           <label class="form-label">Tax Registered?</label>
@@ -367,7 +376,6 @@ require_once '../includes/header.php';
               <input type="radio" name="tax_type" value="Percentage Tax" id="addTaxPCT" style="width: auto;"> Percentage Tax (3%)
             </label>
           </div>
-
         </div>
         <div class="form-group">
           <label class="form-label">Period Type <span class="required">*</span></label>
@@ -375,14 +383,12 @@ require_once '../includes/header.php';
             <option value="Calendar">Calendar Year</option>
             <option value="Fiscal">Fiscal Year</option>
           </select>
-
         </div>
         <div class="form-group hidden" id="addFiscalFields">
           <label class="form-label">Fiscal Year Start <span class="required">*</span></label>
           <div style="display: flex; gap: 10px;">
             <select name="fiscal_start_month" class="form-input">
-
-<option value="">Month</option>
+              <option value="">Month</option>
               <option value="January">January</option>
               <option value="February">February</option>
               <option value="March">March</option>
@@ -408,7 +414,6 @@ require_once '../includes/header.php';
   </div>
 </div>
 
-<!-- ── Edit Company Modal ── -->
 <div class="modal-overlay hidden" id="editModal">
   <div class="modal">
     <div class="modal-header">
@@ -422,10 +427,6 @@ require_once '../includes/header.php';
         <div class="form-group">
           <label class="form-label">Company Name <span class="required">*</span></label>
           <input type="text" name="name" id="editName" class="form-input" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Address</label>
-          <input type="text" name="address" id="editAddress" class="form-input">
         </div>
         <div class="form-group">
           <label class="form-label">Tax Registered?</label>
@@ -448,7 +449,6 @@ require_once '../includes/header.php';
               <input type="radio" name="tax_type" value="Percentage Tax" id="editTaxPCT" style="width: auto;"> Percentage Tax (3%)
             </label>
           </div>
-
         </div>
         <div class="form-group">
           <label class="form-label">Period Type <span class="required">*</span></label>
@@ -480,8 +480,7 @@ require_once '../includes/header.php';
         </div>
       </div>
       <div class="modal-footer">
-
-<button type="button" class="btn btn-secondary" onclick="closeModal('editModal')">Cancel</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('editModal')">Cancel</button>
         <button type="submit" class="btn btn-primary">Save Changes</button>
       </div>
     </form>
@@ -501,7 +500,6 @@ function closeModal(id) {
   el.style.display = 'none';
 }
 
-// Close modal when clicking overlay background
 document.addEventListener('click', function(e) {
   if (e.target.classList.contains('modal-overlay')) {
     e.target.classList.add('hidden');
@@ -509,21 +507,17 @@ document.addEventListener('click', function(e) {
   }
 });
 
-function openEditModal(id, name, address, period_type = 'Calendar', fmonth = '', fdate = '', taxRegistered = 0, taxType = '') {
+function openEditModal(id, name, period_type = 'Calendar', fmonth = '', fdate = '', taxRegistered = 0, taxType = '') {
   document.getElementById('editId').value      = id;
   document.getElementById('editName').value    = name;
-  document.getElementById('editAddress').value = address;
 
-  // Set tax registered radio
   const isRegistered = !!Number(taxRegistered);
   document.getElementById('editTaxNo').checked  = !isRegistered;
   document.getElementById('editTaxYes').checked = isRegistered;
 
-  // Show/hide tax type group
   const taxGroup = document.getElementById('editTaxTypeGroup');
   if (isRegistered) {
     taxGroup.classList.remove('hidden');
-    // Set tax type radio
     if (taxType === 'Percentage Tax') {
       document.getElementById('editTaxPCT').checked = true;
     } else {
@@ -558,8 +552,6 @@ function toggleFiscal(selectEl, targetId) {
         target.classList.add('hidden');
     }
 }
-
-
 
 function updateBtypeHint(val) {
   const hints = {
