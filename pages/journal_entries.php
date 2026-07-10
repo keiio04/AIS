@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $ref_no = 'JV-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
         }
         $description = trim($_POST['description'] ?? '');
-        $is_taxable = (isset($_POST['is_taxable']) && $_POST['is_taxable'] === '1') ? 1 : 0;
+        $is_taxable = ($companyIsTaxRegistered && isset($_POST['is_taxable']) && $_POST['is_taxable'] === '1') ? 1 : 0;
         $particulars = '';
         $type = 'Operating';
         $vendor_name = trim($_POST['vendor_name'] ?? '');
@@ -369,11 +369,11 @@ require_once '../includes/header.php';
                     <label class="form-label">Taxability</label>
                     <div style="display: flex; gap: 1.5rem; align-items: center;">
                         <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; cursor: pointer;">
-                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()">
+                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" <?= $companyIsTaxRegistered ? 'checked' : 'disabled' ?>>
                             Taxable (12% VAT Auto-Compute)
                         </label>
                         <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; <?= $companyIsTaxRegistered ? 'opacity: 0.5; cursor: not-allowed;' : 'cursor: pointer;' ?>">
-                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" <?= $companyIsTaxRegistered ? 'disabled' : '' ?> onchange="onTaxChange()">
+                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" onchange="onTaxChange()" <?= !$companyIsTaxRegistered ? 'checked' : '' ?>>
                             Not Taxable
                         </label>
                     </div>

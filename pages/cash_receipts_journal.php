@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $ref_no = 'CRJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
     }
     $description = '';
-    $is_taxable = isset($_POST['is_taxable']) && $_POST['is_taxable'] == '1' ? 1 : 0;
+    $is_taxable = ($companyIsTaxRegistered && isset($_POST['is_taxable']) && $_POST['is_taxable'] == '1') ? 1 : 0;
     $particulars = '';
     $type = 'Operating';
     $vendor_name = null; // No longer at header level
@@ -319,11 +319,11 @@ require_once '../includes/header.php';
                 <div style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem;">
                     <div style="font-weight: 600; color: var(--text-primary);">Tax Settings:</div>
                     <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                        <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" <?= $companyIsTaxRegistered ? 'checked' : '' ?>>
+                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" <?= $companyIsTaxRegistered ? 'checked' : 'disabled' ?>>
                         Taxable (12% VAT Auto-Compute)
                     </label>
                     <label style="display: flex; align-items: center; gap: 0.5rem; cursor: <?= $companyIsTaxRegistered ? 'pointer' : 'not-allowed' ?>;">
-                        <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" <?= $companyIsTaxRegistered ? 'disabled' : '' ?> onchange="onTaxChange()" <?= !$companyIsTaxRegistered ? 'checked' : '' ?>>
+                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" onchange="onTaxChange()" <?= !$companyIsTaxRegistered ? 'checked' : '' ?>>
                         Not Taxable
                     </label>
                 </div>
