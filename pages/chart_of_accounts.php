@@ -93,6 +93,12 @@ $accounts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 require_once '../includes/header.php';
 ?>
 
+
+<style>
+    .account-row:hover {
+        background-color: #f1f5f9 !important;
+    }
+</style>
 <div class="page-header">
     <div class="page-header-text">
         <h1 class="page-title">Chart of Accounts</h1>
@@ -111,7 +117,7 @@ require_once '../includes/header.php';
 <?php endif; ?>
 
 <div class="card" style="padding: 0; overflow: hidden;">
-    <div class="flex items-center gap-3" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);">
+    <div class="flex items-center justify-between" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);">
         <form method="GET" style="position: relative; flex: 1; max-width: 320px; display: flex;">
             <i data-lucide="search" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); width:14px; height:14px;"></i>
             <input type="text" name="search" class="form-control" placeholder="Search by code or name..." value="<?= htmlspecialchars($search) ?>" style="padding-left: 2.25rem;">
@@ -124,9 +130,8 @@ require_once '../includes/header.php';
         <table class="table">
             <thead>
                 <tr>
-                    <th style="width: 20%; padding-left: 2rem;">Account Code</th>
-                    <th style="width: 45%;">Account Name</th>
-                    <th style="width: 20%;">Type</th>
+                    <th style="width: 25%; padding-left: 3rem;">Account Code</th>
+                    <th style="width: 60%;">Account Name</th>
                     <th class="text-center" style="width: 15%;">Actions</th>
                 </tr>
             </thead>
@@ -134,36 +139,45 @@ require_once '../includes/header.php';
                 <?php 
                 $grouped_accounts = [];
                 foreach($accounts as $acc) {
-                    $grouped_accounts[$acc['category']][] = $acc;
+                    $subCat = $acc['sub_category'] ?: 'Other ' . $acc['category'];
+                    $grouped_accounts[$acc['category']][$subCat][] = $acc;
                 }
                 
                 if (count($accounts) === 0): ?>
-                <tr><td colspan="4" class="text-center text-secondary" style="padding: 2rem;">No accounts found.</td></tr>
+                <tr><td colspan="3" class="text-center text-secondary" style="padding: 2rem;">No accounts found.</td></tr>
                 <?php else: 
-                    foreach($grouped_accounts as $catName => $catAccounts): 
+                    foreach($grouped_accounts as $catName => $subGroups): 
                 ?>
-                <tr style="background-color: #f1f5f9;">
-                    <td colspan="4" style="font-weight: 700; font-size: 0.95rem; color: #334155; padding-top: 0.75rem; padding-bottom: 0.75rem; letter-spacing: 0.05em;">
+                <tr style="background-color: #e2e8f0;">
+                    <td colspan="3" style="font-weight: 700; font-size: 0.95rem; color: #1e293b; padding-top: 0.75rem; padding-bottom: 0.75rem; padding-left: 1rem; letter-spacing: 0.05em;">
                         <?= htmlspecialchars(strtoupper($catName)) ?>
                     </td>
                 </tr>
-                <?php foreach($catAccounts as $acc): ?>
-                <tr style="color: #000;">
-                    <td style="font-family: monospace; font-weight: 600; font-size: 0.875rem; padding-left: 2rem;"><?= htmlspecialchars($acc['code']) ?></td>
-                    <td style="font-weight: 500;"><?= htmlspecialchars($acc['name']) ?></td>
-                    <td style="font-size: 0.8125rem;"><?= htmlspecialchars($acc['sub_category'] ?: '—') ?></td>
-                    <td>
-                        <div class="flex justify-center gap-2">
-                            <button class="icon-btn" onclick='openModal(<?= json_encode($acc) ?>)'><i data-lucide="edit-2" style="width:16px;height:16px;"></i></button>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this account?');">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="id" value="<?= $acc['id'] ?>">
-                                <button type="submit" class="icon-btn text-danger"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
-                            </form>
-                        </div>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
+                    <?php foreach($subGroups as $subCatName => $catAccounts): ?>
+                    <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+                        <td colspan="3" style="font-weight: 600; font-size: 0.85rem; color: #475569; padding-top: 0.5rem; padding-bottom: 0.5rem; padding-left: 2rem;">
+                            <?= htmlspecialchars($subCatName) ?>
+                        </td>
+                    </tr>
+                    <?php foreach($catAccounts as $index => $acc): 
+                        $rowBg = ($index % 2 === 0) ? '#ffffff' : '#f8fafc';
+                    ?>
+                    <tr class="account-row" style="color: #000; background-color: <?= $rowBg ?>; transition: background-color 0.2s;">
+                        <td style="font-family: monospace; font-weight: 600; font-size: 0.875rem; padding-left: 3rem; text-align: left;"><?= htmlspecialchars($acc['code']) ?></td>
+                        <td style="font-weight: 500;"><?= htmlspecialchars($acc['name']) ?></td>
+                        <td>
+                            <div class="flex justify-center gap-2">
+                                <button class="icon-btn" onclick='openModal(<?= json_encode($acc) ?>)'><i data-lucide="edit-2" style="width:16px;height:16px;"></i></button>
+                                <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this account?');">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="id" value="<?= $acc['id'] ?>">
+                                    <button type="submit" class="icon-btn text-danger"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php endforeach; ?>
                 <?php endforeach; endif; ?>
             </tbody>
         </table>
