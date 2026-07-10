@@ -124,10 +124,10 @@ require_once '../includes/header.php';
         <table class="table">
             <thead>
                 <tr>
-                    <th>Account Code</th>
-                    <th>Account Name</th>
-                    <th>Type</th>
-                    <th class="text-center">Actions</th>
+                    <th style="width: 20%; padding-left: 2rem;">Account Code</th>
+                    <th style="width: 45%;">Account Name</th>
+                    <th style="width: 20%;">Type</th>
+                    <th class="text-center" style="width: 15%;">Actions</th>
                 </tr>
             </thead>
             <tbody>
