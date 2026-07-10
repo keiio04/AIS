@@ -663,9 +663,9 @@ function _detectMismatch(lines) {
     // No Cash/Bank — check if it belongs elsewhere
     if (!hasCash) {
         if (hasRev && hasRec)
-            return { journal: 'Sales Journal', url: 'sales_journal.php', reason: 'Credit sales must be recorded in the' };
+            return { journal: 'Sales Journal', url: 'sales_journal.php', reason: 'It looks like you\'re recording a credit sale, which belongs in the', hint: 'If this is a purchase, please check your Debit/Credit entries.' };
         if (hasExp && hasPay)
-            return { journal: 'Purchases Journal', url: 'purchases_journal.php', reason: 'Credit purchases must be recorded in the' };
+            return { journal: 'Purchases Journal', url: 'purchases_journal.php', reason: 'It looks like you\'re recording a credit purchase, which belongs in the', hint: 'If this is a sale, please check your Debit/Credit entries.' };
         return { journal: 'Cash Disbursements Journal', url: null, reason: 'A Cash or Bank account is required for cash disbursements.' };
     }
     return null;
@@ -676,8 +676,8 @@ function _showJournalToast(mismatch) {
     const t = document.createElement('div');
     t.id = 'jt-toast';
     t.style.cssText = 'position:fixed;top:1.5rem;right:1.5rem;z-index:999999;background:#1e293b;color:#f1f5f9;padding:1rem 1.25rem;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:.5rem;max-width:400px;border-left:4px solid #ef4444;font-family:inherit;font-size:.875rem;';
-    const redirectBtn = mismatch.url ? `<a href="${mismatch.url}" style="background:#3b82f6;color:#fff;padding:.35rem .9rem;border-radius:6px;font-size:.78rem;font-weight:600;text-decoration:none;white-space:nowrap;">Move to ${mismatch.journal}</a>` : '';
-    const bodyText = mismatch.url ? `${mismatch.reason} <strong style="color:#93c5fd;">${mismatch.journal}</strong>.` : mismatch.reason;
+    const redirectBtn = mismatch.url ? `<a href=\"${mismatch.url}\" style=\"background:transparent;color:#94a3b8;border:1px solid #475569;padding:.35rem .9rem;border-radius:6px;font-size:.78rem;font-weight:600;text-decoration:none;white-space:nowrap;transition:all 0.2s;\" onmouseover=\"this.style.color='#f8fafc';this.style.borderColor='#94a3b8'\" onmouseout=\"this.style.color='#94a3b8';this.style.borderColor='#475569'\">Move to ${mismatch.journal}</a>` : '';
+    const bodyText = mismatch.url ? `${mismatch.reason} <strong style=\"color:#93c5fd;\">${mismatch.journal}</strong>.` + (mismatch.hint ? ` <span style=\"color:#94a3b8;display:block;margin-top:4px;\">${mismatch.hint}</span>` : '') : mismatch.reason;
     t.innerHTML = `<style>@keyframes jtIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}#jt-toast{animation:jtIn .3s cubic-bezier(.22,1,.36,1)}</style>
         <div style="display:flex;align-items:center;gap:.5rem;font-weight:700;color:#fca5a5;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
