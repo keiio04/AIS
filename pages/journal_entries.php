@@ -89,7 +89,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $stmtDelLines->execute();
                 }
 
-                // --- BACKEND VAT LOGIC START ---
+                // --- BACKEND LINE INSERTION (General Journal: No auto-VAT) ---
+                // General Journal is for adjusting entries (depreciation, accruals, corrections).
+                // VAT lines, if needed, must be entered manually by the accountant.
                 $final_lines = [];
                 for ($i = 0; $i < count($account_ids); $i++) {
                     $acc_id = (int)$account_ids[$i];
@@ -100,60 +102,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 }
 
-                if ($is_taxable) {
-                    $added_input_vat = 0;
-                    $added_output_vat = 0;
-
-                    foreach ($final_lines as &$line) {
-                        $cat = '';
-                        foreach ($accountsList as $a) {
-                            if ($a['id'] == $line['account_id']) { $cat = $a['category']; break; }
-                        }
-                        
-                        if ($cat === 'Expenses' || $cat === 'Assets') {
-                            if ($line['debit'] > 0 && $inputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                // Exclude Cash and AR from input VAT calculation
-                                $name_lower = '';
-                                foreach ($accountsList as $a) {
-                                    if ($a['id'] == $line['account_id']) { $name_lower = strtolower($a['name']); break; }
-                                }
-                                if (strpos($name_lower, 'cash') === false && strpos($name_lower, 'receivable') === false) {
-                                    $vat = $line['debit'] * 0.12;
-                                    $added_input_vat += $vat;
-                                }
-                            }
-                        } elseif ($cat === 'Revenue') {
-                            if ($line['credit'] > 0 && $outputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                $vat = $line['credit'] * 0.12;
-                                $added_output_vat += $vat;
-                            }
-                        }
-                    }
-                    unset($line);
-
-                    if ($added_input_vat > 0) {
-                        $final_lines[] = ['account_id' => $inputVatId, 'debit' => $added_input_vat, 'credit' => 0];
-                        foreach ($final_lines as &$line) {
-                            if ($line['credit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                $line['credit'] += $added_input_vat;
-                                break;
-                            }
-                        }
-                        unset($line);
-                    }
-                    
-                    if ($added_output_vat > 0) {
-                        $final_lines[] = ['account_id' => $outputVatId, 'debit' => 0, 'credit' => $added_output_vat];
-                        foreach ($final_lines as &$line) {
-                            if ($line['debit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                $line['debit'] += $added_output_vat;
-                                break;
-                            }
-                        }
-                        unset($line);
-                    }
-                }
-                
                 $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
                 $total_debit = 0;
                 foreach ($final_lines as $line) {
@@ -163,7 +111,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $stmtLine->bind_param('iidd', $entry_id, $line['account_id'], $dr, $cr);
                     $stmtLine->execute();
                 }
-                // --- BACKEND VAT LOGIC END ---
 
                 $user_id = $_SESSION['user_id'];
                 $log_action = ($action === 'add_entry') 

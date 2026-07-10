@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $stmt->execute();
         $entry_id = $stmt->insert_id;
 
-        // --- BACKEND VAT LOGIC START ---
+        // --- BACKEND VAT LOGIC START (Sales Journal: Output VAT only) ---
                 $final_lines = [];
                 for ($i = 0; $i < count($account_ids); $i++) {
                     $acc_id = (int)$account_ids[$i];
@@ -105,52 +105,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 }
 
-                if ($is_taxable) {
-                    $added_input_vat = 0;
+                // Sales Journal: VAT-registered companies generate OUTPUT VAT on Revenue credits.
+                // Input VAT does NOT apply here (no purchases in a Sales Journal).
+                if ($is_taxable && $outputVatId) {
                     $added_output_vat = 0;
 
-                    foreach ($final_lines as &$line) {
+                    foreach ($final_lines as $line) {
                         $cat = '';
                         foreach ($accountsList as $a) {
                             if ($a['id'] == $line['account_id']) { $cat = $a['category']; break; }
                         }
-                        
-                        if ($cat === 'Expenses' || $cat === 'Assets') {
-                            if ($line['debit'] > 0 && $inputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                // Exclude Cash and AR from input VAT calculation
-                                $name_lower = '';
-                                foreach ($accountsList as $a) {
-                                    if ($a['id'] == $line['account_id']) { $name_lower = strtolower($a['name']); break; }
-                                }
-                                if (strpos($name_lower, 'cash') === false && strpos($name_lower, 'receivable') === false) {
-                                    $vat = $line['debit'] * 0.12;
-                                    $added_input_vat += $vat;
-                                }
-                            }
-                        } elseif ($cat === 'Revenue') {
-                            if ($line['credit'] > 0 && $outputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                $vat = $line['credit'] * 0.12;
-                                $added_output_vat += $vat;
-                            }
+                        // Output VAT: Revenue credited → compute 12% Output VAT
+                        if ($cat === 'Revenue' && $line['credit'] > 0
+                            && $line['account_id'] != $inputVatId
+                            && $line['account_id'] != $outputVatId) {
+                            $added_output_vat += $line['credit'] * 0.12;
                         }
                     }
-                    unset($line);
 
-                    if ($added_input_vat > 0) {
-                        $final_lines[] = ['account_id' => $inputVatId, 'debit' => $added_input_vat, 'credit' => 0];
-                        foreach ($final_lines as &$line) {
-                            if ($line['credit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                $line['credit'] += $added_input_vat;
-                                break;
-                            }
-                        }
-                        unset($line);
-                    }
-                    
                     if ($added_output_vat > 0) {
+                        // Credit Output VAT
                         $final_lines[] = ['account_id' => $outputVatId, 'debit' => 0, 'credit' => $added_output_vat];
+                        // Inflate the AR/Receivable (or first debit line) to keep entry balanced
                         foreach ($final_lines as &$line) {
-                            if ($line['debit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                            if ($line['debit'] > 0
+                                && $line['account_id'] != $inputVatId
+                                && $line['account_id'] != $outputVatId) {
                                 $line['debit'] += $added_output_vat;
                                 break;
                             }

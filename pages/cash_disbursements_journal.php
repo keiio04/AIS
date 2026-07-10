@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $stmt->execute();
         $entry_id = $stmt->insert_id;
 
-        // --- BACKEND VAT LOGIC START ---
+        // --- BACKEND VAT LOGIC START (Cash Disbursements Journal: Input VAT only) ---
                 $final_lines = [];
                 for ($i = 0; $i < count($account_ids); $i++) {
                     $acc_id = (int)$account_ids[$i];
@@ -80,53 +80,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 }
 
-                if ($is_taxable) {
+                // Cash Disbursements Journal: VAT-registered companies generate INPUT VAT on Expense/Asset debits.
+                // Output VAT does NOT apply here (no sales in a Cash Disbursements Journal).
+                if ($is_taxable && $inputVatId) {
                     $added_input_vat = 0;
-                    $added_output_vat = 0;
 
-                    foreach ($final_lines as &$line) {
+                    foreach ($final_lines as $line) {
                         $cat = '';
+                        $name_lower = '';
                         foreach ($accountsList as $a) {
-                            if ($a['id'] == $line['account_id']) { $cat = $a['category']; break; }
-                        }
-                        
-                        if ($cat === 'Expenses' || $cat === 'Assets') {
-                            if ($line['debit'] > 0 && $inputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                // Exclude Cash and AR from input VAT calculation
-                                $name_lower = '';
-                                foreach ($accountsList as $a) {
-                                    if ($a['id'] == $line['account_id']) { $name_lower = strtolower($a['name']); break; }
-                                }
-                                if (strpos($name_lower, 'cash') === false && strpos($name_lower, 'receivable') === false) {
-                                    $vat = $line['debit'] * 0.12;
-                                    $added_input_vat += $vat;
-                                }
-                            }
-                        } elseif ($cat === 'Revenue') {
-                            if ($line['credit'] > 0 && $outputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                $vat = $line['credit'] * 0.12;
-                                $added_output_vat += $vat;
-                            }
-                        }
-                    }
-                    unset($line);
-
-                    if ($added_input_vat > 0) {
-                        $final_lines[] = ['account_id' => $inputVatId, 'debit' => $added_input_vat, 'credit' => 0];
-                        foreach ($final_lines as &$line) {
-                            if ($line['credit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                $line['credit'] += $added_input_vat;
+                            if ($a['id'] == $line['account_id']) {
+                                $cat = $a['category'];
+                                $name_lower = strtolower($a['name']);
                                 break;
                             }
                         }
-                        unset($line);
+                        // Input VAT: Expense/Asset debited (exclude Cash, Bank, Receivable accounts)
+                        if (($cat === 'Expenses' || $cat === 'Assets')
+                            && $line['debit'] > 0
+                            && $line['account_id'] != $inputVatId
+                            && $line['account_id'] != $outputVatId
+                            && strpos($name_lower, 'cash') === false
+                            && strpos($name_lower, 'bank') === false
+                            && strpos($name_lower, 'receivable') === false) {
+                            $added_input_vat += $line['debit'] * 0.12;
+                        }
                     }
-                    
-                    if ($added_output_vat > 0) {
-                        $final_lines[] = ['account_id' => $outputVatId, 'debit' => 0, 'credit' => $added_output_vat];
+
+                    if ($added_input_vat > 0) {
+                        // Debit Input VAT
+                        $final_lines[] = ['account_id' => $inputVatId, 'debit' => $added_input_vat, 'credit' => 0];
+                        // Inflate Cash credit (first credit line) to keep entry balanced
                         foreach ($final_lines as &$line) {
-                            if ($line['debit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
-                                $line['debit'] += $added_output_vat;
+                            if ($line['credit'] > 0
+                                && $line['account_id'] != $inputVatId
+                                && $line['account_id'] != $outputVatId) {
+                                $line['credit'] += $added_input_vat;
                                 break;
                             }
                         }
