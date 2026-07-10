@@ -286,12 +286,26 @@ require_once '../includes/header.php';
         </td>
         <td>
           <div style="font-weight: 600; color: var(--text-primary);"><?= htmlspecialchars($co['name']) ?></div>
-          <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px;">
-            <i data-lucide="calendar" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i>
-            <?php if ($co['period_type'] === 'Fiscal'): ?>
-                Fiscal Year (Starts <?= htmlspecialchars($co['fiscal_start_month'] . ' ' . $co['fiscal_start_date']) ?>)
+          <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 8px;">
+            <span>
+                <i data-lucide="calendar" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i>
+                <?php if ($co['period_type'] === 'Fiscal'): ?>
+                    Fiscal Year (Starts <?= htmlspecialchars($co['fiscal_start_month'] . ' ' . $co['fiscal_start_date']) ?>)
+                <?php else: ?>
+                    Calendar Year
+                <?php endif; ?>
+            </span>
+            <span style="color: #cbd5e1;">|</span>
+            <?php if ($co['tax_registered']): ?>
+                <span style="color: #0369a1; font-weight: 500;">
+                    <i data-lucide="calculator" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i>
+                    VAT Registered (<?= htmlspecialchars($co['tax_type']) ?>)
+                </span>
             <?php else: ?>
-                Calendar Year
+                <span style="color: #94a3b8;">
+                    <i data-lucide="file-minus" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i>
+                    Non-VAT
+                </span>
             <?php endif; ?>
           </div>
         </td>
