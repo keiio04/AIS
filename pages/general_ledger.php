@@ -19,6 +19,10 @@ $selected_category = $_GET['category'] ?? '';
 // Fetch the accounts to display. Each account gets its own
 // standalone control-account ledger (no more mixing multiple
 // accounts together under one category-wide running balance).
+//
+// NOTE: This page is now PURE control accounts only -- no per-
+// customer / per-supplier breakdown here. That lives on its own
+// page now: subsidiary_ledger.php.
 // ------------------------------------------------------------------
 $accWhere = "a.company_id = ?";
 $accParams = [$company_id];
@@ -41,12 +45,9 @@ $stmtAcc->execute();
 $allAccounts = $stmtAcc->get_result()->fetch_all(MYSQLI_ASSOC);
 
 // Prepared statement for pulling all posted lines that belong to one account.
-// COALESCE covers both styles used across the app: some journals (Sales,
-// Purchases, Cash Receipts/Disbursements) save the customer/supplier name
-// on the line itself, while the General Journal saves it on the entry header.
 $stmtLines = $db->prepare("
-    SELECT l.debit, l.credit, e.date, e.description, e.reference_no,
-           COALESCE(NULLIF(l.vendor_name, ''), NULLIF(e.vendor_name, '')) as vendor_name
+    SELECT l.debit, l.credit, e.date, e.reference_no,
+           COALESCE(NULLIF(l.description, ''), NULLIF(e.description, '')) as description
     FROM journal_entry_lines l
     JOIN journal_entries e ON l.journal_entry_id = e.id
     WHERE l.account_id = ? AND e.deleted_at IS NULL
@@ -76,16 +77,7 @@ if ($min_date && $max_date) {
     }
 }
 
-// An account is treated as a control account needing its own
-// per-customer / per-supplier Subsidiary Ledger when its name
-// mentions Receivable or Payable (mirrors the detection already
-// used elsewhere in the app, e.g. journal_entries.php's _isReceivable/_isPayable).
-function gl_needs_subsidiary($accountName) {
-    return preg_match('/receivable|payable/i', $accountName) === 1;
-}
-
-// Renders one standalone ledger table (used for both the control
-// account itself and each Subsidiary Ledger card underneath it).
+// Renders one standalone control-account ledger table.
 function gl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNormal, $descLabel) {
     $running = $openingBal;
     ob_start();
@@ -171,6 +163,9 @@ function gl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNorm
 
 <div class="page-header no-print" style="justify-content: flex-end; margin-bottom: 1rem; background: transparent; border: none; box-shadow: none; padding: 0.5rem 0;">
     <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <a href="<?= BASE_URL ?>pages/subsidiary_ledger.php" class="btn btn-secondary">
+            <i data-lucide="users" style="width:15px;height:15px;"></i> Subsidiary Ledger
+        </a>
         <form method="GET" style="margin: 0;">
             <select name="category" class="form-control" style="width: 200px; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);" onchange="this.form.submit()">
                 <option value="">All Accounts</option>
@@ -219,7 +214,7 @@ foreach ($allAccounts as $acc) {
     $displayedAny = true;
     $isDebitNormal = in_array($acc['category'], ['Assets', 'Expenses']);
 
-    // ---- Control Account (main GL) ----
+    // Pure control account -- no customer/supplier breakdown here.
     echo gl_render_ledger_table(
         $acc['name'],
         $acc['code'],
@@ -228,35 +223,6 @@ foreach ($allAccounts as $acc) {
         $isDebitNormal,
         'Description/Particulars'
     );
-
-    // ---- Subsidiary Ledger (per customer / supplier) ----
-    if (gl_needs_subsidiary($acc['name']) && count($lines) > 0) {
-        $groups = [];
-        foreach ($lines as $ln) {
-            $key = ($ln['vendor_name'] !== null && $ln['vendor_name'] !== '')
-                ? $ln['vendor_name']
-                : '(No Customer/Supplier Specified)';
-            $groups[$key][] = $ln;
-        }
-        ksort($groups, SORT_NATURAL | SORT_FLAG_CASE);
-
-        echo '<div style="padding-left: 1.5rem; border-left: 3px solid var(--border-color); margin-bottom: 1rem;">';
-        echo '<p class="text-xs text-muted" style="text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; margin-bottom: 0.75rem;">Subsidiary Ledger</p>';
-
-        $n = 1;
-        foreach ($groups as $subName => $subLines) {
-            echo gl_render_ledger_table(
-                $acc['name'] . ' - ' . $subName,
-                $acc['code'] . '-' . $n,
-                0,
-                $subLines,
-                $isDebitNormal,
-                'Description'
-            );
-            $n++;
-        }
-        echo '</div>';
-    }
 }
 
 if (!$displayedAny):
