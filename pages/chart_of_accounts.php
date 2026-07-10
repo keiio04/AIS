@@ -2,7 +2,6 @@
 require_once '../config.php';
 require_once '../db.php';
 require_once '../includes/auth.php';
-require_once '../includes/header.php';
 
 $db = get_db();
 $company_id = $_SESSION['active_company_id'] ?? null;
@@ -24,17 +23,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $category = $_POST['category'];
         $sub_category = $_POST['sub_category'];
         $description = $_POST['description'];
-        $opening_balance = $_POST['opening_balance'] ?: 0;
 
         if ($action === 'add') {
-            $stmt = $db->prepare("INSERT INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param('isssssd', $company_id, $code, $name, $category, $sub_category, $description, $opening_balance);
+            $stmt = $db->prepare("INSERT INTO accounts (company_id, code, name, category, sub_category, description) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param('isssss', $company_id, $code, $name, $category, $sub_category, $description);
             $stmt->execute();
             log_activity($db, $_SESSION['user_id'], 'Create', 'Chart of Accounts', "Added account: $code - $name");
             $success = "Account added successfully.";
         } else if ($action === 'edit' && $id) {
-            $stmt = $db->prepare("UPDATE accounts SET code=?, name=?, category=?, sub_category=?, description=?, opening_balance=? WHERE id=? AND company_id=?");
-            $stmt->bind_param('sssssdii', $code, $name, $category, $sub_category, $description, $opening_balance, $id, $company_id);
+            $stmt = $db->prepare("UPDATE accounts SET code=?, name=?, category=?, sub_category=?, description=? WHERE id=? AND company_id=?");
+            $stmt->bind_param('sssssii', $code, $name, $category, $sub_category, $description, $id, $company_id);
             $stmt->execute();
             log_activity($db, $_SESSION['user_id'], 'Update', 'Chart of Accounts', "Updated account: $code - $name");
             $success = "Account updated successfully.";
@@ -70,10 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 $search = $_GET['search'] ?? '';
 $query = "
     SELECT 
-        a.*,
-        a.opening_balance + SUM(IFNULL(l.debit, 0)) - SUM(IFNULL(l.credit, 0)) as raw_balance
+        a.*
     FROM accounts a
-    LEFT JOIN journal_entry_lines l ON a.id = l.account_id
     WHERE a.company_id = ?
 ";
 $params = [$company_id];
@@ -87,23 +83,19 @@ if ($search) {
     $types .= "ss";
 }
 
-$query .= " GROUP BY a.id ORDER BY a.code ASC";
+$query .= " ORDER BY a.code ASC";
 
 $stmt = $db->prepare($query);
 $stmt->bind_param($types, ...$params);
 $stmt->execute();
 $accounts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-function getBal($cat, $raw) {
-    if ($cat === 'Assets' || $cat === 'Expenses') return $raw;
-    return -$raw;
-}
+require_once '../includes/header.php';
 ?>
 
 <div class="page-header">
     <div class="page-header-text">
         <h1 class="page-title">Chart of Accounts</h1>
-        <p class="page-subtitle">Manage your accounts and opening balances.</p>
     </div>
     <div class="flex gap-2">
         <button class="btn btn-primary" onclick="openModal()">
@@ -132,10 +124,9 @@ function getBal($cat, $raw) {
         <table class="table">
             <thead>
                 <tr>
-                    <th>Code</th>
-                    <th>Name</th>
+                    <th>Account Code</th>
+                    <th>Account Name</th>
                     <th>Type</th>
-                    <th class="text-right">Current Balance</th>
                     <th class="text-center">Actions</th>
                 </tr>
             </thead>
@@ -147,23 +138,20 @@ function getBal($cat, $raw) {
                 }
                 
                 if (count($accounts) === 0): ?>
-                <tr><td colspan="5" class="text-center text-secondary" style="padding: 2rem;">No accounts found.</td></tr>
+                <tr><td colspan="4" class="text-center text-secondary" style="padding: 2rem;">No accounts found.</td></tr>
                 <?php else: 
                     foreach($grouped_accounts as $catName => $catAccounts): 
                 ?>
                 <tr style="background-color: #f1f5f9;">
-                    <td colspan="5" style="font-weight: 700; font-size: 0.95rem; color: #334155; padding-top: 0.75rem; padding-bottom: 0.75rem; letter-spacing: 0.05em;">
+                    <td colspan="4" style="font-weight: 700; font-size: 0.95rem; color: #334155; padding-top: 0.75rem; padding-bottom: 0.75rem; letter-spacing: 0.05em;">
                         <?= htmlspecialchars(strtoupper($catName)) ?>
                     </td>
                 </tr>
-                <?php foreach($catAccounts as $acc): 
-                    $bal = getBal($acc['category'], $acc['raw_balance']);
-                ?>
+                <?php foreach($catAccounts as $acc): ?>
                 <tr style="color: #000;">
                     <td style="font-family: monospace; font-weight: 600; font-size: 0.875rem; padding-left: 2rem;"><?= htmlspecialchars($acc['code']) ?></td>
                     <td style="font-weight: 500;"><?= htmlspecialchars($acc['name']) ?></td>
                     <td style="font-size: 0.8125rem;"><?= htmlspecialchars($acc['sub_category'] ?: '—') ?></td>
-                    <td class="text-right" style="font-weight: 600;">₱<?= number_format(abs($bal), 2) ?></td>
                     <td>
                         <div class="flex justify-center gap-2">
                             <button class="icon-btn" onclick='openModal(<?= json_encode($acc) ?>)'><i data-lucide="edit-2" style="width:16px;height:16px;"></i></button>
@@ -182,7 +170,6 @@ function getBal($cat, $raw) {
     </div>
 </div>
 
-<!-- Modal -->
 <div id="accModal" class="modal-overlay hidden">
     <div class="modal" style="max-width: 560px;">
         <div class="modal-header">
@@ -200,7 +187,7 @@ function getBal($cat, $raw) {
                 <div class="flex gap-4">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Account Code</label>
-                        <input type="text" name="code" id="accCode" class="form-control" required>
+                        <input type="text" name="code" id="accCode" class="form-control" placeholder="e.g., 1-100" required>
                     </div>
                     <div class="form-group" style="flex: 2;">
                         <label class="form-label">Account Name</label>
@@ -222,29 +209,13 @@ function getBal($cat, $raw) {
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Sub-Category</label>
                         <select name="sub_category" id="accSub" class="form-control">
-                            <option value="Current Assets">Current Assets</option>
-                            <option value="Non-Current Assets">Non-Current Assets</option>
-                            <option value="Current Liabilities">Current Liabilities</option>
-                            <option value="Non-Current Liabilities">Non-Current Liabilities</option>
-                            <option value="Owner's Capital">Owner's Capital</option>
-                            <option value="Withdrawals">Withdrawals</option>
-                            <option value="Retained Earnings">Retained Earnings</option>
-                            <option value="Sales Revenue">Sales Revenue</option>
-                            <option value="Service Revenue">Service Revenue</option>
-                            <option value="Operating Expenses">Operating Expenses</option>
-                            <option value="Other Expenses">Other Expenses</option>
-                        </select>
+                            </select>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label class="form-label">Description</label>
                     <input type="text" name="description" id="accDesc" class="form-control">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Initial / Opening Balance</label>
-                    <input type="number" step="0.01" name="opening_balance" id="accBal" class="form-control" value="0">
                 </div>
             </form>
         </div>
@@ -256,40 +227,88 @@ function getBal($cat, $raw) {
 </div>
 
 <script>
+// Dynamic mappings based on your system layout
+const categoryMap = {
+    'Assets': ['Current Assets', 'Non-Current Assets'],
+    'Liabilities': ['Current Liabilities', 'Non-Current Liabilities'],
+    'Equity': ["Owner's Capital", 'Withdrawals', 'Retained Earnings'],
+    'Revenue': ['Sales Revenue', 'Service Revenue'],
+    'Expenses': ['Cost of Goods Sold', 'Operating Expenses', 'Other Expenses']
+};
+
+const codeGuides = {
+    'Assets': 'Format: 1-XXX (e.g., 1-150)',
+    'Liabilities': 'Format: 2-XXX (e.g., 2-100)',
+    'Equity': 'Format: 3-XXX (e.g., 3-100)',
+    'Revenue': 'Format: 4-XXX (e.g., 4-100)',
+    'Expenses': 'Format: 5-XXX (e.g., 5-100)'
+};
+
+const prefixMap = { 
+    'Assets': '1-', 
+    'Liabilities': '2-', 
+    'Equity': '3-', 
+    'Revenue': '4-', 
+    'Expenses': '5-' 
+};
+
+function updateSubCategories(category, selectedSub = '') {
+    const subSelect = document.getElementById('accSub');
+    subSelect.innerHTML = '';
+    
+    if (categoryMap[category]) {
+        categoryMap[category].forEach(sub => {
+            const option = document.createElement('option');
+            option.value = sub;
+            option.innerText = sub;
+            if (sub === selectedSub) option.selected = true;
+            subSelect.appendChild(option);
+        });
+    }
+    
+    document.getElementById('modalDesc').innerText = `Fill in the details. [${codeGuides[category]}]`;
+}
+
+// Watch for Category modifications to apply predictive prefixes
+document.getElementById('accCat').addEventListener('change', function() {
+    updateSubCategories(this.value);
+    document.getElementById('accCode').value = prefixMap[this.value] || '';
+});
+
 function openModal(acc = null) {
     const modal = document.getElementById('accModal');
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
+    
     if (acc) {
         document.getElementById('modalTitle').innerText = 'Edit Account';
-        document.getElementById('modalDesc').innerText = 'Update account details below.';
         document.getElementById('formAction').value = 'edit';
         document.getElementById('accId').value = acc.id;
         document.getElementById('accCode').value = acc.code;
         document.getElementById('accName').value = acc.name;
         document.getElementById('accCat').value = acc.category;
-        document.getElementById('accSub').value = acc.sub_category || '';
         document.getElementById('accDesc').value = acc.description || '';
-        document.getElementById('accBal').value = acc.opening_balance;
+        
+        updateSubCategories(acc.category, acc.sub_category);
     } else {
         document.getElementById('modalTitle').innerText = 'New Account';
-        document.getElementById('modalDesc').innerText = 'Fill in the details to create a new account.';
         document.getElementById('formAction').value = 'add';
         document.getElementById('accId').value = '';
-        document.getElementById('accCode').value = '';
+        document.getElementById('accCode').value = '1-'; 
         document.getElementById('accName').value = '';
         document.getElementById('accCat').value = 'Assets';
-        document.getElementById('accSub').value = 'Current Assets';
         document.getElementById('accDesc').value = '';
-        document.getElementById('accBal').value = '0';
+        
+        updateSubCategories('Assets');
     }
 }
+
 function closeModal() {
     const modal = document.getElementById('accModal');
     modal.classList.add('hidden');
     modal.style.display = 'none';
 }
-// Close on overlay click
+
 document.getElementById('accModal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
 });
