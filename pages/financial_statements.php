@@ -141,7 +141,6 @@ function fmt($n) { return '₱' . number_format($n, 2); }
 <div class="page-header">
     <div class="page-header-text">
         <h1 class="page-title">Financial Statements</h1>
-        <p class="page-subtitle">Standard IFRS/GAAP Reports</p>
     </div>
     <button class="btn btn-secondary" onclick="window.print()">
         <i data-lucide="download" style="width:15px;height:15px;"></i> Export PDF

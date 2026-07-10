@@ -79,7 +79,6 @@ require_once '../includes/header.php';
             <i data-lucide="trash-2" style="width:22px;height:22px; display:inline; vertical-align:middle; margin-right: 6px;"></i>
             Trash Bin
         </h1>
-        <p class="page-subtitle"><?= count($trashed) ?> deleted entries. Restore or permanently delete them.</p>
     </div>
     <div class="flex gap-2">
         <a href="journal_entries.php" class="btn btn-secondary">

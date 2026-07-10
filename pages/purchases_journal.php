@@ -221,7 +221,6 @@ require_once '../includes/header.php';
 <div class="page-header">
     <div class="page-header-text">
         <h1 class="page-title">Purchases Journal</h1>
-        <p class="page-subtitle"><?= count($transactions) ?> entries recorded. Double-entry bookkeeping enforced.</p>
     </div>
     <button class="btn btn-primary" onclick="openModal()">
         <i data-lucide="plus" style="width:15px;height:15px;"></i> New Entry

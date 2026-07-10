@@ -81,7 +81,6 @@ $isBalanced = abs($total_debit_balance - $total_credit_balance) < 0.01;
 <div class="page-header">
     <div class="page-header-text">
         <h1 class="page-title">Trial Balance</h1>
-        <p class="page-subtitle">Verify the equality of debits and credits for all accounts.</p>
     </div>
     <button class="btn btn-secondary" onclick="window.print()">
         <i data-lucide="printer" style="width:15px;height:15px;"></i> Print

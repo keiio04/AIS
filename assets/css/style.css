@@ -567,16 +567,14 @@ h4 { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
    ============================================================ */
 .page-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 1.75rem;
+  margin-bottom: 1.25rem;
   gap: 1rem;
   flex-wrap: wrap;
 }
 
-
 .page-title { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
-.page-subtitle { font-size: 0.875rem; color: var(--text-muted); margin-top: 0.2rem; }
 
 /* ============================================================
    STATUS ALERTS

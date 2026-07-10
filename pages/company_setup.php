@@ -235,7 +235,6 @@ require_once '../includes/header.php';
 <div class="page-header">
   <div>
     <h1 class="page-title">Company Setup</h1>
-    <p class="page-subtitle">Manage your businesses, select business types, and switch active companies.</p>
   </div>
   <?php if (count($companies) > 0): ?>
   <button class="btn btn-primary" onclick="openModal('addModal')">
