@@ -78,6 +78,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Log
             log_activity($db, $userId, 'Create', 'Company Setup', "Created company: $name ($btype)");
 
+            // Auto-create VAT accounts if tax_registered
+            if ($tax_registered) {
+                $db->query("INSERT IGNORE INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES ($newId, '1-160', 'Input VAT', 'Assets', 'Current Assets', 'Value-added tax on purchases', 0)");
+                $db->query("INSERT IGNORE INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES ($newId, '2-150', 'Output VAT', 'Liabilities', 'Current Liabilities', 'Value-added tax on sales', 0)");
+            }
+
             $message = "Company \"$name\" created successfully! Chart of Accounts has been loaded.";
             header('Location: ' . BASE_URL . 'pages/company_setup.php?msg=created');
             exit;
@@ -120,6 +126,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['company_tax_registered'] = $tax_registered;
                 $_SESSION['company_tax_type'] = $tax_type;
             }
+            // Auto-create VAT accounts if tax_registered
+            if ($tax_registered) {
+                $chkIn = $db->query("SELECT id FROM accounts WHERE company_id = $cid AND LOWER(name) = 'input vat'");
+                if ($chkIn->num_rows === 0) {
+                    $db->query("INSERT INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES ($cid, '1-160', 'Input VAT', 'Assets', 'Current Assets', 'Value-added tax on purchases', 0)");
+                }
+                $chkOut = $db->query("SELECT id FROM accounts WHERE company_id = $cid AND LOWER(name) = 'output vat'");
+                if ($chkOut->num_rows === 0) {
+                    $db->query("INSERT INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES ($cid, '2-150', 'Output VAT', 'Liabilities', 'Current Liabilities', 'Value-added tax on sales', 0)");
+                }
+            }
+
             log_activity($db, $userId, 'Update', 'Company Setup', "Updated company: $name");
             header('Location: ' . BASE_URL . 'pages/company_setup.php?msg=updated');
             exit;
