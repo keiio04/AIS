@@ -38,14 +38,6 @@ $stmtCo->bind_param('i', $company_id);
 $stmtCo->execute();
 $companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_registered'] ?? false);
 
-// Security constraint: Filter out VAT accounts if Non-VAT registered
-if (!$companyIsTaxRegistered) {
-    $accountsList = array_filter($accountsList, function($acc) use ($inputVatId, $outputVatId) {
-        return $acc['id'] != $inputVatId && $acc['id'] != $outputVatId;
-    });
-    $accountsList = array_values($accountsList);
-}
-
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'add_entry' || $_POST['action'] === 'edit_entry') {
@@ -58,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $ref_no = 'JV-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
         }
         $description = trim($_POST['description'] ?? '');
-        $is_taxable = 0; // Legacy column, always 0 moving forward
+        $is_taxable = ($companyIsTaxRegistered && isset($_POST['is_taxable']) && $_POST['is_taxable'] === '1') ? 1 : 0;
         $particulars = '';
         $type = 'Operating';
         $vendor_name = trim($_POST['vendor_name'] ?? '');
@@ -67,17 +59,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $account_ids = $_POST['account_id'] ?? [];
         $debits = $_POST['debit'] ?? [];
         $credits = $_POST['credit'] ?? [];
-
-        // Security check: Reject VAT accounts for Non-VAT company
-        if (!$companyIsTaxRegistered && $action !== 'error') {
-            foreach ($account_ids as $acc_id) {
-                if ($acc_id == $inputVatId || $acc_id == $outputVatId) {
-                    $error = "This company is Non-VAT Registered. VAT accounts are disabled.";
-                    $action = 'error';
-                    break;
-                }
-            }
-        }
 
         if ($action === 'edit_entry') {
             $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL");
@@ -119,6 +100,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 }
 
+                if ($is_taxable) {
+                    $added_input_vat = 0;
+                    $added_output_vat = 0;
+
+                    foreach ($final_lines as &$line) {
+                        $cat = '';
+                        foreach ($accountsList as $a) {
+                            if ($a['id'] == $line['account_id']) { $cat = $a['category']; break; }
+                        }
+                        
+                        if ($cat === 'Expenses' || $cat === 'Assets') {
+                            if ($line['debit'] > 0 && $inputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                // Exclude Cash and AR from input VAT calculation
+                                $name_lower = '';
+                                foreach ($accountsList as $a) {
+                                    if ($a['id'] == $line['account_id']) { $name_lower = strtolower($a['name']); break; }
+                                }
+                                if (strpos($name_lower, 'cash') === false && strpos($name_lower, 'receivable') === false) {
+                                    $vat = $line['debit'] * 0.12;
+                                    $added_input_vat += $vat;
+                                }
+                            }
+                        } elseif ($cat === 'Revenue') {
+                            if ($line['credit'] > 0 && $outputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $vat = $line['credit'] * 0.12;
+                                $added_output_vat += $vat;
+                            }
+                        }
+                    }
+                    unset($line);
+
+                    if ($added_input_vat > 0) {
+                        $final_lines[] = ['account_id' => $inputVatId, 'debit' => $added_input_vat, 'credit' => 0];
+                        foreach ($final_lines as &$line) {
+                            if ($line['credit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $line['credit'] += $added_input_vat;
+                                break;
+                            }
+                        }
+                        unset($line);
+                    }
+                    
+                    if ($added_output_vat > 0) {
+                        $final_lines[] = ['account_id' => $outputVatId, 'debit' => 0, 'credit' => $added_output_vat];
+                        foreach ($final_lines as &$line) {
+                            if ($line['debit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $line['debit'] += $added_output_vat;
+                                break;
+                            }
+                        }
+                        unset($line);
+                    }
+                }
+                
                 $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
                 $total_debit = 0;
                 foreach ($final_lines as $line) {
@@ -241,7 +276,7 @@ require_once '../includes/header.php';
                     <td style="font-family: monospace; font-size: 0.85rem;">
                         <?php if ($index === 0): ?>
                             <span style="background: #e2e8f0; color: #475569; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span>
-                            
+                            <span style="background: <?= (isset($tx['is_taxable']) && $tx['is_taxable']) ? '#fef9c3' : '#f1f5f9' ?>; color: <?= (isset($tx['is_taxable']) && $tx['is_taxable']) ? '#854d0e' : '#64748b' ?>; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Taxability"><?= (isset($tx['is_taxable']) && $tx['is_taxable']) ? 'TAXABLE' : 'NOT TAXABLE' ?></span><br>
                             <?= $tx['reference_no'] ? '<strong>'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
                         <?php endif; ?>
                         <span style="color: var(--primary-color)"><?= htmlspecialchars($line['code']) ?></span>
@@ -329,6 +364,22 @@ require_once '../includes/header.php';
                     <label class="form-label">Description</label>
                     <textarea name="description" id="entryDescription" class="form-control" rows="3" style="resize: vertical;"></textarea>
                 </div>
+
+                <?php if ($companyIsTaxRegistered): ?>
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label class="form-label">Taxability</label>
+                    <div style="display: flex; gap: 1.5rem; align-items: center;">
+                        <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; cursor: pointer;">
+                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" checked>
+                            Taxable (12% VAT Auto-Compute)
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; opacity: 0.5; cursor: not-allowed;">
+                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" onchange="onTaxChange()">
+                            Not Taxable
+                        </label>
+                    </div>
+                </div>
+                <?php endif; ?>
 
                 <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
                     <table class="table" style="margin: 0;">
@@ -613,6 +664,10 @@ function autoZero(el, otherClassPrefix) {
     }
 }
 
+function onTaxChange() {
+    calcTotals();
+}
+
 function calcTotals() {
     let drTotal = 0;
     let crTotal = 0;
@@ -649,7 +704,11 @@ function openModal() {
     document.getElementById('entryVendor').value = '';
     document.getElementById('entryDescription').value = '';
     
-    
+    if (companyIsTaxRegistered) {
+        document.getElementById('taxableYes').checked = true;
+    } else {
+        document.getElementById('taxableNo').checked = true;
+    }
 
     document.getElementById('lines-container').innerHTML = '';
     lineCount = 0;
@@ -671,7 +730,11 @@ function openEditModal(tx) {
     document.getElementById('entryVendor').value = tx.vendor_name || '';
     document.getElementById('entryDescription').value = tx.description || '';
     
-    
+    if (tx.is_taxable == 1) {
+        document.getElementById('taxableYes').checked = true;
+    } else {
+        document.getElementById('taxableNo').checked = true;
+    }
 
     document.getElementById('lines-container').innerHTML = '';
     lineCount = 0;

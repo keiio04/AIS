@@ -50,8 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $ref_no = 'CDJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
     }
     $description = '';
-    $is_taxable = 0; // Legacy column, always 0 moving forward
-        $particulars = '';
+    $is_taxable = ($companyIsTaxRegistered && isset($_POST['is_taxable']) && $_POST['is_taxable'] == '1') ? 1 : 0;
+    $particulars = '';
     $type = 'Operating';
     $vendor_name = null; // No longer at header level
 
@@ -60,17 +60,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $line_vendors = $_POST['line_vendor'] ?? [];
     $debits = $_POST['debit'] ?? [];
     $credits = $_POST['credit'] ?? [];
-
-        // Security check: Reject VAT accounts for Non-VAT company
-        if (!$companyIsTaxRegistered && $action !== 'error') {
-            foreach ($account_ids as $acc_id) {
-                if ($acc_id == $inputVatId || $acc_id == $outputVatId) {
-                    $error = "This company is Non-VAT Registered. VAT accounts are disabled.";
-                    $action = 'error';
-                    break;
-                }
-            }
-        }
 
     $db->begin_transaction();
     try {
@@ -91,6 +80,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 }
 
+                if ($is_taxable) {
+                    $added_input_vat = 0;
+                    $added_output_vat = 0;
+
+                    foreach ($final_lines as &$line) {
+                        $cat = '';
+                        foreach ($accountsList as $a) {
+                            if ($a['id'] == $line['account_id']) { $cat = $a['category']; break; }
+                        }
+                        
+                        if ($cat === 'Expenses' || $cat === 'Assets') {
+                            if ($line['debit'] > 0 && $inputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                // Exclude Cash and AR from input VAT calculation
+                                $name_lower = '';
+                                foreach ($accountsList as $a) {
+                                    if ($a['id'] == $line['account_id']) { $name_lower = strtolower($a['name']); break; }
+                                }
+                                if (strpos($name_lower, 'cash') === false && strpos($name_lower, 'receivable') === false) {
+                                    $vat = $line['debit'] * 0.12;
+                                    $added_input_vat += $vat;
+                                }
+                            }
+                        } elseif ($cat === 'Revenue') {
+                            if ($line['credit'] > 0 && $outputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $vat = $line['credit'] * 0.12;
+                                $added_output_vat += $vat;
+                            }
+                        }
+                    }
+                    unset($line);
+
+                    if ($added_input_vat > 0) {
+                        $final_lines[] = ['account_id' => $inputVatId, 'debit' => $added_input_vat, 'credit' => 0];
+                        foreach ($final_lines as &$line) {
+                            if ($line['credit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $line['credit'] += $added_input_vat;
+                                break;
+                            }
+                        }
+                        unset($line);
+                    }
+                    
+                    if ($added_output_vat > 0) {
+                        $final_lines[] = ['account_id' => $outputVatId, 'debit' => 0, 'credit' => $added_output_vat];
+                        foreach ($final_lines as &$line) {
+                            if ($line['debit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $line['debit'] += $added_output_vat;
+                                break;
+                            }
+                        }
+                        unset($line);
+                    }
+                }
+                
                 $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
                 $total_debit = 0;
                 foreach ($final_lines as $line) {
@@ -273,6 +316,20 @@ require_once '../includes/header.php';
                 </div>
 
                 
+                <?php if ($companyIsTaxRegistered): ?>
+                <div style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem;">
+                    <div style="font-weight: 600; color: var(--text-primary);">Tax Settings:</div>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" checked>
+                        Taxable (12% VAT Auto-Compute)
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; opacity: 0.5; cursor: not-allowed;">
+                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" onchange="onTaxChange()">
+                        Not Taxable
+                    </label>
+                </div>
+                <?php endif; ?>
+                
                 <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
                     <table class="table" style="margin: 0;">
                         <thead>
@@ -323,6 +380,10 @@ const accounts = <?= json_encode($accountsList) ?>;
 
 const globalInputVatId = <?= $inputVatId ?: 'null' ?>;
 const globalOutputVatId = <?= $outputVatId ?: 'null' ?>;
+
+function onTaxChange() {
+    calcTotals();
+}
 
 let lineCount = 0;
 
