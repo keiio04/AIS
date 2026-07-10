@@ -285,7 +285,12 @@ require_once '../includes/header.php';
           <?php endif; ?>
         </td>
         <td>
-          <div style="font-weight: 600; color: var(--text-primary);"><?= htmlspecialchars($co['name']) ?></div>
+          <button onclick="openEditModal(<?= $co['id'] ?>, '<?= htmlspecialchars(addslashes($co['name'])) ?>', '<?= htmlspecialchars(addslashes($co['period_type'] ?? 'Calendar')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_month'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($co['fiscal_start_date'] ?? '')) ?>', <?= (int)($co['tax_registered'] ?? 0) ?>, '<?= htmlspecialchars(addslashes($co['tax_type'] ?? '')) ?>')" 
+                  style="font-weight: 600; color: #2563eb; background: none; border: none; cursor: pointer; padding: 0; font-size: 1rem; font-family: inherit; text-decoration: none; text-align: left;"
+                  onmouseover="this.style.textDecoration='underline'; this.style.color='#1d4ed8';" 
+                  onmouseout="this.style.textDecoration='none'; this.style.color='#2563eb';">
+            <?= htmlspecialchars($co['name']) ?>
+          </button>
           <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px;">
             <i data-lucide="calendar" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i>
             <?php if ($co['period_type'] === 'Fiscal'): ?>
