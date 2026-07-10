@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $ref_no = 'JV-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
         }
         $description = trim($_POST['description'] ?? '');
-        $is_taxable = ($companyIsTaxRegistered && isset($_POST['is_taxable']) && $_POST['is_taxable'] === '1') ? 1 : 0;
+        $is_taxable = $companyIsTaxRegistered ? 1 : 0;
         $particulars = '';
         $type = 'Operating';
         $vendor_name = trim($_POST['vendor_name'] ?? '');
@@ -276,7 +276,7 @@ require_once '../includes/header.php';
                     <td style="font-family: monospace; font-size: 0.85rem;">
                         <?php if ($index === 0): ?>
                             <span style="background: #e2e8f0; color: #475569; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span>
-                            <span style="background: <?= (isset($tx['is_taxable']) && $tx['is_taxable']) ? '#fef9c3' : '#f1f5f9' ?>; color: <?= (isset($tx['is_taxable']) && $tx['is_taxable']) ? '#854d0e' : '#64748b' ?>; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Taxability"><?= (isset($tx['is_taxable']) && $tx['is_taxable']) ? 'TAXABLE' : 'NOT TAXABLE' ?></span><br>
+                            
                             <?= $tx['reference_no'] ? '<strong>'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
                         <?php endif; ?>
                         <span style="color: var(--primary-color)"><?= htmlspecialchars($line['code']) ?></span>
@@ -366,19 +366,6 @@ require_once '../includes/header.php';
                 </div>
 
                 <?php if ($companyIsTaxRegistered): ?>
-                <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label class="form-label">Taxability</label>
-                    <div style="display: flex; gap: 1.5rem; align-items: center;">
-                        <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; cursor: pointer;">
-                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" checked>
-                            Taxable (12% VAT Auto-Compute)
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; opacity: 0.5; cursor: not-allowed;">
-                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" onchange="onTaxChange()">
-                            Not Taxable
-                        </label>
-                    </div>
-                </div>
                 <?php endif; ?>
 
                 <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
@@ -664,10 +651,6 @@ function autoZero(el, otherClassPrefix) {
     }
 }
 
-function onTaxChange() {
-    calcTotals();
-}
-
 function calcTotals() {
     let drTotal = 0;
     let crTotal = 0;
@@ -704,11 +687,7 @@ function openModal() {
     document.getElementById('entryVendor').value = '';
     document.getElementById('entryDescription').value = '';
     
-    if (companyIsTaxRegistered) {
-        document.getElementById('taxableYes').checked = true;
-    } else {
-        document.getElementById('taxableNo').checked = true;
-    }
+    
 
     document.getElementById('lines-container').innerHTML = '';
     lineCount = 0;
@@ -730,11 +709,7 @@ function openEditModal(tx) {
     document.getElementById('entryVendor').value = tx.vendor_name || '';
     document.getElementById('entryDescription').value = tx.description || '';
     
-    if (tx.is_taxable == 1) {
-        document.getElementById('taxableYes').checked = true;
-    } else {
-        document.getElementById('taxableNo').checked = true;
-    }
+    
 
     document.getElementById('lines-container').innerHTML = '';
     lineCount = 0;
