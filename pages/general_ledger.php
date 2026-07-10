@@ -91,7 +91,7 @@ if ($min_date && $max_date) {
             <?= htmlspecialchars($activeCompanyName ?? 'Company') ?>
         </h2>
         <h3 style="font-size: 1.05rem; color: #4b5563; margin-bottom: 0.25rem; font-weight: 600;">
-            General Ledger<?= $selected_category ? ' - ' . htmlspecialchars($selected_category) : '' ?>
+            General Ledger
         </h3>
         <p style="font-size: 0.95rem; color: #6b7280; font-weight: 400; margin: 0;">
             <?= $date_display ?>
