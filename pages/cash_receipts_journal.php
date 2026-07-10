@@ -24,6 +24,23 @@ $stmt->bind_param('i', $company_id);
 $stmt->execute();
 $accountsList = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
+// Helper to find VAT Account IDs on the backend
+$inputVatId = null;
+$outputVatId = null;
+foreach ($accountsList as $acc) {
+    if (strpos(strtolower($acc['name']), 'input vat') !== false) {
+        $inputVatId = $acc['id'];
+    } elseif (strpos(strtolower($acc['name']), 'output vat') !== false) {
+        $outputVatId = $acc['id'];
+    }
+}
+
+// Fetch company's tax registration status
+$stmtCo = $db->prepare("SELECT tax_registered FROM companies WHERE id = ?");
+$stmtCo->bind_param('i', $company_id);
+$stmtCo->execute();
+$companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_registered'] ?? false);
+
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'add_entry') {
@@ -33,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $ref_no = 'CRJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
     }
     $description = '';
+    $is_taxable = isset($_POST['is_taxable']) && $_POST['is_taxable'] == '1' ? 1 : 0;
     $particulars = '';
     $type = 'Operating';
     $vendor_name = null; // No longer at header level
@@ -46,28 +64,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $db->begin_transaction();
     try {
         $journal_id = 'CRJ';
-        $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, particulars, type, vendor_name, journal_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param('isssssss', $company_id, $ref_no, $date, $description, $particulars, $type, $vendor_name, $journal_id);
+        $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param('isssissss', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id);
         $stmt->execute();
         $entry_id = $stmt->insert_id;
 
-        $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, description, vendor_name, debit, credit) VALUES (?, ?, ?, ?, ?, ?)");
-        
-        $total_debit = 0;
-        for ($i = 0; $i < count($account_ids); $i++) {
-            $acc_id = (int)$account_ids[$i];
-            $line_desc = $line_descriptions[$i] ?? '';
-            $line_vendor = $line_vendors[$i] ?? null;
-            if ($line_vendor === '') $line_vendor = null;
-            $dr = (float)($debits[$i] ?: 0);
-            $cr = (float)($credits[$i] ?: 0);
+        // --- BACKEND VAT LOGIC START ---
+                $final_lines = [];
+                for ($i = 0; $i < count($account_ids); $i++) {
+                    $acc_id = (int)$account_ids[$i];
+                    $dr = (float)str_replace(',', '', $debits[$i] ?: 0);
+                    $cr = (float)str_replace(',', '', $credits[$i] ?: 0);
+                    if ($acc_id > 0 && ($dr > 0 || $cr > 0)) {
+                        $final_lines[] = ['account_id' => $acc_id, 'debit' => $dr, 'credit' => $cr];
+                    }
+                }
 
-            if ($acc_id > 0 && ($dr > 0 || $cr > 0)) {
-                $total_debit += $dr;
-                $stmtLine->bind_param('iissdd', $entry_id, $acc_id, $line_desc, $line_vendor, $dr, $cr);
-                $stmtLine->execute();
-            }
-        }
+                if ($is_taxable) {
+                    $added_input_vat = 0;
+                    $added_output_vat = 0;
+
+                    foreach ($final_lines as &$line) {
+                        $cat = '';
+                        foreach ($accountsList as $a) {
+                            if ($a['id'] == $line['account_id']) { $cat = $a['category']; break; }
+                        }
+                        
+                        if ($cat === 'Expenses' || $cat === 'Assets') {
+                            if ($line['debit'] > 0 && $inputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                // Exclude Cash and AR from input VAT calculation
+                                $name_lower = '';
+                                foreach ($accountsList as $a) {
+                                    if ($a['id'] == $line['account_id']) { $name_lower = strtolower($a['name']); break; }
+                                }
+                                if (strpos($name_lower, 'cash') === false && strpos($name_lower, 'receivable') === false) {
+                                    $vat = $line['debit'] * 0.12;
+                                    $added_input_vat += $vat;
+                                }
+                            }
+                        } elseif ($cat === 'Revenue') {
+                            if ($line['credit'] > 0 && $outputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $vat = $line['credit'] * 0.12;
+                                $added_output_vat += $vat;
+                            }
+                        }
+                    }
+                    unset($line);
+
+                    if ($added_input_vat > 0) {
+                        $final_lines[] = ['account_id' => $inputVatId, 'debit' => $added_input_vat, 'credit' => 0];
+                        foreach ($final_lines as &$line) {
+                            if ($line['credit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $line['credit'] += $added_input_vat;
+                                break;
+                            }
+                        }
+                        unset($line);
+                    }
+                    
+                    if ($added_output_vat > 0) {
+                        $final_lines[] = ['account_id' => $outputVatId, 'debit' => 0, 'credit' => $added_output_vat];
+                        foreach ($final_lines as &$line) {
+                            if ($line['debit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $line['debit'] += $added_output_vat;
+                                break;
+                            }
+                        }
+                        unset($line);
+                    }
+                }
+                
+                $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
+                $total_debit = 0;
+                foreach ($final_lines as $line) {
+                    $dr = $line['debit'];
+                    $cr = $line['credit'];
+                    $total_debit += $dr;
+                    $stmtLine->bind_param('iidd', $entry_id, $line['account_id'], $dr, $cr);
+                    $stmtLine->execute();
+                }
+                // --- BACKEND VAT LOGIC END ---
 
         // Add to activity log
         $user_id = $_SESSION['user_id'];
@@ -239,6 +315,19 @@ require_once '../includes/header.php';
                     </div>
                 </div>
 
+                
+                <div style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem;">
+                    <div style="font-weight: 600; color: var(--text-primary);">Tax Settings:</div>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()" <?= $companyIsTaxRegistered ? 'checked' : '' ?>>
+                        Taxable (12% VAT Auto-Compute)
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: <?= $companyIsTaxRegistered ? 'pointer' : 'not-allowed' ?>;">
+                        <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" <?= $companyIsTaxRegistered ? 'disabled' : '' ?> onchange="onTaxChange()" <?= !$companyIsTaxRegistered ? 'checked' : '' ?>>
+                        Not Taxable
+                    </label>
+                </div>
+                
                 <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
                     <table class="table" style="margin: 0;">
                         <thead>
@@ -285,6 +374,14 @@ require_once '../includes/header.php';
 
 <script>
 const accounts = <?= json_encode($accountsList) ?>;
+
+
+const globalInputVatId = <?= $inputVatId ?: 'null' ?>;
+const globalOutputVatId = <?= $outputVatId ?: 'null' ?>;
+
+function onTaxChange() {
+    calcTotals();
+}
 
 let lineCount = 0;
 

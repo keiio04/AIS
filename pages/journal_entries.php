@@ -4,14 +4,9 @@ require_once '../db.php';
 require_once '../includes/auth.php';
 
 $db = get_db();
-try { $db->query("ALTER TABLE journal_entry_lines ADD COLUMN description VARCHAR(255) NULL AFTER account_id"); } catch (Exception $e) {}
-try { $db->query("ALTER TABLE journal_entry_lines ADD COLUMN vendor_name VARCHAR(100) NULL AFTER description"); } catch (Exception $e) {}
-try { $db->query("ALTER TABLE activity_logs ADD COLUMN company_id INT NULL AFTER id"); } catch (Exception $e) {}
+// Siguraduhing nandiyan ang 'is_taxable' column sa journal_entries mo base sa schema mo
 try { $db->query("ALTER TABLE journal_entries ADD COLUMN is_taxable TINYINT(1) NOT NULL DEFAULT 0 AFTER description"); } catch (Exception $e) {}
-try { $db->query("ALTER TABLE companies ADD COLUMN tax_registered TINYINT(1) NOT NULL DEFAULT 0 AFTER business_type"); } catch (Exception $e) {}
 
-
-$db = get_db();
 $company_id = $_SESSION['active_company_id'] ?? null;
 
 if (!$company_id) {
@@ -26,7 +21,18 @@ $stmt->bind_param('i', $company_id);
 $stmt->execute();
 $accountsList = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-// Fetch company's tax registration status (drives the default Taxable/Not Taxable value)
+// Hanapin ang IDs ng Input VAT at Output VAT accounts ng company
+$inputVatId = null;
+$outputVatId = null;
+foreach ($accountsList as $acc) {
+    if (strpos(strtolower($acc['name']), 'input vat') !== false) {
+        $inputVatId = $acc['id'];
+    } elseif (strpos(strtolower($acc['name']), 'output vat') !== false) {
+        $outputVatId = $acc['id'];
+    }
+}
+
+// Fetch company's tax registration status
 $stmtCo = $db->prepare("SELECT tax_registered FROM companies WHERE id = ?");
 $stmtCo->bind_param('i', $company_id);
 $stmtCo->execute();
@@ -34,140 +40,163 @@ $companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_regis
 
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    if ($_POST['action'] === 'add_entry') {
-    $date = $_POST['date'];
-    $ref_no = $_POST['reference_no'];
-    if (empty(trim($ref_no))) {
-        $ref_no = 'JV-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
-    }
-    $description = trim($_POST['description'] ?? '');
-    $is_taxable = isset($_POST['is_taxable']) ? 1 : 0;
-    $particulars = '';
-    $type = 'Operating';
-    $vendor_name = trim($_POST['vendor_name'] ?? '');
-    if ($vendor_name === '') $vendor_name = null;
-
-    $account_ids = $_POST['account_id'] ?? [];
-    $debits = $_POST['debit'] ?? [];
-    $credits = $_POST['credit'] ?? [];
-
-    $db->begin_transaction();
-    try {
-        $journal_id = 'GJ';
-        $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param('isssissss', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id);
-        $stmt->execute();
-        $entry_id = $stmt->insert_id;
-
-        $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
+    if ($_POST['action'] === 'add_entry' || $_POST['action'] === 'edit_entry') {
+        $action = $_POST['action'];
+        $entry_id = ($action === 'edit_entry') ? (int)($_POST['entry_id'] ?? 0) : null;
         
-        $total_debit = 0;
-        for ($i = 0; $i < count($account_ids); $i++) {
-            $acc_id = (int)$account_ids[$i];
-            $dr = (float)($debits[$i] ?: 0);
-            $cr = (float)($credits[$i] ?: 0);
+        $date = $_POST['date'];
+        $ref_no = $_POST['reference_no'];
+        if (empty(trim($ref_no))) {
+            $ref_no = 'JV-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
+        }
+        $description = trim($_POST['description'] ?? '');
+        $is_taxable = (isset($_POST['is_taxable']) && $_POST['is_taxable'] === '1') ? 1 : 0;
+        $particulars = '';
+        $type = 'Operating';
+        $vendor_name = trim($_POST['vendor_name'] ?? '');
+        if ($vendor_name === '') $vendor_name = null;
 
-            if ($acc_id > 0 && ($dr > 0 || $cr > 0)) {
-                $total_debit += $dr;
-                $stmtLine->bind_param('iidd', $entry_id, $acc_id, $dr, $cr);
-                $stmtLine->execute();
+        $account_ids = $_POST['account_id'] ?? [];
+        $debits = $_POST['debit'] ?? [];
+        $credits = $_POST['credit'] ?? [];
+
+        if ($action === 'edit_entry') {
+            $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL");
+            $check->bind_param('ii', $entry_id, $company_id);
+            $check->execute();
+            if (!$check->get_result()->fetch_assoc()) {
+                $error = "Journal entry not found.";
+                $action = 'error';
             }
         }
 
-        // Add to activity log
-        $user_id = $_SESSION['user_id'];
-        $log_action = "Created Journal Entry | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2);
-        $logStmt = $db->prepare("INSERT INTO activity_logs (user_id, action) VALUES (?, ?)");
-        $logStmt->bind_param('is', $user_id, $log_action);
-        $logStmt->execute();
+        if ($action !== 'error') {
+            $db->begin_transaction();
+            try {
+                if ($action === 'add_entry') {
+                    $journal_id = 'GJ';
+                    $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $stmt->bind_param('isssissss', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id);
+                    $stmt->execute();
+                    $entry_id = $stmt->insert_id;
+                } else {
+                    $stmt = $db->prepare("UPDATE journal_entries SET reference_no = ?, date = ?, description = ?, is_taxable = ?, vendor_name = ? WHERE id = ? AND company_id = ?");
+                    $stmt->bind_param('sssisii', $ref_no, $date, $description, $is_taxable, $vendor_name, $entry_id, $company_id);
+                    $stmt->execute();
 
-        $db->commit();
-        header("Location: journal_entries.php");
-        exit;
-    } catch (Exception $e) {
-        $db->rollback();
-        $error = "Failed to save journal entry: " . $e->getMessage();
-    }
-    } elseif ($_POST['action'] === 'edit_entry') {
-    $entry_id = (int)($_POST['entry_id'] ?? 0);
-    $date = $_POST['date'];
-    $ref_no = $_POST['reference_no'];
-    if (empty(trim($ref_no))) {
-        $ref_no = 'JV-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
-    }
-    $description = trim($_POST['description'] ?? '');
-    $is_taxable = isset($_POST['is_taxable']) ? 1 : 0;
-    $vendor_name = trim($_POST['vendor_name'] ?? '');
-    if ($vendor_name === '') $vendor_name = null;
+                    $stmtDelLines = $db->prepare("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?");
+                    $stmtDelLines->bind_param('i', $entry_id);
+                    $stmtDelLines->execute();
+                }
 
-    $account_ids = $_POST['account_id'] ?? [];
-    $debits = $_POST['debit'] ?? [];
-    $credits = $_POST['credit'] ?? [];
+                // --- BACKEND VAT LOGIC START ---
+                $final_lines = [];
+                for ($i = 0; $i < count($account_ids); $i++) {
+                    $acc_id = (int)$account_ids[$i];
+                    $dr = (float)str_replace(',', '', $debits[$i] ?: 0);
+                    $cr = (float)str_replace(',', '', $credits[$i] ?: 0);
+                    if ($acc_id > 0 && ($dr > 0 || $cr > 0)) {
+                        $final_lines[] = ['account_id' => $acc_id, 'debit' => $dr, 'credit' => $cr];
+                    }
+                }
 
-    // Make sure this entry actually belongs to the active company before touching it
-    $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL");
-    $check->bind_param('ii', $entry_id, $company_id);
-    $check->execute();
-    $exists = $check->get_result()->fetch_assoc();
+                if ($is_taxable) {
+                    $added_input_vat = 0;
+                    $added_output_vat = 0;
 
-    if (!$entry_id || !$exists) {
-        $error = "Journal entry not found.";
-    } else {
-        $db->begin_transaction();
-        try {
-            $stmt = $db->prepare("UPDATE journal_entries SET reference_no = ?, date = ?, description = ?, is_taxable = ?, vendor_name = ? WHERE id = ? AND company_id = ?");
-            $stmt->bind_param('sssisii', $ref_no, $date, $description, $is_taxable, $vendor_name, $entry_id, $company_id);
-            $stmt->execute();
+                    foreach ($final_lines as &$line) {
+                        $cat = '';
+                        foreach ($accountsList as $a) {
+                            if ($a['id'] == $line['account_id']) { $cat = $a['category']; break; }
+                        }
+                        
+                        if ($cat === 'Expenses' || $cat === 'Assets') {
+                            if ($line['debit'] > 0 && $inputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                // Exclude Cash and AR from input VAT calculation
+                                $name_lower = '';
+                                foreach ($accountsList as $a) {
+                                    if ($a['id'] == $line['account_id']) { $name_lower = strtolower($a['name']); break; }
+                                }
+                                if (strpos($name_lower, 'cash') === false && strpos($name_lower, 'receivable') === false) {
+                                    $vat = $line['debit'] * 0.12;
+                                    $added_input_vat += $vat;
+                                }
+                            }
+                        } elseif ($cat === 'Revenue') {
+                            if ($line['credit'] > 0 && $outputVatId && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $vat = $line['credit'] * 0.12;
+                                $added_output_vat += $vat;
+                            }
+                        }
+                    }
+                    unset($line);
 
-            // Replace all lines for this entry
-            $stmtDelLines = $db->prepare("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?");
-            $stmtDelLines->bind_param('i', $entry_id);
-            $stmtDelLines->execute();
-
-            $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
-
-            $total_debit = 0;
-            for ($i = 0; $i < count($account_ids); $i++) {
-                $acc_id = (int)$account_ids[$i];
-                $dr = (float)($debits[$i] ?: 0);
-                $cr = (float)($credits[$i] ?: 0);
-
-                if ($acc_id > 0 && ($dr > 0 || $cr > 0)) {
+                    if ($added_input_vat > 0) {
+                        $final_lines[] = ['account_id' => $inputVatId, 'debit' => $added_input_vat, 'credit' => 0];
+                        foreach ($final_lines as &$line) {
+                            if ($line['credit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $line['credit'] += $added_input_vat;
+                                break;
+                            }
+                        }
+                        unset($line);
+                    }
+                    
+                    if ($added_output_vat > 0) {
+                        $final_lines[] = ['account_id' => $outputVatId, 'debit' => 0, 'credit' => $added_output_vat];
+                        foreach ($final_lines as &$line) {
+                            if ($line['debit'] > 0 && $line['account_id'] != $inputVatId && $line['account_id'] != $outputVatId) {
+                                $line['debit'] += $added_output_vat;
+                                break;
+                            }
+                        }
+                        unset($line);
+                    }
+                }
+                
+                $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
+                $total_debit = 0;
+                foreach ($final_lines as $line) {
+                    $dr = $line['debit'];
+                    $cr = $line['credit'];
                     $total_debit += $dr;
-                    $stmtLine->bind_param('iidd', $entry_id, $acc_id, $dr, $cr);
+                    $stmtLine->bind_param('iidd', $entry_id, $line['account_id'], $dr, $cr);
                     $stmtLine->execute();
                 }
+                // --- BACKEND VAT LOGIC END ---
+
+                $user_id = $_SESSION['user_id'];
+                $log_action = ($action === 'add_entry') 
+                    ? "Created Journal Entry | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2)
+                    : "Edited Journal Entry #$entry_id | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2);
+                
+                $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+                $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
+                $logStmt->execute();
+
+                $db->commit();
+                header("Location: journal_entries.php");
+                exit;
+            } catch (Exception $e) {
+                $db->rollback();
+                $error = "Failed to save journal entry: " . $e->getMessage();
             }
-
-            $user_id = $_SESSION['user_id'];
-            $log_action = "Edited Journal Entry #$entry_id | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2);
-            $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
-            $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
-            $logStmt->execute();
-
-            $db->commit();
-            header("Location: journal_entries.php");
-            exit;
-        } catch (Exception $e) {
-            $db->rollback();
-            $error = "Failed to update journal entry: " . $e->getMessage();
         }
-    }
     } elseif ($_POST['action'] === 'delete') {
-    $delete_id = (int)$_POST['id'];
-    $stmtDel = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?");
-    $stmtDel->bind_param('ii', $delete_id, $company_id);
-    $stmtDel->execute();
-    
-    $user_id = $_SESSION['user_id'];
-    $log_action = "Moved Journal Entry #$delete_id to Trash";
-    $stmtLog = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
-    $stmtLog->bind_param('iis', $company_id, $user_id, $log_action);
-    $stmtLog->execute();
-    
-    header("Location: journal_entries.php");
-    exit;
-}
+        $delete_id = (int)$_POST['id'];
+        $stmtDel = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?");
+        $stmtDel->bind_param('ii', $delete_id, $company_id);
+        $stmtDel->execute();
+        
+        $user_id = $_SESSION['user_id'];
+        $log_action = "Moved Journal Entry #$delete_id to Trash";
+        $stmtLog = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+        $stmtLog->bind_param('iis', $company_id, $user_id, $log_action);
+        $stmtLog->execute();
+        
+        header("Location: journal_entries.php");
+        exit;
+    }
 }
 
 // Fetch existing journal entries
@@ -247,7 +276,7 @@ require_once '../includes/header.php';
                     <td style="font-family: monospace; font-size: 0.85rem;">
                         <?php if ($index === 0): ?>
                             <span style="background: #e2e8f0; color: #475569; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span>
-                            <span style="background: <?= $tx['is_taxable'] ? '#fef9c3' : '#f1f5f9' ?>; color: <?= $tx['is_taxable'] ? '#854d0e' : '#64748b' ?>; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Taxability"><?= $tx['is_taxable'] ? 'TAXABLE' : 'NOT TAXABLE' ?></span><br>
+                            <span style="background: <?= (isset($tx['is_taxable']) && $tx['is_taxable']) ? '#fef9c3' : '#f1f5f9' ?>; color: <?= (isset($tx['is_taxable']) && $tx['is_taxable']) ? '#854d0e' : '#64748b' ?>; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Taxability"><?= (isset($tx['is_taxable']) && $tx['is_taxable']) ? 'TAXABLE' : 'NOT TAXABLE' ?></span><br>
                             <?= $tx['reference_no'] ? '<strong>'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
                         <?php endif; ?>
                         <span style="color: var(--primary-color)"><?= htmlspecialchars($line['code']) ?></span>
@@ -262,7 +291,7 @@ require_once '../includes/header.php';
                                 "date" => $tx['date'],
                                 "reference_no" => $tx['reference_no'],
                                 "description" => $tx['description'],
-                                "is_taxable" => $tx['is_taxable'],
+                                "is_taxable" => $tx['is_taxable'] ?? 0,
                                 "vendor_name" => $tx['vendor_name'],
                                 "lines" => array_map(function($l) {
                                     return [
@@ -304,7 +333,6 @@ require_once '../includes/header.php';
     </div>
 </div>
 
-<!-- Modal -->
 <div id="entryModal" class="modal-overlay hidden">
     <div class="modal" style="width: 1100px; max-width: 95vw;">
         <div class="modal-header">
@@ -341,17 +369,14 @@ require_once '../includes/header.php';
                     <label class="form-label">Taxability</label>
                     <div style="display: flex; gap: 1.5rem; align-items: center;">
                         <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; cursor: pointer;">
-                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;">
-                            Taxable
+                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;" onchange="onTaxChange()">
+                            Taxable (12% VAT Auto-Compute)
                         </label>
                         <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; <?= $companyIsTaxRegistered ? 'opacity: 0.5; cursor: not-allowed;' : 'cursor: pointer;' ?>">
-                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" <?= $companyIsTaxRegistered ? 'disabled' : '' ?>>
+                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" <?= $companyIsTaxRegistered ? 'disabled' : '' ?> onchange="onTaxChange()">
                             Not Taxable
                         </label>
                     </div>
-                    <?php if ($companyIsTaxRegistered): ?>
-
-                    <?php endif; ?>
                 </div>
 
                 <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
@@ -365,8 +390,7 @@ require_once '../includes/header.php';
                             </tr>
                         </thead>
                         <tbody id="lines-container">
-                            <!-- JS injected rows -->
-                        </tbody>
+                            </tbody>
                         <tfoot>
                             <tr>
                                 <td colspan="1">
@@ -383,10 +407,9 @@ require_once '../includes/header.php';
                     </table>
                 </div>
                 
-                <div id="balance-warning" style="color: var(--danger-color); font-size: 0.875rem; margin-bottom: 1rem; text-align: right; display: none;">
+                <div id="balance-warning" style="color: #ef4444; font-size: 0.875rem; margin-bottom: 1rem; text-align: right; display: none;">
                     Debits and Credits must balance. Difference: ₱<span id="diff-amount">0.00</span>
                 </div>
-
             </form>
         </div>
         <div class="modal-footer">
@@ -402,7 +425,7 @@ const companyIsTaxRegistered = <?= $companyIsTaxRegistered ? 'true' : 'false' ?>
 
 let lineCount = 0;
 
-// ── Number formatting helpers for Debit/Credit fields ──────────────
+
 function formatNumber(val) {
     const num = parseFloat(val);
     if (isNaN(num)) return '';
@@ -416,7 +439,6 @@ function parseNumber(str) {
     return isNaN(num) ? 0 : num;
 }
 
-// While typing: only allow digits and a single decimal point (commas added on blur)
 function restrictDecimalInput(el) {
     let val = el.value.replace(/,/g, '');
     val = val.replace(/[^0-9.]/g, '');
@@ -427,31 +449,28 @@ function restrictDecimalInput(el) {
     el.value = val;
 }
 
-// On focus: strip commas so the raw number is easy to edit
 function unformatCurrencyInput(el) {
     if (el.value) el.value = el.value.replace(/,/g, '');
 }
 
-// On blur: format with thousands separators and 2 decimal places
 function formatCurrencyInput(el) {
     if (el.value === '') return;
     el.value = formatNumber(parseNumber(el.value));
 }
 
-
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// ── Smart Account Search (combobox) ─────────────────────────────────
-let activeAccountRow = null;   // <tr> currently associated with the open dropdown
-let accountDropdownEl = null;  // shared floating dropdown, appended to <body>
+// Smart Account Dropdown
+let activeAccountRow = null;
+let accountDropdownEl = null;
 
 function getAccountDropdownEl() {
     if (!accountDropdownEl) {
         accountDropdownEl = document.createElement('div');
         accountDropdownEl.id = 'account-dropdown-global';
-        accountDropdownEl.style.cssText = 'display:none; position:fixed; z-index:9999; background:#fff; border:1px solid var(--border-color); border-radius:6px; max-height:220px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.12);';
+        accountDropdownEl.style.cssText = 'display:none; position:fixed; z-index:9999; background:#fff; border:1px solid #cbd5e1; border-radius:6px; max-height:220px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.12);';
         document.body.appendChild(accountDropdownEl);
     }
     return accountDropdownEl;
@@ -479,15 +498,13 @@ function renderAccountList(tr, matches, highlightIndex = -1) {
     const listEl = getAccountDropdownEl();
     positionAccountDropdown(inputEl);
     if (matches.length === 0) {
-        listEl.innerHTML = '<div style="padding:0.6rem 0.75rem; color:var(--text-muted); font-size:0.85rem;">No matching accounts</div>';
+        listEl.innerHTML = '<div style="padding:0.6rem 0.75rem; color:#64748b; font-size:0.85rem;">No matching accounts</div>';
     } else {
         listEl.innerHTML = matches.map((acc, idx) => `
             <div class="account-option" data-idx="${idx}" data-id="${acc.id}"
                  style="padding:0.5rem 0.75rem; cursor:pointer; font-size:0.85rem;"
-                 onmousedown="selectAccountOption(this)"
-                 onmouseover="this.style.background='var(--bg-secondary)'"
-                 onmouseout="this.style.background=''">
-                <span style="color:var(--primary-color); font-family:monospace; font-weight:600;">${escapeHtml(acc.code)}</span>
+                 onmousedown="selectAccountOption(this)">
+                <span style="color:#2563eb; font-family:monospace; font-weight:600;">${escapeHtml(acc.code)}</span>
                 &nbsp;—&nbsp;${escapeHtml(acc.name)}
             </div>
         `).join('');
@@ -502,17 +519,15 @@ function updateAccountHighlight(highlightIndex) {
     listEl._highlightIndex = highlightIndex;
     listEl.querySelectorAll('.account-option').forEach(opt => {
         const idx = parseInt(opt.dataset.idx, 10);
-        opt.style.background = (idx === highlightIndex) ? 'var(--bg-secondary)' : '';
+        opt.style.background = (idx === highlightIndex) ? '#f1f5f9' : '';
     });
 }
 
 function onAccountSearchInput(inputEl) {
     const tr = inputEl.closest('tr');
-    // Any manual typing invalidates the previously selected account until re-picked from the list
     tr.querySelector('.account-id-input').value = '';
     const matches = getAccountMatches(inputEl.value);
     renderAccountList(tr, matches, matches.length ? 0 : -1);
-    checkValidity();
 }
 
 function selectAccountOption(optEl) {
@@ -525,7 +540,9 @@ function selectAccountOption(optEl) {
     tr.querySelector('.account-search-input').value = `${acc.code} - ${acc.name}`;
     tr.querySelector('.account-id-input').value = acc.id;
     listEl.style.display = 'none';
-    checkValidity();
+    
+    
+    calcTotals();
 }
 
 function onAccountSearchKeydown(e, inputEl) {
@@ -555,8 +572,8 @@ function onAccountSearchKeydown(e, inputEl) {
             inputEl.value = `${acc.code} - ${acc.name}`;
             tr.querySelector('.account-id-input').value = acc.id;
             listEl.style.display = 'none';
-            checkValidity();
-            // Move focus to the next field for fast keyboard encoding
+            
+            calcTotals();
             const nextInput = tr.querySelector('.dr-input');
             if (nextInput) nextInput.focus();
         }
@@ -566,26 +583,16 @@ function onAccountSearchKeydown(e, inputEl) {
 }
 
 function onAccountSearchBlur(inputEl) {
-    // Delay so a click (mousedown) on an option registers before the list is hidden
     setTimeout(() => {
         const tr = inputEl.closest('tr');
         const listEl = getAccountDropdownEl();
         listEl.style.display = 'none';
-        // If the typed text wasn't picked from the list, clear it so an invalid account can't be submitted
         if (!tr.querySelector('.account-id-input').value) {
             inputEl.value = '';
         }
-        checkValidity();
+        calcTotals();
     }, 150);
 }
-
-window.addEventListener('scroll', function() {
-    const listEl = accountDropdownEl;
-    if (listEl && listEl.style.display === 'block' && activeAccountRow) {
-        const inputEl = activeAccountRow.querySelector('.account-search-input');
-        if (inputEl) positionAccountDropdown(inputEl);
-    }
-}, true);
 
 function addLine(prefill = null) {
     const tr = document.createElement('tr');
@@ -600,10 +607,10 @@ function addLine(prefill = null) {
             <input type="hidden" name="account_id[]" class="account-id-input" value="">
         </td>
         <td style="min-width: 140px;">
-            <input type="text" inputmode="decimal" name="debit[]" class="form-control text-right dr-input" style="min-width: 130px; font-size: 0.95rem; padding: 0.5rem 0.6rem;" placeholder="0.00" oninput="restrictDecimalInput(this); autoZero(this, 'cr'); calcTotals()" onfocus="unformatCurrencyInput(this)" onblur="formatCurrencyInput(this)">
+            <input type="text" inputmode="decimal" name="debit[]" class="form-control text-right dr-input" style="min-width: 130px; font-size: 0.95rem; padding: 0.5rem 0.6rem;" placeholder="0.00" oninput="restrictDecimalInput(this); autoZero(this, 'cr'); calcTotals()" onfocus="unformatCurrencyInput(this)" onblur="formatCurrencyInput(this); calcTotals()">
         </td>
         <td style="min-width: 140px;">
-            <input type="text" inputmode="decimal" name="credit[]" class="form-control text-right cr-input" style="min-width: 130px; font-size: 0.95rem; padding: 0.5rem 0.6rem;" placeholder="0.00" oninput="restrictDecimalInput(this); autoZero(this, 'dr'); calcTotals()" onfocus="unformatCurrencyInput(this)" onblur="formatCurrencyInput(this)">
+            <input type="text" inputmode="decimal" name="credit[]" class="form-control text-right cr-input" style="min-width: 130px; font-size: 0.95rem; padding: 0.5rem 0.6rem;" placeholder="0.00" oninput="restrictDecimalInput(this); autoZero(this, 'dr'); calcTotals()" onfocus="unformatCurrencyInput(this)" onblur="formatCurrencyInput(this); calcTotals()">
         </td>
         <td class="text-center">
             <button type="button" class="icon-btn text-danger remove-btn" onclick="removeLine('${tr.id}')">
@@ -625,11 +632,12 @@ function addLine(prefill = null) {
     lineCount++;
     updateRemoveButtons();
     calcTotals();
+    return tr;
 }
 
 function removeLine(id) {
     const lines = document.querySelectorAll('#lines-container tr');
-    if (lines.length <= 2) return; // keep at least 2
+    if (lines.length <= 2) return;
     document.getElementById(id).remove();
     updateRemoveButtons();
     calcTotals();
@@ -654,6 +662,10 @@ function autoZero(el, otherClassPrefix) {
     }
 }
 
+function onTaxChange() {
+    calcTotals();
+}
+
 function calcTotals() {
     let drTotal = 0;
     let crTotal = 0;
@@ -668,39 +680,13 @@ function calcTotals() {
     
     if (drTotal > 0 && Math.abs(drTotal - crTotal) < 0.01) {
         balWarn.style.display = 'none';
-        document.getElementById('total-dr').style.color = 'var(--text-primary)';
-        document.getElementById('total-cr').style.color = 'var(--text-primary)';
+        saveBtn.removeAttribute('disabled');
     } else {
         if (drTotal > 0 || crTotal > 0) {
             balWarn.style.display = 'block';
             document.getElementById('diff-amount').innerText = Math.abs(drTotal - crTotal).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-            document.getElementById('total-dr').style.color = 'var(--danger-color)';
-            document.getElementById('total-cr').style.color = 'var(--danger-color)';
-        } else {
-            balWarn.style.display = 'none';
         }
-    }
-    checkValidity();
-}
-
-function checkValidity() {
-    let drTotal = 0;
-    let crTotal = 0;
-    let allAccountsSelected = true;
-
-    document.querySelectorAll('.dr-input').forEach(el => drTotal += parseNumber(el.value));
-    document.querySelectorAll('.cr-input').forEach(el => crTotal += parseNumber(el.value));
-    document.querySelectorAll('.account-id-input').forEach(el => {
-        if(!el.value) allAccountsSelected = false;
-    });
-
-    const isBalanced = drTotal > 0 && Math.abs(drTotal - crTotal) < 0.01;
-    const saveBtn = document.getElementById('save-btn');
-    
-    if (isBalanced && allAccountsSelected) {
-        saveBtn.disabled = false;
-    } else {
-        saveBtn.disabled = true;
+        saveBtn.setAttribute('disabled', 'true');
     }
 }
 
@@ -708,54 +694,53 @@ function openModal() {
     const modal = document.getElementById('entryModal');
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
+    
     document.getElementById('modalTitle').innerText = 'New Journal Entry';
-    document.getElementById('save-btn').innerText = 'Save Entry';
     document.getElementById('formAction').value = 'add_entry';
     document.getElementById('entryId').value = '';
-    document.getElementById('entryDate').value = new Date().toISOString().slice(0, 10);
     document.getElementById('entryRefNo').value = '';
     document.getElementById('entryVendor').value = '';
     document.getElementById('entryDescription').value = '';
-    document.getElementById('taxableYes').checked = true; // Always defaults checked; locked to Taxable if company is tax-registered
-    document.getElementById('taxableNo').checked = false;
-    if (!companyIsTaxRegistered) {
-        document.getElementById('taxableYes').checked = false;
+    
+    if (companyIsTaxRegistered) {
+        document.getElementById('taxableYes').checked = true;
+    } else {
         document.getElementById('taxableNo').checked = true;
     }
+
     document.getElementById('lines-container').innerHTML = '';
     lineCount = 0;
     addLine();
     addLine();
+    calcTotals();
 }
 
 function openEditModal(tx) {
     const modal = document.getElementById('entryModal');
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
+    
     document.getElementById('modalTitle').innerText = 'Edit Journal Entry';
-    document.getElementById('save-btn').innerText = 'Update Entry';
     document.getElementById('formAction').value = 'edit_entry';
     document.getElementById('entryId').value = tx.id;
     document.getElementById('entryDate').value = tx.date;
-    document.getElementById('entryRefNo').value = tx.reference_no || '';
+    document.getElementById('entryRefNo').value = tx.reference_no;
     document.getElementById('entryVendor').value = tx.vendor_name || '';
     document.getElementById('entryDescription').value = tx.description || '';
-    const txIsTaxable = !!Number(tx.is_taxable);
-    if (companyIsTaxRegistered) {
-        // Company is tax-registered: lock to Taxable regardless of the entry's saved value
+    
+    if (tx.is_taxable == 1) {
         document.getElementById('taxableYes').checked = true;
-        document.getElementById('taxableNo').checked = false;
     } else {
-        document.getElementById('taxableYes').checked = txIsTaxable;
-        document.getElementById('taxableNo').checked = !txIsTaxable;
+        document.getElementById('taxableNo').checked = true;
     }
 
     document.getElementById('lines-container').innerHTML = '';
     lineCount = 0;
-    tx.lines.forEach(line => addLine(line));
-    if (tx.lines.length < 2) {
-        addLine();
-    }
+    
+    tx.lines.forEach(line => {
+        addLine(line);
+    });
+    
     calcTotals();
 }
 
@@ -763,83 +748,15 @@ function closeModal() {
     const modal = document.getElementById('entryModal');
     modal.classList.add('hidden');
     modal.style.display = 'none';
-    if (accountDropdownEl) accountDropdownEl.style.display = 'none';
-    activeAccountRow = null;
 }
 
-// Close on overlay click
-// ── Journal Type Detection & Toast ──────────────────────────────────
-function _isCash(acc)       { return acc.category === 'Assets' && /cash|bank/i.test(acc.name); }
-function _isReceivable(acc) { return /receivable/i.test(acc.name); }
-function _isPayable(acc)    { return /payable/i.test(acc.name); }
-function _isRevenue(acc)    { return acc.category === 'Revenue'; }
-function _isExpense(acc)    { return acc.category === 'Expenses'; }
-
-function _getLines() {
-    const lines = [];
-    document.querySelectorAll('#lines-container tr').forEach(tr => {
-        const accId = tr.querySelector('.account-id-input')?.value;
-        const dr = parseFloat((tr.querySelector('.dr-input')?.value || '').replace(/,/g, '')) || 0;
-        const cr = parseFloat((tr.querySelector('.cr-input')?.value || '').replace(/,/g, '')) || 0;
-        if (accId) {
-            const acc = accounts.find(a => String(a.id) === String(accId));
-            if (acc) lines.push({ acc, dr, cr });
-        }
-    });
-    return lines;
-}
-
-function _detectGJMismatch(lines) {
-    if (!lines.length) return null;
-    const cashDr  = lines.some(l => _isCash(l.acc) && l.dr > 0);
-    const cashCr  = lines.some(l => _isCash(l.acc) && l.cr > 0);
-    const hasRev  = lines.some(l => _isRevenue(l.acc));
-    const hasExp  = lines.some(l => _isExpense(l.acc));
-    const hasRec  = lines.some(l => _isReceivable(l.acc));
-    const hasPay  = lines.some(l => _isPayable(l.acc));
-    if (cashDr)              return { journal: 'Cash Receipts Journal',     url: 'cash_receipts_journal.php',      reason: 'Cash receipts must be recorded in the' };
-    if (cashCr)              return { journal: 'Cash Disbursements Journal', url: 'cash_disbursements_journal.php', reason: 'Cash payments must be recorded in the' };
-    if (hasRev && hasRec)    return { journal: 'Sales Journal',              url: 'sales_journal.php',             reason: 'Credit sales must be recorded in the' };
-    if (hasExp && hasPay)    return { journal: 'Purchases Journal',          url: 'purchases_journal.php',         reason: 'Credit purchases must be recorded in the' };
-    return null;
-}
-
-function _showJournalToast(mismatch) {
-    const old = document.getElementById('jt-toast'); if (old) old.remove();
-    const t = document.createElement('div');
-    t.id = 'jt-toast';
-    t.style.cssText = 'position:fixed;top:1.5rem;right:1.5rem;z-index:999999;background:#1e293b;color:#f1f5f9;padding:1rem 1.25rem;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:.5rem;max-width:400px;border-left:4px solid #ef4444;font-family:inherit;font-size:.875rem;';
-    const redirectBtn = mismatch.url ? `<a href="${mismatch.url}" style="background:#3b82f6;color:#fff;padding:.35rem .9rem;border-radius:6px;font-size:.78rem;font-weight:600;text-decoration:none;white-space:nowrap;">Move to ${mismatch.journal}</a>` : '';
-    const bodyText = mismatch.url ? `${mismatch.reason} <strong style="color:#93c5fd;">${mismatch.journal}</strong>.` : mismatch.reason;
-    t.innerHTML = `<style>@keyframes jtIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}#jt-toast{animation:jtIn .3s cubic-bezier(.22,1,.36,1)}</style>
-        <div style="display:flex;align-items:center;gap:.5rem;font-weight:700;color:#fca5a5;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-            Cannot Save Entry
-        </div>
-        <div style="color:#cbd5e1;line-height:1.5;margin-top:0.25rem;">${bodyText}</div>
-        <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap;align-items:center;">
-            ${redirectBtn}
-            <button onclick="document.getElementById('jt-toast').remove();" style="background:transparent;color:#6b7280;padding:.35rem .5rem;border-radius:6px;font-size:.9rem;border:none;cursor:pointer;margin-left:auto;">✕</button>
-        </div>`;
-    document.body.appendChild(t);
-    setTimeout(() => { if (t.parentElement) t.remove(); }, 12000);
-}
-
-// Strip comma formatting from Debit/Credit fields right before submit so PHP parses them correctly
-document.getElementById('entry-form').addEventListener('submit', function(e) {
-    document.querySelectorAll('.dr-input, .cr-input').forEach(el => {
-        el.value = el.value.replace(/,/g, '');
-    });
-    const mismatch = _detectGJMismatch(_getLines());
-    if (mismatch) { e.preventDefault(); _showJournalToast(mismatch); }
-});
-
-document.getElementById('entryModal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-});
+window.addEventListener('scroll', function() {
+    const listEl = accountDropdownEl;
+    if (listEl && listEl.style.display === 'block' && activeAccountRow) {
+        const inputEl = activeAccountRow.querySelector('.account-search-input');
+        if (inputEl) positionAccountDropdown(inputEl);
+    }
+}, true);
 </script>
-
-<script>window.AUTOSAVE_KEY = 'autosave_journal_entries';</script>
-<script src="<?= BASE_URL ?>includes/autosave.js"></script>
 
 <?php require_once '../includes/footer.php'; ?>
