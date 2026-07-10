@@ -286,26 +286,12 @@ require_once '../includes/header.php';
         </td>
         <td>
           <div style="font-weight: 600; color: var(--text-primary);"><?= htmlspecialchars($co['name']) ?></div>
-          <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 8px;">
-            <span>
-                <i data-lucide="calendar" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i>
-                <?php if ($co['period_type'] === 'Fiscal'): ?>
-                    Fiscal Year (Starts <?= htmlspecialchars($co['fiscal_start_month'] . ' ' . $co['fiscal_start_date']) ?>)
-                <?php else: ?>
-                    Calendar Year
-                <?php endif; ?>
-            </span>
-            <span style="color: #cbd5e1;">|</span>
-            <?php if ($co['tax_registered']): ?>
-                <span style="color: #0369a1; font-weight: 500;">
-                    <i data-lucide="calculator" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i>
-                    VAT Registered (<?= htmlspecialchars($co['tax_type']) ?>)
-                </span>
+          <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px;">
+            <i data-lucide="calendar" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i>
+            <?php if ($co['period_type'] === 'Fiscal'): ?>
+                Fiscal Year (Starts <?= htmlspecialchars($co['fiscal_start_month'] . ' ' . $co['fiscal_start_date']) ?>)
             <?php else: ?>
-                <span style="color: #94a3b8;">
-                    <i data-lucide="file-minus" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i>
-                    Non-VAT
-                </span>
+                Calendar Year
             <?php endif; ?>
           </div>
         </td>
@@ -313,8 +299,8 @@ require_once '../includes/header.php';
           <span style="font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary);">
             <?= htmlspecialchars($co['business_type']) ?>
           </span>
+          <br>
           <?php if (!empty($co['tax_registered'])): ?>
-            <br>
             <?php if ($co['tax_type'] === 'VAT'): ?>
               <span style="font-size: 0.7rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 1px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; letter-spacing: 0.03em;">VAT Registered</span>
             <?php elseif ($co['tax_type'] === 'Percentage Tax'): ?>
@@ -322,6 +308,8 @@ require_once '../includes/header.php';
             <?php else: ?>
               <span style="font-size: 0.7rem; font-weight: 600; color: #166534; background: #dcfce7; padding: 1px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;">Tax Registered</span>
             <?php endif; ?>
+          <?php else: ?>
+            <span style="font-size: 0.7rem; font-weight: 600; color: #475569; background: #e2e8f0; padding: 1px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; letter-spacing: 0.03em;">Non-VAT</span>
           <?php endif; ?>
         </td>
         <td>
