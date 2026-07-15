@@ -15,29 +15,43 @@ if (!$company_id) {
 $elements = ['Assets', 'Liabilities', 'Equity', 'Revenue', 'Expenses'];
 $selected_category = $_GET['category'] ?? '';
 
-// Build list of categories to display
-$display_categories = [];
+// ------------------------------------------------------------------
+// Fetch the accounts to display. Each account gets its own
+// standalone control-account ledger (no more mixing multiple
+// accounts together under one category-wide running balance).
+//
+// NOTE: This page is now PURE control accounts only -- no per-
+// customer / per-supplier breakdown here. That lives on its own
+// page now: subsidiary_ledger.php.
+// ------------------------------------------------------------------
+$accWhere = "a.company_id = ?";
+$accParams = [$company_id];
+$accTypes = "i";
+
 if ($selected_category && in_array($selected_category, $elements)) {
-    $display_categories[] = $selected_category;
-} else {
-    $display_categories = $elements;
+    $accWhere .= " AND a.category = ?";
+    $accParams[] = $selected_category;
+    $accTypes .= "s";
 }
 
-// Prepare statement for fetching entries for a specific category
+$stmtAcc = $db->prepare("
+    SELECT id, code, name, category, opening_balance
+    FROM accounts a
+    WHERE $accWhere
+    ORDER BY FIELD(category,'Assets','Liabilities','Equity','Revenue','Expenses'), code ASC
+");
+$stmtAcc->bind_param($accTypes, ...$accParams);
+$stmtAcc->execute();
+$allAccounts = $stmtAcc->get_result()->fetch_all(MYSQLI_ASSOC);
+
+// Prepared statement for pulling all posted lines that belong to one account.
 $stmtLines = $db->prepare("
-    SELECT l.debit, l.credit, e.date, e.description, e.reference_no, e.vendor_name, a.code, a.name as account_name
+    SELECT l.debit, l.credit, e.date, e.reference_no,
+           COALESCE(NULLIF(l.description, ''), NULLIF(e.description, '')) as description
     FROM journal_entry_lines l
     JOIN journal_entries e ON l.journal_entry_id = e.id
-    JOIN accounts a ON l.account_id = a.id
-    WHERE a.company_id = ? AND a.category = ? AND e.deleted_at IS NULL
+    WHERE l.account_id = ? AND e.deleted_at IS NULL
     ORDER BY e.date ASC, e.id ASC
-");
-
-// Prepare statement for opening balances
-$stmtOB = $db->prepare("
-    SELECT SUM(opening_balance) as total_ob 
-    FROM accounts 
-    WHERE company_id = ? AND category = ?
 ");
 
 // Get Date Range
@@ -63,10 +77,95 @@ if ($min_date && $max_date) {
     }
 }
 
+// Renders one standalone control-account ledger table.
+function gl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNormal, $descLabel) {
+    $running = $openingBal;
+    ob_start();
+    ?>
+    <table class="table" style="margin: 0 0 1.75rem 0; border: 1px solid var(--border-color);">
+        <thead>
+            <tr style="background-color: #f1f5f9;">
+                <td colspan="6" style="padding: 0.85rem 1rem; border-bottom: 1px solid var(--border-color);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                        <span style="font-weight:700; font-size:0.95rem; color:#334155; letter-spacing:0.03em;">
+                            <?= htmlspecialchars($title) ?>
+                        </span>
+                        <span style="font-size:0.8rem; color:#334155;">
+                            <strong>Account Code:</strong> <?= htmlspecialchars($code) ?>
+                        </span>
+                    </div>
+                </td>
+            </tr>
+            <tr style="border-bottom: 2px solid var(--text-primary);">
+                <th style="width: 10%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Date</th>
+                <th style="width: 32%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);"><?= htmlspecialchars($descLabel) ?></th>
+                <th style="width: 15%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Reference</th>
+                <th class="text-right" style="width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Debit</th>
+                <th class="text-right" style="width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Credit</th>
+                <th class="text-right" style="width: 15%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Balance</th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php if ((float)$openingBal !== 0.0): ?>
+            <tr>
+                <td colspan="5" style="padding: 0.65rem 0.5rem; font-style: italic; color: var(--text-secondary); font-size: 0.85rem;">Beginning Balance</td>
+                <td class="text-right" style="padding: 0.65rem 0.5rem; font-style: italic; font-size: 0.85rem;"><?= number_format($openingBal, 2) ?></td>
+            </tr>
+        <?php endif; ?>
+
+        <?php if (count($lines) === 0): ?>
+            <tr><td colspan="6" class="text-center text-muted" style="padding: 1.25rem;">No transactions recorded.</td></tr>
+        <?php else: foreach ($lines as $line):
+            if ($isDebitNormal) {
+                $running += $line['debit'];
+                $running -= $line['credit'];
+            } else {
+                $running += $line['credit'];
+                $running -= $line['debit'];
+            }
+        ?>
+            <tr>
+                <td style="color: var(--text-secondary); font-size: 0.85rem; padding: 0.65rem 0.5rem; white-space: nowrap;">
+                    <?= date('m/d/Y', strtotime($line['date'])) ?>
+                </td>
+                <td style="padding: 0.65rem 0.5rem; font-size: 0.85rem;">
+                    <?= htmlspecialchars($line['description'] ?? '') ?>
+                </td>
+                <td style="font-size: 0.8rem; color: var(--text-secondary); padding: 0.65rem 0.5rem;">
+                    <?= htmlspecialchars($line['reference_no'] ?? '') ?>
+                </td>
+                <td class="text-right" style="padding: 0.65rem 0.5rem;">
+                    <?= $line['debit'] > 0 ? number_format($line['debit'], 2) : '' ?>
+                </td>
+                <td class="text-right" style="padding: 0.65rem 0.5rem;">
+                    <?= $line['credit'] > 0 ? number_format($line['credit'], 2) : '' ?>
+                </td>
+                <td class="text-right" style="font-weight: 500; padding: 0.65rem 0.5rem;">
+                    <?= number_format($running, 2) ?>
+                </td>
+            </tr>
+        <?php endforeach; endif; ?>
+
+            <tr>
+                <td colspan="5" class="text-right" style="padding: 0.65rem 0.5rem; font-weight: 600; font-size: 0.85rem;">
+                    Ending Balance
+                </td>
+                <td class="text-right" style="padding: 0.65rem 0.5rem; font-weight: 700; font-size: 0.9rem; border-top: 1px solid var(--border-color); border-bottom: 3px double var(--text-primary);">
+                    <?= number_format($running, 2) ?>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <?php
+    return ob_get_clean();
+}
 ?>
 
 <div class="page-header no-print" style="justify-content: flex-end; margin-bottom: 1rem; background: transparent; border: none; box-shadow: none; padding: 0.5rem 0;">
     <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <a href="<?= BASE_URL ?>pages/subsidiary_ledger.php" class="btn btn-secondary">
+            <i data-lucide="users" style="width:15px;height:15px;"></i> Subsidiary Ledger
+        </a>
         <form method="GET" style="margin: 0;">
             <select name="category" class="form-control" style="width: 200px; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);" onchange="this.form.submit()">
                 <option value="">All Accounts</option>
@@ -84,7 +183,7 @@ if ($min_date && $max_date) {
 </div>
 
 <div class="card" style="padding: 0; margin-bottom: 2rem; overflow: hidden; box-shadow: none; border: 1px solid var(--border-color); background: transparent;">
-    
+
     <!-- Report Header (Standard Accounting Format) -->
     <div style="padding: 2.5rem 2rem 1.5rem 2rem; text-align: center;">
         <h2 style="font-size: 1.75rem; margin-bottom: 0.5rem; font-weight: 400; color: #374151; letter-spacing: 0.5px;">
@@ -98,112 +197,40 @@ if ($min_date && $max_date) {
         </p>
     </div>
 
-
-
     <div style="padding: 0 2rem 2rem 2rem;">
-        <table class="table" style="margin: 0; border-bottom: 1px solid var(--border-color);">
-            <thead style="border-bottom: 2px solid var(--text-primary);">
-                <tr>
-                    <th style="width: 10%; text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);">Date</th>
-                    <th style="width: 20%; text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);">Account Title</th>
-                    <th style="width: 15%; text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);">Name</th>
-                    <th style="width: 15%; text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);">Description</th>
-                    <th style="width: 10%; text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);">Ref</th>
-                    <th class="text-right" style="width: 10%; text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);">Debit</th>
-                    <th class="text-right" style="width: 10%; text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);">Credit</th>
-                    <th class="text-right" style="width: 10%; text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);">Balance</th>
-                </tr>
-            </thead>
-            <tbody>
-<?php 
+<?php
 $displayedAny = false;
 
-foreach ($display_categories as $category): 
-    // Get Opening Balance
-    $stmtOB->bind_param('is', $company_id, $category);
-    $stmtOB->execute();
-    $obRow = $stmtOB->get_result()->fetch_assoc();
-    $runningBalance = (float)($obRow['total_ob'] ?? 0);
-
-    // Get Lines
-    $stmtLines->bind_param('is', $company_id, $category);
+foreach ($allAccounts as $acc) {
+    $stmtLines->bind_param('i', $acc['id']);
     $stmtLines->execute();
     $lines = $stmtLines->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    // Only show if there's activity or non-zero opening balance
-    if (!$selected_category && count($lines) === 0 && $runningBalance == 0) {
-        continue;
+    $openingBal = (float)$acc['opening_balance'];
+    if (count($lines) === 0 && $openingBal == 0.0) {
+        continue; // nothing to show for this account
     }
-    
+
     $displayedAny = true;
+    $isDebitNormal = in_array($acc['category'], ['Assets', 'Expenses']);
+
+    // Pure control account -- no customer/supplier breakdown here.
+    echo gl_render_ledger_table(
+        $acc['name'],
+        $acc['code'],
+        $openingBal,
+        $lines,
+        $isDebitNormal,
+        'Description/Particulars'
+    );
+}
+
+if (!$displayedAny):
 ?>
-
-
-
-
-                <!-- Transaction Lines -->
-                <?php foreach ($lines as $line): 
-                    if ($category === 'Assets' || $category === 'Expenses') {
-                        $runningBalance += $line['debit'];
-                        $runningBalance -= $line['credit'];
-                    } else {
-                        $runningBalance += $line['credit'];
-                        $runningBalance -= $line['debit'];
-                    }
-                ?>
-                <tr>
-                    <td style="color: var(--text-secondary); font-size: 0.85rem; padding: 0.75rem 0.5rem; white-space: nowrap;">
-                        <?= date('m/d/Y', strtotime($line['date'])) ?>
-                    </td>
-                    <td style="padding: 0.75rem 0.5rem;">
-                        <span style="color: var(--text-secondary); font-size: 0.8rem; margin-right: 0.25rem;"><?= htmlspecialchars($line['code']) ?></span>
-                        <?= htmlspecialchars($line['account_name']) ?>
-                    </td>
-                    <td style="color: var(--text-secondary); font-size: 0.85rem; padding: 0.75rem 0.5rem;">
-                        <?= htmlspecialchars($line['vendor_name'] ?? '') ?>
-                    </td>
-                    <td style="color: var(--text-secondary); font-size: 0.85rem; padding: 0.75rem 0.5rem;">
-                        <?= htmlspecialchars($line['description'] ?? '') ?>
-                    </td>
-                    <td style="font-size: 0.8rem; color: var(--text-secondary); padding: 0.75rem 0.5rem;">
-                        <?= htmlspecialchars($line['reference_no'] ?? '') ?>
-                    </td>
-                    <td class="text-right" style="padding: 0.75rem 0.5rem;">
-                        <?= $line['debit'] > 0 ? number_format($line['debit'], 2) : '' ?>
-                    </td>
-                    <td class="text-right" style="padding: 0.75rem 0.5rem;">
-                        <?= $line['credit'] > 0 ? number_format($line['credit'], 2) : '' ?>
-                    </td>
-                    <td class="text-right" style="font-weight: 500; padding: 0.75rem 0.5rem;">
-                        <?= number_format($runningBalance, 2) ?>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-                
-                <!-- Ending Balance Row -->
-                <tr>
-                    <td colspan="7" class="text-right" style="padding: 0.75rem 0.5rem; font-weight: 600; font-size: 0.85rem;">
-                        Ending Balance
-                    </td>
-                    <td class="text-right" style="padding: 0.75rem 0.5rem; font-weight: 700; font-size: 0.95rem; border-top: 1px solid var(--border-color); border-bottom: 3px double var(--text-primary);">
-                        <?= number_format($runningBalance, 2) ?>
-                    </td>
-                </tr>
-                
-                <!-- Spacer -->
-                <tr><td colspan="8" style="height: 1.5rem; border: none;"></td></tr>
-                
-<?php endforeach; ?>
-
-            <?php if (!$displayedAny): ?>
-                <tr>
-                    <td colspan="7" class="text-center text-muted" style="padding: 3rem 1rem;">
-                        No transactions found for the selected element.
-                    </td>
-                </tr>
-            <?php endif; ?>
-            </tbody>
-        </table>
+        <div class="text-center text-muted" style="padding: 3rem 1rem;">
+            No transactions found for the selected element.
+        </div>
+<?php endif; ?>
     </div>
 </div>
 
@@ -212,12 +239,12 @@ foreach ($display_categories as $category):
 @media print {
     body * { visibility: hidden; }
     .page-header, .no-print { display: none !important; }
-    .card { 
-        visibility: visible; 
-        position: absolute; 
-        left: 0; 
-        top: 0; 
-        width: 100%; 
+    .card {
+        visibility: visible;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
         border: none !important;
         margin: 0 !important;
         padding: 0 !important;

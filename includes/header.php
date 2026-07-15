@@ -42,6 +42,8 @@ $pageNames = [
     'chart_of_accounts' => 'Chart of Accounts',
     'company_setup' => 'Company Setup',
     'trash_bin' => 'Trash Bin',
+    'customers' => 'Customers',
+    'suppliers' => 'Suppliers',
 ];
 $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
 ?>
@@ -172,6 +174,12 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                     <a href="<?= BASE_URL ?>pages/chart_of_accounts.php" class="nav-subitem <?= $current_page==='chart_of_accounts'?'active':'' ?>">
                         <div class="flex items-center gap-2"><i data-lucide="book-open" style="width: 15px; height: 15px;"></i><span>Chart of Accounts</span></div>
                     </a>
+                    <a href="<?= BASE_URL ?>pages/customers.php" class="nav-subitem <?= $current_page==='customers'?'active':'' ?>">
+                        <div class="flex items-center gap-2"><i data-lucide="users" style="width: 15px; height: 15px;"></i><span>Customers</span></div>
+                    </a>
+                    <a href="<?= BASE_URL ?>pages/suppliers.php" class="nav-subitem <?= $current_page==='suppliers'?'active':'' ?>">
+                        <div class="flex items-center gap-2"><i data-lucide="truck" style="width: 15px; height: 15px;"></i><span>Suppliers</span></div>
+                    </a>
                 </div>
             </div>
             <?php endif; ?>
@@ -212,6 +220,31 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
             </div>
         </div>
         
+        <script>
+        (function() {
+            var sidebarNav = document.querySelector('.sidebar-nav');
+            if (!sidebarNav) return;
+
+            // Restore scroll position saved before the last navigation
+            var savedScroll = sessionStorage.getItem('sidebarScrollPos');
+            if (savedScroll !== null) {
+                sidebarNav.scrollTop = parseInt(savedScroll, 10);
+            }
+
+            // Keep saving as the user scrolls the sidebar
+            sidebarNav.addEventListener('scroll', function() {
+                sessionStorage.setItem('sidebarScrollPos', sidebarNav.scrollTop);
+            });
+
+            // Also save right before a sidebar link is clicked, in case the
+            // scroll event above hasn't fired yet for the final position
+            sidebarNav.querySelectorAll('a[href]').forEach(function(link) {
+                link.addEventListener('click', function() {
+                    sessionStorage.setItem('sidebarScrollPos', sidebarNav.scrollTop);
+                });
+            });
+        })();
+        </script>
         <script src="<?= BASE_URL ?>assets/js/script.js"></script>
     </div>
 
