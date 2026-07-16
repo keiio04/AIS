@@ -1,0 +1,2 @@
+<?php $entryIsTaxable = ($tx['tax_status'] ?? '') === 'taxable' || (int)($tx['is_taxable'] ?? 0) === 1; ?>
+<span style="background:<?= $entryIsTaxable ? '#fef9c3' : '#f1f5f9' ?>; color:<?= $entryIsTaxable ? '#854d0e' : '#64748b' ?>; padding:2px 4px; border-radius:4px; font-size:0.7rem; font-weight:bold; margin-bottom:2px; display:inline-block;" title="Taxability"><?= $entryIsTaxable ? 'TAXABLE' : 'NON-TAXABLE' ?></span>

@@ -11,3 +11,7 @@ $default_base = $is_railway ? '/' : '/AIS_PHP/';
 
 define('BASE_URL', getenv('APP_BASE_URL') ?: $default_base);
 define('APP_NAME', 'AccounTech AIS');
+
+// Transaction VAT is tax-exclusive. Keep the rate in one place so every
+// journal, including server-side validation and browser previews, agrees.
+define('VAT_RATE', 0.12);

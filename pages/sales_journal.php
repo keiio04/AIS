@@ -2,13 +2,13 @@
 require_once '../config.php';
 require_once '../db.php';
 require_once '../includes/auth.php';
+require_once '../includes/journal_vat.php';
 
 $db = get_db();
+journal_vat_ensure_schema($db);
 try { $db->query("ALTER TABLE journal_entry_lines ADD COLUMN description VARCHAR(255) NULL AFTER account_id"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE journal_entry_lines ADD COLUMN vendor_name VARCHAR(100) NULL AFTER description"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE activity_logs ADD COLUMN company_id INT NULL AFTER id"); } catch (Exception $e) {}
-try { $db->query("ALTER TABLE journal_entries ADD COLUMN is_taxable TINYINT(1) NOT NULL DEFAULT 0 AFTER description"); } catch (Exception $e) {}
-try { $db->query("ALTER TABLE companies ADD COLUMN tax_registered TINYINT(1) NOT NULL DEFAULT 0 AFTER business_type"); } catch (Exception $e) {}
 
 
 $db = get_db();
@@ -26,199 +26,60 @@ $stmt->bind_param('i', $company_id);
 $stmt->execute();
 $accountsList = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-// Fetch company's tax registration status (drives the default Taxable/Not Taxable value)
-$stmtCo = $db->prepare("SELECT tax_registered FROM companies WHERE id = ?");
-$stmtCo->bind_param('i', $company_id);
-$stmtCo->execute();
-$companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_registered'] ?? false);
+// Fetch all customers for Name dropdown
+$stmtCust = $db->prepare("SELECT id, name, 'customer' as type FROM customers WHERE company_id = ? ORDER BY name ASC");
+$stmtCust->bind_param('i', $company_id);
+$stmtCust->execute();
+$customersList = $stmtCust->get_result()->fetch_all(MYSQLI_ASSOC);
 
-// Convert formatted amounts such as "1,250.00" into numeric values.
-function journalAmount($value) {
-    return (float)str_replace(',', '', trim((string)$value));
+// Fetch all suppliers for Name dropdown
+$stmtSupp = $db->prepare("SELECT id, name, 'supplier' as type FROM suppliers WHERE company_id = ? ORDER BY name ASC");
+$stmtSupp->bind_param('i', $company_id);
+$stmtSupp->execute();
+$suppliersList = $stmtSupp->get_result()->fetch_all(MYSQLI_ASSOC);
+
+$entitiesList = array_merge($customersList, $suppliersList);
+usort($entitiesList, function($a, $b) {
+    return strcasecmp($a['name'], $b['name']);
+});
+
+
+// Helper to find VAT Account IDs on the backend
+$vatAccountIds = journal_vat_account_ids($accountsList);
+$inputVatId = $vatAccountIds['input'];
+$outputVatId = $vatAccountIds['output'];
+
+// Fetch company's tax registration status
+$companyIsTaxRegistered = journal_vat_company_registration($db, (int)$company_id);
+if ($companyIsTaxRegistered && (!$inputVatId || !$outputVatId)) {
+    $accountsList = journal_vat_ensure_accounts($db, (int)$company_id, $accountsList);
+    $vatAccountIds = journal_vat_account_ids($accountsList);
+    $inputVatId = $vatAccountIds['input'];
+    $outputVatId = $vatAccountIds['output'];
 }
 
-// Validate balancing, account ownership, and the rules for this special journal.
-function validateJournalLines($db, $company_id, $account_ids, $debits, $credits) {
-    $validLines = [];
-    $totalDebit = 0.0;
-    $totalCredit = 0.0;
-
-    $rowCount = max(count($account_ids), count($debits), count($credits));
-    for ($i = 0; $i < $rowCount; $i++) {
-        $accountId = (int)($account_ids[$i] ?? 0);
-        $debit = journalAmount($debits[$i] ?? 0);
-        $credit = journalAmount($credits[$i] ?? 0);
-
-        if ($accountId > 0 && ($debit > 0 || $credit > 0)) {
-            if ($debit > 0 && $credit > 0) {
-                return ['error' => 'Each account line can contain either a debit or a credit amount, not both.'];
-            }
-            $validLines[] = [
-                'account_id' => $accountId,
-                'debit' => $debit,
-                'credit' => $credit,
-            ];
-            $totalDebit += $debit;
-            $totalCredit += $credit;
-        }
-    }
-
-    if (count($validLines) < 2) {
-        return ['error' => 'Please enter at least two valid account lines.'];
-    }
-    if ($totalDebit <= 0 || abs($totalDebit - $totalCredit) >= 0.01) {
-        return ['error' => 'Debits and credits must be equal before the entry can be saved.'];
-    }
-
-    $accountIds = array_values(array_unique(array_column($validLines, 'account_id')));
-    $idList = implode(',', array_map('intval', $accountIds));
-    $result = $db->query("SELECT id, name, category FROM accounts WHERE company_id = " . (int)$company_id . " AND id IN ($idList)");
-    $accountMap = [];
-    while ($account = $result->fetch_assoc()) {
-        $name = strtolower($account['name']);
-        $accountMap[(int)$account['id']] = [
-            'name' => $account['name'],
-            'category' => $account['category'],
-            'is_cash' => $account['category'] === 'Assets' && (bool)preg_match('/cash|bank/i', $name),
-            'is_receivable' => (bool)preg_match('/receivable/i', $name),
-            'is_payable' => (bool)preg_match('/payable/i', $name),
-        ];
-    }
-
-    if (count($accountMap) !== count($accountIds)) {
-        return ['error' => 'One or more selected accounts are invalid for the active company.'];
-    }
-
-    $hasCash = false;
-    $hasRevenue = false;
-    $hasExpense = false;
-    $hasPayable = false;
-    foreach ($validLines as $line) {
-        $account = $accountMap[$line['account_id']];
-        $hasCash = $hasCash || $account['is_cash'];
-        $hasRevenue = $hasRevenue || $account['category'] === 'Revenue';
-        $hasExpense = $hasExpense || $account['category'] === 'Expenses';
-        $hasPayable = $hasPayable || $account['is_payable'] || $account['category'] === 'Liabilities';
-    }
-    if ($hasCash) {
-        return ['error' => 'This entry contains a Cash/Bank account and belongs in the Cash Receipts Journal, not the Sales Journal.'];
-    }
-    if ($hasExpense && $hasPayable) {
-        return ['error' => 'This entry looks like a credit purchase and belongs in the Purchases Journal, not the Sales Journal.'];
-    }
-    if (!$hasRevenue) {
-        return ['error' => 'Sales Journal requires at least one Revenue account.'];
-    }
-
-    return [
-        'lines' => $validLines,
-        'total_debit' => $totalDebit,
-        'total_credit' => $totalCredit,
-    ];
+$saveError = journal_vat_save($db, [
+    'company_id' => (int)$company_id,
+    'journal_id' => 'SJ',
+    'reference_prefix' => 'SJ',
+    'vat_mode' => 'output',
+    'redirect' => 'sales_journal.php',
+], $accountsList, $companyIsTaxRegistered);
+if ($saveError !== null) {
+    $error = $saveError;
 }
 
-// Handle Form Submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    if ($_POST['action'] === 'add_entry' || $_POST['action'] === 'edit_entry') {
-        $isEdit = $_POST['action'] === 'edit_entry';
-        $entry_id = (int)($_POST['entry_id'] ?? 0);
-        $date = trim($_POST['date'] ?? '');
-        $ref_no = trim($_POST['reference_no'] ?? '');
-        if ($ref_no === '') {
-            $ref_no = 'SJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
-        }
-
-        $description = trim($_POST['description'] ?? '');
-        $is_taxable = $companyIsTaxRegistered ? 1 : (((int)($_POST['is_taxable'] ?? 0) === 1) ? 1 : 0);
-        $particulars = '';
-        $type = 'Operating';
-        $vendor_name = trim($_POST['vendor_name'] ?? '');
-        if ($vendor_name === '') $vendor_name = null;
-
-        $account_ids = $_POST['account_id'] ?? [];
-        $debits = $_POST['debit'] ?? [];
-        $credits = $_POST['credit'] ?? [];
-
-        $validation = validateJournalLines($db, $company_id, $account_ids, $debits, $credits);
-        if (isset($validation['error'])) {
-            $error = $validation['error'];
-        } else {
-            if ($isEdit) {
-                $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND journal_id = 'SJ' AND deleted_at IS NULL");
-                $check->bind_param('ii', $entry_id, $company_id);
-                $check->execute();
-                if (!$entry_id || !$check->get_result()->fetch_assoc()) {
-                    $error = 'Journal entry not found.';
-                }
-            }
-        }
-
-        if (!isset($error)) {
-            $db->begin_transaction();
-            try {
-                if ($isEdit) {
-                    $stmt = $db->prepare("UPDATE journal_entries SET reference_no = ?, date = ?, description = ?, is_taxable = ?, vendor_name = ? WHERE id = ? AND company_id = ? AND journal_id = 'SJ'");
-                    $stmt->bind_param('sssisii', $ref_no, $date, $description, $is_taxable, $vendor_name, $entry_id, $company_id);
-                    $stmt->execute();
-
-                    $stmtDelLines = $db->prepare("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?");
-                    $stmtDelLines->bind_param('i', $entry_id);
-                    $stmtDelLines->execute();
-                } else {
-                    $journal_id = 'SJ';
-                    $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                    $stmt->bind_param('isssissss', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id);
-                    $stmt->execute();
-                    $entry_id = $stmt->insert_id;
-                }
-
-                $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
-                foreach ($validation['lines'] as $line) {
-                    $accountId = $line['account_id'];
-                    $debit = $line['debit'];
-                    $credit = $line['credit'];
-                    $stmtLine->bind_param('iidd', $entry_id, $accountId, $debit, $credit);
-                    $stmtLine->execute();
-                }
-
-                $user_id = $_SESSION['user_id'];
-                $verb = $isEdit ? 'Edited' : 'Created';
-                $log_action = "$verb Sales Journal Entry | Ref: $ref_no | Amount: ₱" . number_format($validation['total_debit'], 2);
-                $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
-                $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
-                $logStmt->execute();
-
-                $db->commit();
-                header("Location: sales_journal.php");
-                exit;
-            } catch (Exception $e) {
-                $db->rollback();
-                $error = ($isEdit ? 'Failed to update journal entry: ' : 'Failed to save journal entry: ') . $e->getMessage();
-            }
-        }
-    } elseif ($_POST['action'] === 'delete') {
-        $delete_id = (int)($_POST['id'] ?? 0);
-        $stmtDel = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ? AND journal_id = 'SJ'");
-        $stmtDel->bind_param('ii', $delete_id, $company_id);
-        $stmtDel->execute();
-
-        $user_id = $_SESSION['user_id'];
-        $log_action = "Moved Sales Journal Entry #$delete_id to Trash";
-        $stmtLog = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
-        $stmtLog->bind_param('iis', $company_id, $user_id, $log_action);
-        $stmtLog->execute();
-
-        header("Location: sales_journal.php");
-        exit;
-    }
-}
+journal_vat_delete($db, (int)$company_id, 'SJ', 'sales_journal.php', 'Sales Journal');
 
 // Fetch existing journal entries
 $query = "
-    SELECT e.*, 
+    SELECT e.*,
+           COALESCE(c.name, s.name, e.vendor_name) AS entity_name,
            (SELECT SUM(debit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_debit,
            (SELECT SUM(credit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_credit
-    FROM journal_entries e 
+    FROM journal_entries e
+    LEFT JOIN customers c ON e.entity_id = c.id AND e.entity_type = 'customer'
+    LEFT JOIN suppliers s ON e.entity_id = s.id AND e.entity_type = 'supplier'
     WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'SJ'
     ORDER BY e.date DESC, e.id DESC
 ";
@@ -233,7 +94,6 @@ require_once '../includes/header.php';
 <div class="page-header">
     <div class="page-header-text">
         <h1 class="page-title">Sales Journal</h1>
-        <p class="page-subtitle"><?= count($transactions) ?> entries recorded. Double-entry bookkeeping enforced.</p>
     </div>
     <button class="btn btn-primary" onclick="openModal()">
         <i data-lucide="plus" style="width:15px;height:15px;"></i> New Entry
@@ -267,14 +127,7 @@ require_once '../includes/header.php';
                     $stmtLine->bind_param('i', $tx['id']);
                     $stmtLine->execute();
                     $lines = $stmtLine->get_result()->fetch_all(MYSQLI_ASSOC);
-                    $legacyVendor = '';
-                    $legacyDescription = '';
-                    foreach ($lines as $legacyLine) {
-                        if ($legacyVendor === '' && !empty($legacyLine['vendor_name'])) $legacyVendor = $legacyLine['vendor_name'];
-                        if ($legacyDescription === '' && !empty($legacyLine['description'])) $legacyDescription = $legacyLine['description'];
-                    }
-                    $displayVendor = trim((string)($tx['vendor_name'] ?? '')) !== '' ? $tx['vendor_name'] : $legacyVendor;
-                    $displayDescription = trim((string)($tx['description'] ?? '')) !== '' ? $tx['description'] : $legacyDescription;
+                    $editLines = journal_vat_edit_lines($lines, $tx, $vatAccountIds);
                     $totalDebit = 0;
                     $totalCredit = 0;
                 ?>
@@ -290,15 +143,15 @@ require_once '../includes/header.php';
                         <?= htmlspecialchars($line['name']) ?>
                     </td>
                     <td style="color: var(--text-muted); font-size: 0.85rem;">
-                        <?= $index === 0 ? htmlspecialchars($displayVendor) : '' ?>
+                        <?= $index === 0 ? htmlspecialchars($tx['entity_name'] ?? '') : '' ?>
                     </td>
                     <td style="color: var(--text-muted); font-size: 0.85rem;">
-                        <?= $index === 0 ? nl2br(htmlspecialchars($displayDescription)) : '' ?>
+                        <?= htmlspecialchars($line['description'] ?? '') ?>
                     </td>
                     <td style="font-family: monospace; font-size: 0.85rem;">
                         <?php if ($index === 0): ?>
                             <span style="background: #e2e8f0; color: #475569; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span>
-                            <span style="background: <?= $tx['is_taxable'] ? '#fef9c3' : '#f1f5f9' ?>; color: <?= $tx['is_taxable'] ? '#854d0e' : '#64748b' ?>; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Taxability"><?= $tx['is_taxable'] ? 'TAXABLE' : 'NOT TAXABLE' ?></span><br>
+                            <?php require '../includes/journal_tax_badge.php'; ?><br>
                             <?= $tx['reference_no'] ? '<strong>'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
                         <?php endif; ?>
                         <span style="color: var(--primary-color)"><?= htmlspecialchars($line['code']) ?></span>
@@ -307,32 +160,7 @@ require_once '../includes/header.php';
                     <td class="text-right"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
                     <td class="text-center" style="vertical-align: middle;">
                         <?php if ($index === 0): ?>
-                        <div class="flex gap-1" style="justify-content: center;">
-                            <button type="button" style="background: none; border: none; cursor: pointer; color: var(--primary-color);" title="Edit Entry" onclick='openEditModal(<?= json_encode([
-                                "id" => $tx['id'],
-                                "date" => $tx['date'],
-                                "reference_no" => $tx['reference_no'],
-                                "description" => $displayDescription,
-                                "is_taxable" => $tx['is_taxable'],
-                                "vendor_name" => $displayVendor,
-                                "lines" => array_map(function($l) {
-                                    return [
-                                        "account_id" => $l['account_id'],
-                                        "debit" => $l['debit'],
-                                        "credit" => $l['credit'],
-                                    ];
-                                }, $lines)
-                            ]) ?>)'>
-                                <i data-lucide="edit-2" style="width:15px;height:15px;"></i>
-                            </button>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('Move this entry to Trash Bin?');">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="id" value="<?= $tx['id'] ?>">
-                                <button type="submit" style="background: none; border: none; cursor: pointer; color: #ef4444;" title="Move to Trash">
-                                    <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
-                                </button>
-                            </form>
-                        </div>
+                        <?php require '../includes/journal_edit_actions.php'; ?>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -365,9 +193,9 @@ require_once '../includes/header.php';
         <div class="modal-body">
             <form id="entry-form" method="POST">
                 <input type="hidden" name="action" id="formAction" value="add_entry">
-                <input type="hidden" name="entry_id" id="entryId" value="">
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                <input type="hidden" name="id" id="entryId" value="">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                     <div class="form-group">
                         <label class="form-label">Date</label>
                         <input type="date" name="date" id="entryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
@@ -378,32 +206,24 @@ require_once '../includes/header.php';
                     </div>
                 </div>
 
-                <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label class="form-label">Name</label>
-                    <input type="text" name="vendor_name" id="entryVendor" class="form-control">
+                <!-- Header-level Name (Customer/Vendor) — optional -->
+                <div class="form-group" style="margin-bottom: 1rem; position: relative;">
+                    <label class="form-label">Name <span style="font-weight:400; color: var(--text-muted); font-size:0.78rem;">(Customer / Vendor — optional)</span></label>
+                    <input type="text" name="vendor_name" id="entitySearchInput" class="form-control" placeholder="Search customer or vendor..." autocomplete="off"
+                           oninput="onEntitySearchInput()"
+                           onfocus="onEntitySearchInput()"
+                           onkeydown="onEntitySearchKeydown(event)"
+                           onblur="onEntitySearchBlur()">
+                    <input type="hidden" name="entity_id" id="entityIdInput" value="">
+                    <input type="hidden" name="entity_type" id="entityTypeInput" value="">
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1.5rem;">
                     <label class="form-label">Description</label>
-                    <textarea name="description" id="entryDescription" class="form-control" rows="3" style="resize: vertical;"></textarea>
+                    <textarea name="description" id="entryDescription" class="form-control" rows="2" style="resize: vertical;"></textarea>
                 </div>
 
-                <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label class="form-label">Taxability</label>
-                    <div style="display: flex; gap: 1.5rem; align-items: center;">
-                        <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; cursor: pointer;">
-                            <input type="radio" name="is_taxable" id="taxableYes" value="1" style="width: auto;">
-                            Taxable
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: 500; <?= $companyIsTaxRegistered ? 'opacity: 0.5; cursor: not-allowed;' : 'cursor: pointer;' ?>">
-                            <input type="radio" name="is_taxable" id="taxableNo" value="0" style="width: auto;" <?= $companyIsTaxRegistered ? 'disabled' : '' ?>>
-                            Not Taxable
-                        </label>
-                    </div>
-                    <?php if ($companyIsTaxRegistered): ?>
-
-                    <?php endif; ?>
-                </div>
+                <?php require '../includes/journal_vat_field.php'; ?>
 
                 <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
                     <table class="table" style="margin: 0;">
@@ -415,30 +235,29 @@ require_once '../includes/header.php';
                                 <th style="width: 5%;"></th>
                             </tr>
                         </thead>
-                        <tbody id="lines-container">
-                            <!-- JS injected rows -->
-                        </tbody>
+                        <tbody id="lines-container"></tbody>
                         <tfoot>
                             <tr>
                                 <td>
-                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem;">
-                                        <button type="button" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="addLine()">
-                                            <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Line
-                                        </button>
-                                        <span style="font-weight:600;">Total</span>
-                                    </div>
+                                    <button type="button" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="addLine()">
+                                        <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Line
+                                    </button>
                                 </td>
-                                <td class="text-right" id="total-dr" style="font-weight: 600;">₱0.00</td>
-                                <td class="text-right" id="total-cr" style="font-weight: 600;">₱0.00</td>
+                                <td class="text-right" style="font-weight: 600;" id="total-dr">&#8369;0.00</td>
+                                <td class="text-right" style="font-weight: 600;" id="total-cr">&#8369;0.00</td>
                                 <td></td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
-                
+
+                <?php require '../includes/journal_vat_summary.php'; ?>
+
                 <div id="balance-warning" style="color: var(--danger-color); font-size: 0.875rem; margin-bottom: 1rem; text-align: right; display: none;">
-                    Debits and Credits must balance. Difference: ₱<span id="diff-amount">0.00</span>
+                    Debits and Credits must balance. Difference: &#8369;<span id="diff-amount">0.00</span>
                 </div>
+
+
 
             </form>
         </div>
@@ -449,13 +268,42 @@ require_once '../includes/header.php';
     </div>
 </div>
 
+<!-- Quick Add Customer Modal -->
+<div id="quickAddModal" class="modal-overlay hidden" style="z-index:10000;">
+    <div class="modal" style="width: 440px; max-width: 95vw;">
+        <div class="modal-header">
+            <h2 id="quickAddTitle">Add New</h2>
+            <button class="icon-btn" onclick="closeQuickAdd()"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Name <span style="color:#ef4444;">*</span></label>
+                <input type="text" id="quickAddName" class="form-control" placeholder="Enter name...">
+                <div id="quickAddError" style="color:#ef4444; font-size:0.82rem; margin-top:0.35rem; display:none;"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeQuickAdd()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="saveQuickAdd()" id="quickAddSaveBtn">Save</button>
+        </div>
+    </div>
+</div>
+
+<script src="<?= BASE_URL ?>assets/js/journal-vat.js"></script>
 <script>
 const accounts = <?= json_encode($accountsList) ?>;
 const companyIsTaxRegistered = <?= $companyIsTaxRegistered ? 'true' : 'false' ?>;
+initJournalVat({ companyRegistered: companyIsTaxRegistered, rate: <?= json_encode(VAT_RATE) ?>, mode: 'output', accounts });
+let entitiesList = <?= json_encode($entitiesList ?? []) ?>;
+const customersList = <?= json_encode($customersList ?? []) ?>;
+const suppliersList = <?= json_encode($suppliersList ?? []) ?>;
+
+
+const globalInputVatId = <?= $inputVatId ?: 'null' ?>;
+const globalOutputVatId = <?= $outputVatId ?: 'null' ?>;
 
 let lineCount = 0;
 
-// ── Number formatting helpers for Debit/Credit fields ──────────────
 function formatNumber(val) {
     const num = parseFloat(val);
     if (isNaN(num)) return '';
@@ -469,7 +317,6 @@ function parseNumber(str) {
     return isNaN(num) ? 0 : num;
 }
 
-// While typing: only allow digits and a single decimal point (commas added on blur)
 function restrictDecimalInput(el) {
     let val = el.value.replace(/,/g, '');
     val = val.replace(/[^0-9.]/g, '');
@@ -480,25 +327,24 @@ function restrictDecimalInput(el) {
     el.value = val;
 }
 
-// On focus: strip commas so the raw number is easy to edit
 function unformatCurrencyInput(el) {
     if (el.value) el.value = el.value.replace(/,/g, '');
 }
 
-// On blur: format with thousands separators and 2 decimal places
 function formatCurrencyInput(el) {
     if (el.value === '') return;
     el.value = formatNumber(parseNumber(el.value));
 }
 
 
+
+// ── Smart Account Search (combobox) ─────────────────────────────────
+let activeAccountRow = null;
+let accountDropdownEl = null;
+
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-
-// ── Smart Account Search (combobox) ─────────────────────────────────
-let activeAccountRow = null;   // <tr> currently associated with the open dropdown
-let accountDropdownEl = null;  // shared floating dropdown, appended to <body>
 
 function getAccountDropdownEl() {
     if (!accountDropdownEl) {
@@ -561,7 +407,6 @@ function updateAccountHighlight(highlightIndex) {
 
 function onAccountSearchInput(inputEl) {
     const tr = inputEl.closest('tr');
-    // Any manual typing invalidates the previously selected account until re-picked from the list
     tr.querySelector('.account-id-input').value = '';
     const matches = getAccountMatches(inputEl.value);
     renderAccountList(tr, matches, matches.length ? 0 : -1);
@@ -570,64 +415,8 @@ function onAccountSearchInput(inputEl) {
 
 function selectAccountOption(optEl) {
     const tr = activeAccountRow;
-    if (!tr) return;
-    const idx = parseInt(optEl.dataset.idx, 10);
-    const listEl = getAccountDropdownEl();
-    const acc = listEl._matches[idx];
-    if (!acc) return;
-    tr.querySelector('.account-search-input').value = `${acc.code} - ${acc.name}`;
-    tr.querySelector('.account-id-input').value = acc.id;
-    listEl.style.display = 'none';
-    checkValidity();
-}
-
-function onAccountSearchKeydown(e, inputEl) {
-    const tr = inputEl.closest('tr');
-    const listEl = getAccountDropdownEl();
-    if (listEl.style.display === 'none') {
-        if (e.key === 'ArrowDown' || e.key === 'Enter') {
-            onAccountSearchInput(inputEl);
-        }
-        return;
-    }
-    const matches = listEl._matches || [];
-    let idx = listEl._highlightIndex ?? -1;
-
-    if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        idx = Math.min(idx + 1, matches.length - 1);
-        updateAccountHighlight(idx);
-    } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        idx = Math.max(idx - 1, 0);
-        updateAccountHighlight(idx);
-    } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (idx >= 0 && matches[idx]) {
-            const acc = matches[idx];
-            inputEl.value = `${acc.code} - ${acc.name}`;
-            tr.querySelector('.account-id-input').value = acc.id;
-            listEl.style.display = 'none';
-            checkValidity();
-            // Move focus to the next field for fast keyboard encoding
-            const nextInput = tr.querySelector('.dr-input');
-            if (nextInput) nextInput.focus();
-        }
-    } else if (e.key === 'Escape') {
-        listEl.style.display = 'none';
-    }
-}
-
-function onAccountSearchBlur(inputEl) {
-    // Delay so a click (mousedown) on an option registers before the list is hidden
-    setTimeout(() => {
-        const tr = inputEl.closest('tr');
-        const listEl = getAccountDropdownEl();
-        listEl.style.display = 'none';
-        // If the typed text wasn't picked from the list, clear it so an invalid account can't be submitted
-        if (!tr.querySelector('.account-id-input').value) {
-            inputEl.value = '';
-        }
+…417 tokens truncated… listEl.style.display = 'none';
+        if (!tr.querySelector('.account-id-input').value) inputEl.value = '';
         checkValidity();
     }, 150);
 }
@@ -653,10 +442,10 @@ function addLine(prefill = null) {
             <input type="hidden" name="account_id[]" class="account-id-input" value="">
         </td>
         <td style="min-width: 140px;">
-            <input type="text" inputmode="decimal" name="debit[]" class="form-control text-right dr-input" style="min-width: 130px; font-size: 0.95rem; padding: 0.5rem 0.6rem;" placeholder="0.00" oninput="restrictDecimalInput(this); autoZero(this, 'cr'); calcTotals()" onfocus="unformatCurrencyInput(this)" onblur="formatCurrencyInput(this)">
+            <input type="text" inputmode="decimal" name="debit[]" class="form-control text-right dr-input" style="min-width: 130px; font-size: 0.95rem; padding: 0.5rem 0.6rem;" placeholder="0.00" oninput="restrictDecimalInput(this); autoZero(this, 'cr'); calcTotals()" onfocus="unformatCurrencyInput(this)" onblur="formatCurrencyInput(this); calcTotals()">
         </td>
         <td style="min-width: 140px;">
-            <input type="text" inputmode="decimal" name="credit[]" class="form-control text-right cr-input" style="min-width: 130px; font-size: 0.95rem; padding: 0.5rem 0.6rem;" placeholder="0.00" oninput="restrictDecimalInput(this); autoZero(this, 'dr'); calcTotals()" onfocus="unformatCurrencyInput(this)" onblur="formatCurrencyInput(this)">
+            <input type="text" inputmode="decimal" name="credit[]" class="form-control text-right cr-input" style="min-width: 130px; font-size: 0.95rem; padding: 0.5rem 0.6rem;" placeholder="0.00" oninput="restrictDecimalInput(this); autoZero(this, 'dr'); calcTotals()" onfocus="unformatCurrencyInput(this)" onblur="formatCurrencyInput(this); calcTotals()">
         </td>
         <td class="text-center">
             <button type="button" class="icon-btn text-danger remove-btn" onclick="removeLine('${tr.id}')">
@@ -678,11 +467,12 @@ function addLine(prefill = null) {
     lineCount++;
     updateRemoveButtons();
     calcTotals();
+    return tr;
 }
 
 function removeLine(id) {
     const lines = document.querySelectorAll('#lines-container tr');
-    if (lines.length <= 2) return; // keep at least 2
+    if (lines.length <= 2) return;
     document.getElementById(id).remove();
     updateRemoveButtons();
     calcTotals();
@@ -710,41 +500,43 @@ function autoZero(el, otherClassPrefix) {
 function calcTotals() {
     let drTotal = 0;
     let crTotal = 0;
+    let allAccountsSelected = true;
+
     document.querySelectorAll('.dr-input').forEach(el => drTotal += parseNumber(el.value));
     document.querySelectorAll('.cr-input').forEach(el => crTotal += parseNumber(el.value));
-    
-    document.getElementById('total-dr').innerText = '₱' + drTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-    document.getElementById('total-cr').innerText = '₱' + crTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-    
+    document.querySelectorAll('.account-id-input').forEach(el => { if (!el.value) allAccountsSelected = false; });
+
+    document.getElementById('total-dr').innerText = '\u20b1' + drTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById('total-cr').innerText = '\u20b1' + crTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+
+    updateVatSummary();
     const balWarn = document.getElementById('balance-warning');
     const saveBtn = document.getElementById('save-btn');
-    
-    if (drTotal > 0 && Math.abs(drTotal - crTotal) < 0.01) {
+    const isBalanced = (drTotal > 0 && Math.abs(drTotal - crTotal) < 0.01);
+
+    if (isBalanced && allAccountsSelected) {
         balWarn.style.display = 'none';
-        document.getElementById('total-dr').style.color = 'var(--text-primary)';
-        document.getElementById('total-cr').style.color = 'var(--text-primary)';
+        saveBtn.removeAttribute('disabled');
     } else {
         if (drTotal > 0 || crTotal > 0) {
             balWarn.style.display = 'block';
             document.getElementById('diff-amount').innerText = Math.abs(drTotal - crTotal).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-            document.getElementById('total-dr').style.color = 'var(--danger-color)';
-            document.getElementById('total-cr').style.color = 'var(--danger-color)';
-        } else {
-            balWarn.style.display = 'none';
         }
+        saveBtn.setAttribute('disabled', 'true');
     }
-    checkValidity();
 }
+
+
 
 function checkValidity() {
     let drTotal = 0;
     let crTotal = 0;
     let allAccountsSelected = true;
 
-    document.querySelectorAll('.dr-input').forEach(el => drTotal += parseNumber(el.value));
-    document.querySelectorAll('.cr-input').forEach(el => crTotal += parseNumber(el.value));
+    document.querySelectorAll('.dr-input').forEach(el => drTotal += parseFloat(el.value) || 0);
+    document.querySelectorAll('.cr-input').forEach(el => crTotal += parseFloat(el.value) || 0);
     document.querySelectorAll('.account-id-input').forEach(el => {
-        if(!el.value) allAccountsSelected = false;
+        if (!el.value) allAccountsSelected = false;
     });
 
     const isBalanced = drTotal > 0 && Math.abs(drTotal - crTotal) < 0.01;
@@ -757,6 +549,142 @@ function checkValidity() {
     }
 }
 
+// ── Entity (Customer/Vendor) search at header level ─────────────────
+let entityDropdownEl = null;
+let _entityMatches = [];
+let _entityHighlight = -1;
+
+function getEntityDropdownEl() {
+    if (!entityDropdownEl) {
+        entityDropdownEl = document.createElement('div');
+        entityDropdownEl.style.cssText = 'display:none;position:fixed;z-index:9998;background:#fff;border:1px solid var(--border-color);border-radius:6px;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12);';
+        document.body.appendChild(entityDropdownEl);
+    }
+    return entityDropdownEl;
+}
+
+function positionEntityDropdown() {
+    const inp = document.getElementById('entitySearchInput');
+    if (!inp) return;
+    const rect = inp.getBoundingClientRect();
+    const el = getEntityDropdownEl();
+    el.style.left = rect.left + 'px';
+    el.style.top = (rect.bottom + 2) + 'px';
+    el.style.width = rect.width + 'px';
+}
+
+function renderEntityList(matches, highlightIndex = -1) {
+    _entityMatches = matches;
+    _entityHighlight = highlightIndex;
+    const el = getEntityDropdownEl();
+    positionEntityDropdown();
+    const addBtns = `<div style="padding:0.4rem 0.75rem; display:flex; gap:0.4rem; border-top:1px solid var(--border-color); margin-top:2px;">
+        <button type="button" onmousedown="openQuickAdd('customer')" style="flex:1; padding:0.35rem; font-size:0.8rem; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:5px; cursor:pointer;">+ Add Customer</button>
+        <button type="button" onmousedown="openQuickAdd('supplier')" style="flex:1; padding:0.35rem; font-size:0.8rem; background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; border-radius:5px; cursor:pointer;">+ Add Vendor</button>
+    </div>`;
+    if (matches.length === 0) {
+        el.innerHTML = `<div style="padding:0.6rem 0.75rem; color:var(--text-muted); font-size:0.85rem;">No records found</div>` + addBtns;
+    } else {
+        el.innerHTML = matches.map((e, idx) => `
+            <div class="entity-opt" data-idx="${idx}"
+                 style="padding:0.5rem 0.75rem; cursor:pointer; font-size:0.85rem; background:${idx === highlightIndex ? 'var(--bg-secondary)' : '#fff'};display:flex;align-items:center;gap:0.5rem;"
+                 onmousedown="selectEntityOption(${idx})">
+                <span style="font-size:0.7rem; padding:1px 6px; border-radius:20px; font-weight:600; background:${e.type==='customer'?'#dbeafe':'#dcfce7'}; color:${e.type==='customer'?'#1d4ed8':'#15803d'};">${e.type==='customer'?'C':'V'}</span>
+                ${escapeHtml(e.name)}
+            </div>`).join('') + addBtns;
+    }
+    el.style.display = 'block';
+}
+
+function onEntitySearchInput() {
+    const q = (document.getElementById('entitySearchInput').value || '').trim().toLowerCase();
+    document.getElementById('entityIdInput').value = '';
+    document.getElementById('entityTypeInput').value = '';
+    const matches = q ? entitiesList.filter(e => e.name.toLowerCase().includes(q)) : entitiesList.slice(0, 50);
+    renderEntityList(matches, matches.length ? 0 : -1);
+}
+
+function selectEntityOption(idx) {
+    const e = _entityMatches[idx];
+    if (!e) return;
+    document.getElementById('entitySearchInput').value = e.name;
+    document.getElementById('entityIdInput').value = e.id;
+    document.getElementById('entityTypeInput').value = e.type;
+    getEntityDropdownEl().style.display = 'none';
+}
+
+function onEntitySearchKeydown(event) {
+    const el = getEntityDropdownEl();
+    if (el.style.display === 'none') {
+        if (event.key === 'ArrowDown' || event.key === 'Enter') onEntitySearchInput();
+        return;
+    }
+    if (event.key === 'ArrowDown') { event.preventDefault(); _entityHighlight = Math.min(_entityHighlight+1, _entityMatches.length-1); renderEntityList(_entityMatches, _entityHighlight); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); _entityHighlight = Math.max(_entityHighlight-1, 0); renderEntityList(_entityMatches, _entityHighlight); }
+    else if (event.key === 'Enter') { event.preventDefault(); if (_entityHighlight >= 0) selectEntityOption(_entityHighlight); }
+    else if (event.key === 'Escape') { el.style.display = 'none'; }
+}
+
+function onEntitySearchBlur() {
+    setTimeout(() => {
+        getEntityDropdownEl().style.display = 'none';
+        if (!document.getElementById('entityIdInput').value) {
+            document.getElementById('entitySearchInput').value = '';
+            document.getElementById('entityTypeInput').value = '';
+        }
+    }, 180);
+}
+
+let _quickAddType = null;
+function openQuickAdd(type) {
+    _quickAddType = type;
+    document.getElementById('quickAddTitle').innerText = type === 'customer' ? 'Add New Customer' : 'Add New Vendor';
+    document.getElementById('quickAddName').value = document.getElementById('entitySearchInput').value;
+    document.getElementById('quickAddError').style.display = 'none';
+    document.getElementById('quickAddModal').classList.remove('hidden');
+    document.getElementById('quickAddModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('quickAddName').focus(), 50);
+}
+
+function closeQuickAdd() {
+    document.getElementById('quickAddModal').classList.add('hidden');
+    document.getElementById('quickAddModal').style.display = 'none';
+}
+
+async function saveQuickAdd() {
+    const name = document.getElementById('quickAddName').value.trim();
+    if (!name) {
+        document.getElementById('quickAddError').innerText = 'Name is required.';
+        document.getElementById('quickAddError').style.display = 'block';
+        return;
+    }
+    const btn = document.getElementById('quickAddSaveBtn');
+    btn.disabled = true; btn.innerText = 'Saving...';
+    try {
+        const endpoint = _quickAddType === 'customer' ? '../api_add_customer.php' : '../api_add_vendor.php';
+        const fd = new FormData();
+        fd.append('name', name);
+        const res = await fetch(endpoint, { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.success) {
+            const newEntity = { id: data.id, name: data.name, type: _quickAddType === 'customer' ? 'customer' : 'supplier' };
+            entitiesList.push(newEntity);
+            entitiesList.sort((a,b) => a.name.localeCompare(b.name));
+            document.getElementById('entitySearchInput').value = data.name;
+            document.getElementById('entityIdInput').value = data.id;
+            document.getElementById('entityTypeInput').value = _quickAddType === 'customer' ? 'customer' : 'supplier';
+            closeQuickAdd();
+        } else {
+            document.getElementById('quickAddError').innerText = data.error || 'Failed to add.';
+            document.getElementById('quickAddError').style.display = 'block';
+        }
+    } catch (e) {
+        document.getElementById('quickAddError').innerText = 'Network error.';
+        document.getElementById('quickAddError').style.display = 'block';
+    }
+    btn.disabled = false; btn.innerText = 'Save';
+}
+
 function openModal() {
     const modal = document.getElementById('entryModal');
     modal.classList.remove('hidden');
@@ -765,20 +693,18 @@ function openModal() {
     document.getElementById('save-btn').innerText = 'Save Entry';
     document.getElementById('formAction').value = 'add_entry';
     document.getElementById('entryId').value = '';
-    document.getElementById('entryDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('entryRefNo').value = '';
-    document.getElementById('entryVendor').value = '';
     document.getElementById('entryDescription').value = '';
-    document.getElementById('taxableYes').checked = true; // Always defaults checked; locked to Taxable if company is tax-registered
-    document.getElementById('taxableNo').checked = false;
-    if (!companyIsTaxRegistered) {
-        document.getElementById('taxableYes').checked = false;
-        document.getElementById('taxableNo').checked = true;
-    }
+    document.getElementById('entitySearchInput').value = '';
+    document.getElementById('entityIdInput').value = '';
+    document.getElementById('entityTypeInput').value = '';
+    setJournalVatStatus('taxable');
     document.getElementById('lines-container').innerHTML = '';
     lineCount = 0;
     addLine();
     addLine();
+    calcTotals();
 }
 
 function openEditModal(tx) {
@@ -791,24 +717,15 @@ function openEditModal(tx) {
     document.getElementById('entryId').value = tx.id;
     document.getElementById('entryDate').value = tx.date;
     document.getElementById('entryRefNo').value = tx.reference_no || '';
-    document.getElementById('entryVendor').value = tx.vendor_name || '';
     document.getElementById('entryDescription').value = tx.description || '';
-    const txIsTaxable = !!Number(tx.is_taxable);
-    if (companyIsTaxRegistered) {
-        // Company is tax-registered: lock to Taxable regardless of the entry's saved value
-        document.getElementById('taxableYes').checked = true;
-        document.getElementById('taxableNo').checked = false;
-    } else {
-        document.getElementById('taxableYes').checked = txIsTaxable;
-        document.getElementById('taxableNo').checked = !txIsTaxable;
-    }
-
+    document.getElementById('entitySearchInput').value = tx.entity_name || tx.vendor_name || '';
+    document.getElementById('entityIdInput').value = tx.entity_id || '';
+    document.getElementById('entityTypeInput').value = tx.entity_type || '';
+    setJournalVatStatus(tx.tax_status || 'non_taxable');
     document.getElementById('lines-container').innerHTML = '';
     lineCount = 0;
     tx.lines.forEach(line => addLine(line));
-    if (tx.lines.length < 2) {
-        addLine();
-    }
+    while (document.querySelectorAll('#lines-container tr').length < 2) addLine();
     calcTotals();
 }
 
@@ -816,24 +733,23 @@ function closeModal() {
     const modal = document.getElementById('entryModal');
     modal.classList.add('hidden');
     modal.style.display = 'none';
-    if (accountDropdownEl) accountDropdownEl.style.display = 'none';
-    activeAccountRow = null;
 }
 
 // Close on overlay click
-// ── Journal Type Detection & Toast ──────────────────────────────────
-function _isCash(acc)       { return acc.category === 'Assets' && /cash|bank/i.test(acc.name); }
-function _isReceivable(acc) { return /receivable/i.test(acc.name); }
-function _isPayable(acc)    { return /payable/i.test(acc.name); }
-function _isRevenue(acc)    { return acc.category === 'Revenue'; }
-function _isExpense(acc)    { return acc.category === 'Expenses'; }
+document.getElementById('entryModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+
+// ── Journal Type Detection & Toast ─────────────────────────────────
+function _isCash(acc)    { return acc.category === 'Assets' && /cash|bank/i.test(acc.name); }
+function _isRevenue(acc) { return acc.category === 'Revenue'; }
 
 function _getLines() {
     const lines = [];
     document.querySelectorAll('#lines-container tr').forEach(tr => {
         const accId = tr.querySelector('.account-id-input')?.value;
-        const dr = parseNumber(tr.querySelector('.dr-input')?.value || '');
-        const cr = parseNumber(tr.querySelector('.cr-input')?.value || '');
+        const dr = parseFloat(tr.querySelector('.dr-input')?.value) || 0;
+        const cr = parseFloat(tr.querySelector('.cr-input')?.value) || 0;
         if (accId) {
             const acc = accounts.find(a => String(a.id) === String(accId));
             if (acc) lines.push({ acc, dr, cr });
@@ -844,15 +760,21 @@ function _getLines() {
 
 function _detectMismatch(lines) {
     if (!lines.length) return null;
-    const hasCash = lines.some(l => _isCash(l.acc));
-    const hasPay = lines.some(l => _isPayable(l.acc) || l.acc.category === 'Liabilities');
-    const hasExp = lines.some(l => _isExpense(l.acc));
-    const hasRev = lines.some(l => _isRevenue(l.acc));
+    const hasCash  = lines.some(l => _isCash(l.acc));
+    const hasPay   = lines.some(l => _isPayable(l.acc));
+    const hasExp   = lines.some(l => _isExpense(l.acc));
+    const hasRev   = lines.some(l => _isRevenue(l.acc));
+    const hasRec   = lines.some(l => _isReceivable(l.acc));
 
+    // Cash transactions don't belong here
+    if (hasCash && hasRev)
+        return { journal: 'Cash Receipts Journal', url: 'cash_receipts_journal.php', reason: 'Cash sales must be recorded in the' };
     if (hasCash)
         return { journal: 'Cash Receipts Journal', url: 'cash_receipts_journal.php', reason: 'Entries with a Cash or Bank account belong in the' };
+    // Purchase-type entries don't belong here
     if (hasExp && hasPay)
-        return { journal: 'Purchases Journal', url: 'purchases_journal.php', reason: 'Credit purchases must be recorded in the' };
+        return { journal: 'Purchases Journal', url: 'purchases_journal.php', reason: 'It looks like you\'re recording a credit purchase, which belongs in the', hint: 'If this is a sale, please check your Debit/Credit entries.' };
+    // Must have Revenue to be a valid sales entry
     if (!hasRev)
         return { journal: 'Sales Journal', url: null, reason: 'A Revenue account is required for sales entries.' };
     return null;
@@ -863,8 +785,8 @@ function _showJournalToast(mismatch) {
     const t = document.createElement('div');
     t.id = 'jt-toast';
     t.style.cssText = 'position:fixed;top:1.5rem;right:1.5rem;z-index:999999;background:#1e293b;color:#f1f5f9;padding:1rem 1.25rem;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:.5rem;max-width:400px;border-left:4px solid #ef4444;font-family:inherit;font-size:.875rem;';
-    const redirectBtn = mismatch.url ? `<a href="${mismatch.url}" style="background:#3b82f6;color:#fff;padding:.35rem .9rem;border-radius:6px;font-size:.78rem;font-weight:600;text-decoration:none;white-space:nowrap;">Move to ${mismatch.journal}</a>` : '';
-    const bodyText = mismatch.url ? `${mismatch.reason} <strong style="color:#93c5fd;">${mismatch.journal}</strong>.` : mismatch.reason;
+    const redirectBtn = mismatch.url ? `<a href=\"${mismatch.url}\" style=\"background:transparent;color:#94a3b8;border:1px solid #475569;padding:.35rem .9rem;border-radius:6px;font-size:.78rem;font-weight:600;text-decoration:none;white-space:nowrap;transition:all 0.2s;\" onmouseover=\"this.style.color='#f8fafc';this.style.borderColor='#94a3b8'\" onmouseout=\"this.style.color='#94a3b8';this.style.borderColor='#475569'\">Move to ${mismatch.journal}</a>` : '';
+    const bodyText = mismatch.url ? `${mismatch.reason} <strong style=\"color:#93c5fd;\">${mismatch.journal}</strong>.` + (mismatch.hint ? ` <span style=\"color:#94a3b8;display:block;margin-top:4px;\">${mismatch.hint}</span>` : '') : mismatch.reason;
     t.innerHTML = `<style>@keyframes jtIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}#jt-toast{animation:jtIn .3s cubic-bezier(.22,1,.36,1)}</style>
         <div style="display:flex;align-items:center;gap:.5rem;font-weight:700;color:#fca5a5;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -879,17 +801,12 @@ function _showJournalToast(mismatch) {
     setTimeout(() => { if (t.parentElement) t.remove(); }, 12000);
 }
 
-// Strip comma formatting from Debit/Credit fields right before submit so PHP parses them correctly
 document.getElementById('entry-form').addEventListener('submit', function(e) {
     document.querySelectorAll('.dr-input, .cr-input').forEach(el => {
         el.value = el.value.replace(/,/g, '');
     });
     const mismatch = _detectMismatch(_getLines());
     if (mismatch) { e.preventDefault(); _showJournalToast(mismatch); }
-});
-
-document.getElementById('entryModal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
 });
 </script>
 
