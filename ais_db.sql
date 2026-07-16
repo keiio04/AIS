@@ -76,6 +76,26 @@ CREATE TABLE IF NOT EXISTS `journal_entry_lines` (
     FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
+-- Customers table (AR subsidiary ledger master list)
+CREATE TABLE IF NOT EXISTS `customers` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `company_id` INT NOT NULL,
+    `name` VARCHAR(150) NOT NULL,
+    `opening_balance` DECIMAL(15,2) DEFAULT 0.00,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Suppliers table (AP subsidiary ledger master list)
+CREATE TABLE IF NOT EXISTS `suppliers` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `company_id` INT NOT NULL,
+    `name` VARCHAR(150) NOT NULL,
+    `opening_balance` DECIMAL(15,2) DEFAULT 0.00,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- Notes to financial statements table
 CREATE TABLE IF NOT EXISTS `notes_to_fs` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,

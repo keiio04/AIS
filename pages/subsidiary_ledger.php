@@ -42,10 +42,15 @@ if ($type_filter === 'receivable') {
 }
 
 // Prepared statement for pulling all posted lines that belong to one account
-// (used to find names tagged on the control account itself that might not
-// be in the Customers/Suppliers master list).
 $stmtLines = $db->prepare("
-    SELECT COALESCE(NULLIF(l.vendor_name, ''), NULLIF(e.vendor_name, '')) as vendor_name
+    SELECT 
+        CASE 
+            WHEN e.entity_type = 'customer' THEN (SELECT name FROM customers WHERE id = e.entity_id)
+            WHEN e.entity_type = 'supplier' THEN (SELECT name FROM suppliers WHERE id = e.entity_id)
+            ELSE NULL
+        END as vendor_name,
+        e.entity_id,
+        e.entity_type
     FROM journal_entry_lines l
     JOIN journal_entries e ON l.journal_entry_id = e.id
     WHERE l.account_id = ? AND e.deleted_at IS NULL
@@ -53,9 +58,7 @@ $stmtLines = $db->prepare("
 
 // Prepared statement for a customer/supplier's full, cross-account
 // transaction history -- pulls EVERY line company-wide tagged with that
-// person's name, not just lines that hit the AR/AP account itself. e.g.
-// an "Other Income" line entered against a customer shows up as its own
-// table nested under that same customer, not merged or floating apart.
+// person's name, not just lines that hit the AR/AP account itself.
 $stmtVendorLines = $db->prepare("
     SELECT l.debit, l.credit, e.date, e.reference_no,
            a.name as account_name, a.code as account_code, a.category as account_category,
@@ -64,34 +67,39 @@ $stmtVendorLines = $db->prepare("
     JOIN journal_entries e ON l.journal_entry_id = e.id
     JOIN accounts a ON l.account_id = a.id
     WHERE e.company_id = ? AND e.deleted_at IS NULL
-      AND LOWER(COALESCE(NULLIF(l.vendor_name, ''), NULLIF(e.vendor_name, ''))) = LOWER(?)
+      AND e.entity_id = ? AND e.entity_type = ?
     ORDER BY e.date ASC, e.id ASC
 ");
-$vendorNameParam = '';
-$stmtVendorLines->bind_param('is', $company_id, $vendorNameParam);
+$vendorIdParam = 0;
+$vendorTypeParam = '';
+$stmtVendorLines->bind_param('iis', $company_id, $vendorIdParam, $vendorTypeParam);
 
 // Master lists of customers / suppliers with their OWN opening balances.
 // This is what makes each card reconcile correctly instead of always
 // starting at zero.
 $customerBalances = [];
-$stmtCust = $db->prepare("SELECT name, opening_balance FROM customers WHERE company_id = ?");
+$stmtCust = $db->prepare("SELECT id, name, opening_balance FROM customers WHERE company_id = ?");
 $stmtCust->bind_param('i', $company_id);
 $stmtCust->execute();
 foreach ($stmtCust->get_result()->fetch_all(MYSQLI_ASSOC) as $c) {
     $customerBalances[mb_strtolower(trim($c['name']))] = [
         'display_name' => $c['name'],
         'opening_balance' => (float)$c['opening_balance'],
+        'entity_id' => $c['id'],
+        'entity_type' => 'customer'
     ];
 }
 
 $supplierBalances = [];
-$stmtSupp = $db->prepare("SELECT name, opening_balance FROM suppliers WHERE company_id = ?");
+$stmtSupp = $db->prepare("SELECT id, name, opening_balance FROM suppliers WHERE company_id = ?");
 $stmtSupp->bind_param('i', $company_id);
 $stmtSupp->execute();
 foreach ($stmtSupp->get_result()->fetch_all(MYSQLI_ASSOC) as $s) {
     $supplierBalances[mb_strtolower(trim($s['name']))] = [
         'display_name' => $s['name'],
         'opening_balance' => (float)$s['opening_balance'],
+        'entity_id' => $s['id'],
+        'entity_type' => 'supplier'
     ];
 }
 
@@ -228,12 +236,11 @@ foreach ($controlAccounts as $acc) {
         $groups[$key] = [
             'display_name' => $info['display_name'],
             'opening_balance' => $info['opening_balance'],
+            'entity_id' => $info['entity_id'],
+            'entity_type' => $info['entity_type'],
         ];
     }
 
-    // Any name tagged on this control account's own lines but not found
-    // in the master list (e.g. later renamed/deleted record) still
-    // needs its own card, starting at 0.
     $stmtLines->bind_param('i', $acc['id']);
     $stmtLines->execute();
     $ownLines = $stmtLines->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -246,16 +253,22 @@ foreach ($controlAccounts as $acc) {
             $groups[$key] = [
                 'display_name' => $ln['vendor_name'],
                 'opening_balance' => 0.0,
+                'entity_id' => $ln['entity_id'],
+                'entity_type' => $ln['entity_type'],
             ];
         }
     }
 
-    // Pull the full, cross-account transaction history for each name,
-    // then split it BY source account -- each account this person has
-    // activity in gets its own standalone table under their name.
     $finalGroups = [];
     foreach ($groups as $key => $g) {
-        $vendorNameParam = $g['display_name'];
+        $vendorIdParam = $g['entity_id'];
+        $vendorTypeParam = $g['entity_type'];
+        
+        // Skip if we don't have a valid entity_id
+        if (!$vendorIdParam) {
+            continue;
+        }
+
         $stmtVendorLines->execute();
         $vLines = $stmtVendorLines->get_result()->fetch_all(MYSQLI_ASSOC);
 

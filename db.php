@@ -35,6 +35,10 @@ function get_db(): mysqli {
         
         // Disable ONLY_FULL_GROUP_BY for Railway compatibility
         $conn->query("SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''))");
+        
+        // Auto-migrations for dynamic customer/vendor at header level
+        try { $conn->query("ALTER TABLE journal_entries ADD COLUMN entity_id INT NULL AFTER journal_id"); } catch (Exception $e) {}
+        try { $conn->query("ALTER TABLE journal_entries ADD COLUMN entity_type ENUM('customer', 'supplier') NULL AFTER entity_id"); } catch (Exception $e) {}
     }
     return $conn;
 }

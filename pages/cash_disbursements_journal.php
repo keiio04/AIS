@@ -24,6 +24,24 @@ $stmt->bind_param('i', $company_id);
 $stmt->execute();
 $accountsList = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
+// Fetch all customers for Name dropdown
+$stmtCust = $db->prepare("SELECT id, name, 'customer' as type FROM customers WHERE company_id = ? ORDER BY name ASC");
+$stmtCust->bind_param('i', $company_id);
+$stmtCust->execute();
+$customersList = $stmtCust->get_result()->fetch_all(MYSQLI_ASSOC);
+
+// Fetch all suppliers for Name dropdown
+$stmtSupp = $db->prepare("SELECT id, name, 'supplier' as type FROM suppliers WHERE company_id = ? ORDER BY name ASC");
+$stmtSupp->bind_param('i', $company_id);
+$stmtSupp->execute();
+$suppliersList = $stmtSupp->get_result()->fetch_all(MYSQLI_ASSOC);
+
+$entitiesList = array_merge($customersList, $suppliersList);
+usort($entitiesList, function($a, $b) {
+    return strcasecmp($a['name'], $b['name']);
+});
+
+
 // Helper to find VAT Account IDs on the backend
 $inputVatId = null;
 $outputVatId = null;
@@ -49,11 +67,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if (empty(trim($ref_no))) {
         $ref_no = 'CDJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
     }
-    $description = '';
+    $description = trim($_POST['description'] ?? '');
     $is_taxable = $companyIsTaxRegistered ? 1 : 0;
         $particulars = '';
     $type = 'Operating';
-    $vendor_name = null; // No longer at header level
+    $entity_id = $_POST['entity_id'] ?? null;
+    if ($entity_id === '') $entity_id = null;
+    $entity_type = $_POST['entity_type'] ?? null;
+    if ($entity_type === '') $entity_type = null;
+    $vendor_name = null; // Legacy field
 
     $account_ids = $_POST['account_id'] ?? [];
     $line_descriptions = $_POST['line_description'] ?? [];
@@ -64,8 +86,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $db->begin_transaction();
     try {
         $journal_id = 'CDJ';
-        $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param('isssissss', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id);
+        $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param('isssissssis', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id, $entity_id, $entity_type);
         $stmt->execute();
         $entry_id = $stmt->insert_id;
 
@@ -285,59 +307,73 @@ require_once '../includes/header.php';
 <div id="entryModal" class="modal-overlay hidden">
     <div class="modal" style="width: 1100px; max-width: 95vw;">
         <div class="modal-header">
-            <h2>New Journal Entry</h2>
+            <h2 id="modalTitle">New Journal Entry</h2>
             <button class="icon-btn" onclick="closeModal()"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
         </div>
         <div class="modal-body">
             <form id="entry-form" method="POST">
-                <input type="hidden" name="action" value="add_entry">
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                <input type="hidden" name="action" id="formAction" value="add_entry">
+                <input type="hidden" name="id" id="entryId" value="">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                     <div class="form-group">
                         <label class="form-label">Date</label>
-                        <input type="date" name="date" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                        <input type="date" name="date" id="entryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Ref No.</label>
-                        <input type="text" name="reference_no" class="form-control">
+                        <input type="text" name="reference_no" id="entryRefNo" class="form-control">
                     </div>
                 </div>
 
-                
+                <!-- Header-level Name (Customer/Vendor) — optional -->
+                <div class="form-group" style="margin-bottom: 1rem; position: relative;">
+                    <label class="form-label">Name <span style="font-weight:400; color: var(--text-muted); font-size:0.78rem;">(Customer / Vendor — optional)</span></label>
+                    <input type="text" id="entitySearchInput" class="form-control" placeholder="Search customer or vendor..." autocomplete="off"
+                           oninput="onEntitySearchInput()"
+                           onfocus="onEntitySearchInput()"
+                           onkeydown="onEntitySearchKeydown(event)"
+                           onblur="onEntitySearchBlur()">
+                    <input type="hidden" name="entity_id" id="entityIdInput" value="">
+                    <input type="hidden" name="entity_type" id="entityTypeInput" value="">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label class="form-label">Description</label>
+                    <textarea name="description" id="entryDescription" class="form-control" rows="2" style="resize: vertical;"></textarea>
+                </div>
+
                 <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
                     <table class="table" style="margin: 0;">
                         <thead>
                             <tr>
-                                <th style="width: 20%;">Account</th>
-                                <th style="width: 22%;">Name</th>
-                                <th style="width: 25%;">Description</th>
-                                <th style="width: 14%;" class="text-right">Debit</th>
-                                <th style="width: 14%;" class="text-right">Credit</th>
+                                <th style="width: 55%;">Account</th>
+                                <th style="width: 20%;" class="text-right">Debit</th>
+                                <th style="width: 20%;" class="text-right">Credit</th>
                                 <th style="width: 5%;"></th>
                             </tr>
                         </thead>
-                        <tbody id="lines-container">
-                            <!-- JS injected rows -->
-                        </tbody>
+                        <tbody id="lines-container"></tbody>
                         <tfoot>
                             <tr>
-                                <td colspan="2">
+                                <td>
                                     <button type="button" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="addLine()">
                                         <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Line
                                     </button>
                                 </td>
-                                <td class="text-right" style="font-weight: 600;">Total</td>
-                                <td class="text-right" id="total-dr" style="font-weight: 600;">₱0.00</td>
-                                <td class="text-right" id="total-cr" style="font-weight: 600;">₱0.00</td>
+                                <td class="text-right" style="font-weight: 600;" id="total-dr">&#8369;0.00</td>
+                                <td class="text-right" style="font-weight: 600;" id="total-cr">&#8369;0.00</td>
                                 <td></td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
-                
+
                 <div id="balance-warning" style="color: var(--danger-color); font-size: 0.875rem; margin-bottom: 1rem; text-align: right; display: none;">
-                    Debits and Credits must balance. Difference: ₱<span id="diff-amount">0.00</span>
+                    Debits and Credits must balance. Difference: &#8369;<span id="diff-amount">0.00</span>
                 </div>
+
+
 
             </form>
         </div>
@@ -348,14 +384,72 @@ require_once '../includes/header.php';
     </div>
 </div>
 
+<!-- Quick Add Customer Modal -->
+<div id="quickAddModal" class="modal-overlay hidden" style="z-index:10000;">
+    <div class="modal" style="width: 440px; max-width: 95vw;">
+        <div class="modal-header">
+            <h2 id="quickAddTitle">Add New</h2>
+            <button class="icon-btn" onclick="closeQuickAdd()"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Name <span style="color:#ef4444;">*</span></label>
+                <input type="text" id="quickAddName" class="form-control" placeholder="Enter name...">
+                <div id="quickAddError" style="color:#ef4444; font-size:0.82rem; margin-top:0.35rem; display:none;"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeQuickAdd()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="saveQuickAdd()" id="quickAddSaveBtn">Save</button>
+        </div>
+    </div>
+</div>
+
 <script>
 const accounts = <?= json_encode($accountsList) ?>;
+let entitiesList = <?= json_encode($entitiesList ?? []) ?>;
+const customersList = <?= json_encode($customersList ?? []) ?>;
+const suppliersList = <?= json_encode($suppliersList ?? []) ?>;
 
 
 const globalInputVatId = <?= $inputVatId ?: 'null' ?>;
 const globalOutputVatId = <?= $outputVatId ?: 'null' ?>;
 
 let lineCount = 0;
+
+function formatNumber(val) {
+    const num = parseFloat(val);
+    if (isNaN(num)) return '';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function parseNumber(str) {
+    if (!str) return 0;
+    const cleaned = String(str).replace(/,/g, '');
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? 0 : num;
+}
+
+function restrictDecimalInput(el) {
+    let val = el.value.replace(/,/g, '');
+    val = val.replace(/[^0-9.]/g, '');
+    const parts = val.split('.');
+    if (parts.length > 2) {
+        val = parts[0] + '.' + parts.slice(1).join('');
+    }
+    el.value = val;
+}
+
+function unformatCurrencyInput(el) {
+    if (el.value) el.value = el.value.replace(/,/g, '');
+}
+
+function formatCurrencyInput(el) {
+    if (el.value === '') return;
+    el.value = formatNumber(parseNumber(el.value));
+}
+
+
 
 // ── Smart Account Search (combobox) ─────────────────────────────────
 let activeAccountRow = null;
@@ -488,7 +582,7 @@ window.addEventListener('scroll', function() {
     }
 }, true);
 
-function addLine() {
+function addLine(prefill = null) {
     const tr = document.createElement('tr');
     tr.id = `line-${lineCount}`;
     tr.innerHTML = `
@@ -500,17 +594,11 @@ function addLine() {
                    onblur="onAccountSearchBlur(this)">
             <input type="hidden" name="account_id[]" class="account-id-input" value="">
         </td>
-        <td>
-            <input type="text" name="line_vendor[]" class="form-control">
+        <td style="min-width: 140px;">
+            <input type="text" inputmode="decimal" name="debit[]" class="form-control text-right dr-input" style="min-width: 130px; font-size: 0.95rem; padding: 0.5rem 0.6rem;" placeholder="0.00" oninput="restrictDecimalInput(this); autoZero(this, 'cr'); calcTotals()" onfocus="unformatCurrencyInput(this)" onblur="formatCurrencyInput(this); calcTotals()">
         </td>
-        <td>
-            <input type="text" name="line_description[]" class="form-control">
-        </td>
-        <td>
-            <input type="number" step="0.01" min="0" name="debit[]" class="form-control text-right dr-input" oninput="autoZero(this, 'cr'); calcTotals()">
-        </td>
-        <td>
-            <input type="number" step="0.01" min="0" name="credit[]" class="form-control text-right cr-input" oninput="autoZero(this, 'dr'); calcTotals()">
+        <td style="min-width: 140px;">
+            <input type="text" inputmode="decimal" name="credit[]" class="form-control text-right cr-input" style="min-width: 130px; font-size: 0.95rem; padding: 0.5rem 0.6rem;" placeholder="0.00" oninput="restrictDecimalInput(this); autoZero(this, 'dr'); calcTotals()" onfocus="unformatCurrencyInput(this)" onblur="formatCurrencyInput(this); calcTotals()">
         </td>
         <td class="text-center">
             <button type="button" class="icon-btn text-danger remove-btn" onclick="removeLine('${tr.id}')">
@@ -519,15 +607,25 @@ function addLine() {
         </td>
     `;
     document.getElementById('lines-container').appendChild(tr);
+
+    if (prefill) {
+        const acc = accounts.find(a => String(a.id) === String(prefill.account_id));
+        tr.querySelector('.account-id-input').value = prefill.account_id ?? '';
+        tr.querySelector('.account-search-input').value = acc ? `${acc.code} - ${acc.name}` : '';
+        if (prefill.debit > 0) tr.querySelector('.dr-input').value = formatNumber(prefill.debit);
+        if (prefill.credit > 0) tr.querySelector('.cr-input').value = formatNumber(prefill.credit);
+    }
+
     lucide.createIcons();
     lineCount++;
     updateRemoveButtons();
     calcTotals();
+    return tr;
 }
 
 function removeLine(id) {
     const lines = document.querySelectorAll('#lines-container tr');
-    if (lines.length <= 2) return; // keep at least 2
+    if (lines.length <= 2) return;
     document.getElementById(id).remove();
     updateRemoveButtons();
     calcTotals();
@@ -544,7 +642,7 @@ function updateRemoveButtons() {
 }
 
 function autoZero(el, otherClassPrefix) {
-    const val = parseFloat(el.value) || 0;
+    const val = parseNumber(el.value);
     const tr = el.closest('tr');
     const otherInput = tr.querySelector(`.${otherClassPrefix}-input`);
     if (val > 0) {
@@ -555,31 +653,32 @@ function autoZero(el, otherClassPrefix) {
 function calcTotals() {
     let drTotal = 0;
     let crTotal = 0;
-    document.querySelectorAll('.dr-input').forEach(el => drTotal += parseFloat(el.value) || 0);
-    document.querySelectorAll('.cr-input').forEach(el => crTotal += parseFloat(el.value) || 0);
-    
-    document.getElementById('total-dr').innerText = '₱' + drTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-    document.getElementById('total-cr').innerText = '₱' + crTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-    
+    let allAccountsSelected = true;
+
+    document.querySelectorAll('.dr-input').forEach(el => drTotal += parseNumber(el.value));
+    document.querySelectorAll('.cr-input').forEach(el => crTotal += parseNumber(el.value));
+    document.querySelectorAll('.account-id-input').forEach(el => { if (!el.value) allAccountsSelected = false; });
+
+    document.getElementById('total-dr').innerText = '\u20b1' + drTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById('total-cr').innerText = '\u20b1' + crTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+
     const balWarn = document.getElementById('balance-warning');
     const saveBtn = document.getElementById('save-btn');
-    
-    if (drTotal > 0 && Math.abs(drTotal - crTotal) < 0.01) {
+    const isBalanced = (drTotal > 0 && Math.abs(drTotal - crTotal) < 0.01);
+
+    if (isBalanced && allAccountsSelected) {
         balWarn.style.display = 'none';
-        document.getElementById('total-dr').style.color = 'var(--text-primary)';
-        document.getElementById('total-cr').style.color = 'var(--text-primary)';
+        saveBtn.removeAttribute('disabled');
     } else {
         if (drTotal > 0 || crTotal > 0) {
             balWarn.style.display = 'block';
             document.getElementById('diff-amount').innerText = Math.abs(drTotal - crTotal).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-            document.getElementById('total-dr').style.color = 'var(--danger-color)';
-            document.getElementById('total-cr').style.color = 'var(--danger-color)';
-        } else {
-            balWarn.style.display = 'none';
         }
+        saveBtn.setAttribute('disabled', 'true');
     }
-    checkValidity();
 }
+
+
 
 function checkValidity() {
     let drTotal = 0;
@@ -602,10 +701,154 @@ function checkValidity() {
     }
 }
 
+// ── Entity (Customer/Vendor) search at header level ─────────────────
+let entityDropdownEl = null;
+let _entityMatches = [];
+let _entityHighlight = -1;
+
+function getEntityDropdownEl() {
+    if (!entityDropdownEl) {
+        entityDropdownEl = document.createElement('div');
+        entityDropdownEl.style.cssText = 'display:none;position:fixed;z-index:9998;background:#fff;border:1px solid var(--border-color);border-radius:6px;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12);';
+        document.body.appendChild(entityDropdownEl);
+    }
+    return entityDropdownEl;
+}
+
+function positionEntityDropdown() {
+    const inp = document.getElementById('entitySearchInput');
+    if (!inp) return;
+    const rect = inp.getBoundingClientRect();
+    const el = getEntityDropdownEl();
+    el.style.left = rect.left + 'px';
+    el.style.top = (rect.bottom + 2) + 'px';
+    el.style.width = rect.width + 'px';
+}
+
+function renderEntityList(matches, highlightIndex = -1) {
+    _entityMatches = matches;
+    _entityHighlight = highlightIndex;
+    const el = getEntityDropdownEl();
+    positionEntityDropdown();
+    const addBtns = `<div style="padding:0.4rem 0.75rem; display:flex; gap:0.4rem; border-top:1px solid var(--border-color); margin-top:2px;">
+        <button type="button" onmousedown="openQuickAdd('customer')" style="flex:1; padding:0.35rem; font-size:0.8rem; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:5px; cursor:pointer;">+ Add Customer</button>
+        <button type="button" onmousedown="openQuickAdd('supplier')" style="flex:1; padding:0.35rem; font-size:0.8rem; background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; border-radius:5px; cursor:pointer;">+ Add Vendor</button>
+    </div>`;
+    if (matches.length === 0) {
+        el.innerHTML = `<div style="padding:0.6rem 0.75rem; color:var(--text-muted); font-size:0.85rem;">No records found</div>` + addBtns;
+    } else {
+        el.innerHTML = matches.map((e, idx) => `
+            <div class="entity-opt" data-idx="${idx}"
+                 style="padding:0.5rem 0.75rem; cursor:pointer; font-size:0.85rem; background:${idx === highlightIndex ? 'var(--bg-secondary)' : '#fff'};display:flex;align-items:center;gap:0.5rem;"
+                 onmousedown="selectEntityOption(${idx})">
+                <span style="font-size:0.7rem; padding:1px 6px; border-radius:20px; font-weight:600; background:${e.type==='customer'?'#dbeafe':'#dcfce7'}; color:${e.type==='customer'?'#1d4ed8':'#15803d'};">${e.type==='customer'?'C':'V'}</span>
+                ${escapeHtml(e.name)}
+            </div>`).join('') + addBtns;
+    }
+    el.style.display = 'block';
+}
+
+function onEntitySearchInput() {
+    const q = (document.getElementById('entitySearchInput').value || '').trim().toLowerCase();
+    document.getElementById('entityIdInput').value = '';
+    document.getElementById('entityTypeInput').value = '';
+    const matches = q ? entitiesList.filter(e => e.name.toLowerCase().includes(q)) : entitiesList.slice(0, 50);
+    renderEntityList(matches, matches.length ? 0 : -1);
+}
+
+function selectEntityOption(idx) {
+    const e = _entityMatches[idx];
+    if (!e) return;
+    document.getElementById('entitySearchInput').value = e.name;
+    document.getElementById('entityIdInput').value = e.id;
+    document.getElementById('entityTypeInput').value = e.type;
+    getEntityDropdownEl().style.display = 'none';
+}
+
+function onEntitySearchKeydown(event) {
+    const el = getEntityDropdownEl();
+    if (el.style.display === 'none') {
+        if (event.key === 'ArrowDown' || event.key === 'Enter') onEntitySearchInput();
+        return;
+    }
+    if (event.key === 'ArrowDown') { event.preventDefault(); _entityHighlight = Math.min(_entityHighlight+1, _entityMatches.length-1); renderEntityList(_entityMatches, _entityHighlight); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); _entityHighlight = Math.max(_entityHighlight-1, 0); renderEntityList(_entityMatches, _entityHighlight); }
+    else if (event.key === 'Enter') { event.preventDefault(); if (_entityHighlight >= 0) selectEntityOption(_entityHighlight); }
+    else if (event.key === 'Escape') { el.style.display = 'none'; }
+}
+
+function onEntitySearchBlur() {
+    setTimeout(() => {
+        getEntityDropdownEl().style.display = 'none';
+        if (!document.getElementById('entityIdInput').value) {
+            document.getElementById('entitySearchInput').value = '';
+            document.getElementById('entityTypeInput').value = '';
+        }
+    }, 180);
+}
+
+let _quickAddType = null;
+function openQuickAdd(type) {
+    _quickAddType = type;
+    document.getElementById('quickAddTitle').innerText = type === 'customer' ? 'Add New Customer' : 'Add New Vendor';
+    document.getElementById('quickAddName').value = document.getElementById('entitySearchInput').value;
+    document.getElementById('quickAddError').style.display = 'none';
+    document.getElementById('quickAddModal').classList.remove('hidden');
+    document.getElementById('quickAddModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('quickAddName').focus(), 50);
+}
+
+function closeQuickAdd() {
+    document.getElementById('quickAddModal').classList.add('hidden');
+    document.getElementById('quickAddModal').style.display = 'none';
+}
+
+async function saveQuickAdd() {
+    const name = document.getElementById('quickAddName').value.trim();
+    if (!name) {
+        document.getElementById('quickAddError').innerText = 'Name is required.';
+        document.getElementById('quickAddError').style.display = 'block';
+        return;
+    }
+    const btn = document.getElementById('quickAddSaveBtn');
+    btn.disabled = true; btn.innerText = 'Saving...';
+    try {
+        const endpoint = _quickAddType === 'customer' ? '../api_add_customer.php' : '../api_add_vendor.php';
+        const fd = new FormData();
+        fd.append('name', name);
+        const res = await fetch(endpoint, { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.success) {
+            const newEntity = { id: data.id, name: data.name, type: _quickAddType === 'customer' ? 'customer' : 'supplier' };
+            entitiesList.push(newEntity);
+            entitiesList.sort((a,b) => a.name.localeCompare(b.name));
+            document.getElementById('entitySearchInput').value = data.name;
+            document.getElementById('entityIdInput').value = data.id;
+            document.getElementById('entityTypeInput').value = _quickAddType === 'customer' ? 'customer' : 'supplier';
+            closeQuickAdd();
+        } else {
+            document.getElementById('quickAddError').innerText = data.error || 'Failed to add.';
+            document.getElementById('quickAddError').style.display = 'block';
+        }
+    } catch (e) {
+        document.getElementById('quickAddError').innerText = 'Network error.';
+        document.getElementById('quickAddError').style.display = 'block';
+    }
+    btn.disabled = false; btn.innerText = 'Save';
+}
+
 function openModal() {
     const modal = document.getElementById('entryModal');
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
+    document.getElementById('formAction').value = 'add_entry';
+    document.getElementById('entryId').value = '';
+    document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('entryRefNo').value = '';
+    document.getElementById('entryDescription').value = '';
+    document.getElementById('entitySearchInput').value = '';
+    document.getElementById('entityIdInput').value = '';
+    document.getElementById('entityTypeInput').value = '';
     document.getElementById('lines-container').innerHTML = '';
     lineCount = 0;
     addLine();
