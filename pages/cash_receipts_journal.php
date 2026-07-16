@@ -180,10 +180,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 // Fetch existing journal entries
 $query = "
-    SELECT e.*, 
+    SELECT e.*,
+           COALESCE(c.name, s.name) AS entity_name,
            (SELECT SUM(debit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_debit,
            (SELECT SUM(credit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_credit
-    FROM journal_entries e 
+    FROM journal_entries e
+    LEFT JOIN customers c ON e.entity_id = c.id AND e.entity_type = 'customer'
+    LEFT JOIN suppliers s ON e.entity_id = s.id AND e.entity_type = 'supplier'
     WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'CRJ'
     ORDER BY e.date DESC, e.id DESC
 ";
