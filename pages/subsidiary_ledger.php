@@ -189,12 +189,12 @@ function sl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNorm
 ?>
 
 <div class="page-header no-print" style="justify-content: flex-end; margin-bottom: 1rem; background: transparent; border: none; box-shadow: none; padding: 0.5rem 0;">
-    <div style="display: flex; align-items: center; gap: 0.75rem;">
+    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
         <a href="<?= BASE_URL ?>pages/general_ledger.php" class="btn btn-secondary">
             <i data-lucide="book-open" style="width:15px;height:15px;"></i> General Ledger
         </a>
         <form method="GET" style="margin: 0;">
-            <select name="type" class="form-control" style="width: 200px; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);" onchange="this.form.submit()">
+            <select name="type" class="form-control" style="width: 200px; max-width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);" onchange="this.form.submit()">
                 <option value="">Receivable &amp; Payable</option>
                 <option value="receivable" <?= $type_filter === 'receivable' ? 'selected' : '' ?>>Receivable (Customers)</option>
                 <option value="payable" <?= $type_filter === 'payable' ? 'selected' : '' ?>>Payable (Suppliers)</option>

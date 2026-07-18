@@ -95,9 +95,9 @@ $initials = strtoupper(substr($parts[0], 0, 1) . (isset($parts[1]) ? substr($par
         
         <!-- Profile Information -->
         <div class="card" style="padding: 2rem;">
-            <div style="display: flex; gap: 2rem; align-items: flex-start;">
+            <div style="display: flex; gap: 2rem; align-items: flex-start; flex-wrap: wrap;">
                 
-                <div style="width: 100px; height: 100px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6, #1d4ed8); display: flex; align-items: center; justify-content: center; color: white; font-size: 2.5rem; font-weight: 700; flex-shrink: 0; box-shadow: 0 10px 25px rgba(59,130,246,0.3);">
+                <div style="width: 100px; height: 100px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6, #1d4ed8); display: flex; align-items: center; justify-content: center; color: white; font-size: 2.5rem; font-weight: 700; flex-shrink: 0; box-shadow: 0 10px 25px rgba(59,130,246,0.3); margin: 0 auto;">
                     <?= $initials ?>
                 </div>
 

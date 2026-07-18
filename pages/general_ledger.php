@@ -162,12 +162,12 @@ function gl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNorm
 ?>
 
 <div class="page-header no-print" style="justify-content: flex-end; margin-bottom: 1rem; background: transparent; border: none; box-shadow: none; padding: 0.5rem 0;">
-    <div style="display: flex; align-items: center; gap: 0.75rem;">
+    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
         <a href="<?= BASE_URL ?>pages/subsidiary_ledger.php" class="btn btn-secondary">
             <i data-lucide="users" style="width:15px;height:15px;"></i> Subsidiary Ledger
         </a>
         <form method="GET" style="margin: 0;">
-            <select name="category" class="form-control" style="width: 200px; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);" onchange="this.form.submit()">
+            <select name="category" class="form-control" style="width: 200px; max-width: 100%; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);" onchange="this.form.submit()">
                 <option value="">All Accounts</option>
                 <?php foreach($elements as $el): ?>
                     <option value="<?= $el ?>" <?= $selected_category == $el ? 'selected' : '' ?>>
