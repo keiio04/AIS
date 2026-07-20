@@ -52,7 +52,7 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= htmlspecialchars($pageTitle) ?> - AccounTech</title>
+<title><?= htmlspecialchars($pageTitle) ?> - TALA-AIS</title>
 <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/style.css">
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -67,10 +67,10 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                 <div class="flex items-center gap-2">
                     <div style="background: linear-gradient(135deg, #0ea5e9, #3b82f6, #4f46e5); padding: 6px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.5), inset 0 2px 4px rgba(255,255,255,0.3); position: relative; overflow: hidden;">
                         <div style="position: absolute; top: 0; left: 0; right: 0; height: 50%; background: linear-gradient(to bottom, rgba(255,255,255,0.25), transparent);"></div>
-                        <i data-lucide="bar-chart-3" color="#ffffff" stroke-width="2.5" style="width: 20px; height: 20px; z-index: 1;"></i>
+                        <i data-lucide="star" color="#ffffff" stroke-width="2.5" fill="#ffffff" style="width: 20px; height: 20px; z-index: 1;"></i>
                     </div>
                     <span style="font-size: 1.15rem; font-weight: 800; background: linear-gradient(to right, #ffffff, #93c5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.02em;">
-                        AccounTech
+                        TALA-AIS
                     </span>
                 </div>
                 <?php if ($activeCompanyName): ?>

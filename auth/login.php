@@ -93,8 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AccounTech AIS – Sign In</title>
-<meta name="description" content="Sign in to AccounTech AIS Platform – Laguna State Polytechnic University Accounting Information System.">
+<title>TALA-AIS – Sign In</title>
+<meta name="description" content="Sign in to TALA-AIS – Laguna State Polytechnic University Accounting Information System.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -159,7 +159,7 @@ body {
   /* grid: logo top | content centered | badge bottom */
   display: grid;
   grid-template-rows: auto 1fr auto;
-  padding: 3.5rem 2rem 3.5rem 7.5rem;
+  padding: 3.5rem 1rem 3.5rem 8rem;
   min-height: 100vh;
   background: transparent;
 }
@@ -189,7 +189,7 @@ body {
 }
 .auth-left-body h1 {
   font-family: 'Outfit', sans-serif;
-  font-size: 3.6rem;
+  font-size: 4.4rem;
   font-weight: 800;
   color: #1a2f6e;
   line-height: 1.08;
@@ -198,17 +198,17 @@ body {
 }
 /* Short blue underline accent */
 .h1-underline {
-  width: 56px;
+  width: 64px;
   height: 5px;
   background: #2563eb;
   border-radius: 3px;
   margin-bottom: 1.5rem;
 }
 .auth-left-body p {
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   color: #3558a0;
   line-height: 1.7;
-  max-width: 320px;
+  max-width: 360px;
   font-weight: 400;
 }
 
@@ -246,6 +246,11 @@ body {
 .auth-form-wrap {
   width: 100%;
   max-width: 420px;
+  background: #ffffff;
+  padding: 2rem;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
 .auth-form-wrap h2 {
@@ -254,12 +259,12 @@ body {
   font-weight: 800;
   color: #0f172a;
   letter-spacing: -0.025em;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.3rem;
 }
 .auth-subtitle {
   font-size: 0.9rem;
   color: #64748b;
-  margin-bottom: 1.75rem;
+  margin-bottom: 1.5rem;
 }
 
 /* ─── Tabs ─── */
@@ -271,11 +276,11 @@ body {
 }
 .auth-tab-btn {
   flex: 1;
-  padding: 0.6rem 0.5rem;
+  padding: 0.75rem 0.5rem;
   border: none;
   background: transparent;
   font-family: 'Inter', sans-serif;
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 600;
   color: #94a3b8;
   cursor: pointer;
@@ -301,13 +306,13 @@ body {
 .auth-alert.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
 
 /* ─── Form fields ─── */
-.auth-field { margin-bottom: 1rem; }
+.auth-field { margin-bottom: 0.9rem; }
 .auth-field > label {
   display: block;
-  font-size: 0.83rem;
+  font-size: 0.9rem;
   font-weight: 600;
   color: #1e293b;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.35rem;
 }
 .input-wrap { position: relative; display: flex; align-items: center; }
 .input-icon {
@@ -320,11 +325,11 @@ body {
 }
 .auth-input {
   width: 100%;
-  padding: 0.72rem 1rem 0.72rem 2.55rem;
+  padding: 0.75rem 1rem 0.75rem 2.5rem;
   border: 1.5px solid #dde6f2;
   border-radius: 10px;
   font-family: 'Inter', sans-serif;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   color: #0f172a;
   background: #ffffff;
   outline: none;
@@ -353,16 +358,16 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
   margin-bottom: 1.3rem;
 }
 .remember-label {
-  display: flex; align-items: center; gap: 0.45rem;
-  font-size: 0.84rem; color: #374151;
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.95rem; color: #374151;
   cursor: pointer; font-weight: 500;
 }
 .remember-label input[type="checkbox"] {
-  width: 15px; height: 15px;
+  width: 17px; height: 17px;
   accent-color: #2563eb; cursor: pointer;
 }
 .forgot-link {
-  font-size: 0.84rem; color: #2563eb;
+  font-size: 0.95rem; color: #2563eb;
   text-decoration: none; font-weight: 500;
 }
 .forgot-link:hover { text-decoration: underline; }
@@ -376,7 +381,7 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
   border: none;
   border-radius: 10px;
   font-family: 'Outfit', sans-serif;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   cursor: pointer;
   letter-spacing: 0.01em;
@@ -396,13 +401,6 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
 .strength-fill  { height: 100%; border-radius: 4px; transition: width .3s, background .3s; }
 .strength-label { font-size: 0.73rem; font-weight: 600; color: #94a3b8; min-width: 40px; }
 
-/* ─── Footer ─── */
-.auth-footer {
-  margin-top: 1.75rem;
-  font-size: 0.78rem;
-  color: #94a3b8;
-  text-align: center;
-}
 
 /* ─── Responsive ─── */
 @media (max-width: 820px) {
@@ -415,6 +413,9 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
   .auth-right {
     padding: 2rem 1.5rem 3rem;
     align-items: center;
+  }
+  .auth-form-wrap {
+    padding: 1.5rem;
   }
   .bg-waves { width: 100vw; }
 }
@@ -444,19 +445,17 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
     <!-- Top: Brand logo -->
     <div class="brand-logo">
       <div class="brand-icon">
+        <!-- New TALA-AIS Star Logo -->
         <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="20" x2="18" y2="10"/>
-          <line x1="12" y1="20" x2="12" y2="4"/>
-          <line x1="6"  y1="20" x2="6"  y2="14"/>
-          <line x1="2"  y1="20" x2="22" y2="20"/>
+          fill="#2563eb" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
         </svg>
       </div>
     </div>
 
     <!-- Middle: Heading + description -->
     <div class="auth-left-body">
-      <h1>AccounTech<br>AIS Platform</h1>
+      <h1>TALA-AIS</h1>
       <div class="h1-underline"></div>
       <p>Empowering Laguna State Polytechnic University with modern, reliable, and secure accounting tools.</p>
     </div>
@@ -469,8 +468,8 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
   <div class="auth-right">
     <div class="auth-form-wrap">
 
-      <h2>Welcome back</h2>
-      <p class="auth-subtitle">Please enter your details to sign in.</p>
+      <h2 id="form-title"><?= $mode === 'register' ? 'Create Account' : 'Welcome back' ?></h2>
+      <p id="form-subtitle" class="auth-subtitle"><?= $mode === 'register' ? 'Please fill in the details to register.' : 'Please enter your details to sign in.' ?></p>
 
       <!-- Tabs -->
       <div class="auth-tabs">
@@ -602,10 +601,6 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
         <button type="submit" id="btn-register" class="auth-submit">Create Account →</button>
       </form>
 
-      <div class="auth-footer">
-        © 2025 AccounTech AIS Platform. All rights reserved.
-      </div>
-
     </div>
   </div><!-- /auth-right -->
 
@@ -617,12 +612,19 @@ function switchTab(tab) {
   const rf = document.getElementById('rf');
   const tl = document.getElementById('tab-login');
   const tr = document.getElementById('tab-register');
+  const ft = document.getElementById('form-title');
+  const fs = document.getElementById('form-subtitle');
+
   if (tab === 'login') {
     lf.style.display = 'block'; rf.style.display = 'none';
     tl.classList.add('active'); tr.classList.remove('active');
+    if (ft) ft.textContent = 'Welcome back';
+    if (fs) fs.textContent = 'Please enter your details to sign in.';
   } else {
     rf.style.display = 'block'; lf.style.display = 'none';
     tr.classList.add('active'); tl.classList.remove('active');
+    if (ft) ft.textContent = 'Create Account';
+    if (fs) fs.textContent = 'Please fill in the details to register.';
   }
 }
 

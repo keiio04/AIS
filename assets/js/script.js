@@ -1,5 +1,5 @@
 /**
- * script.js — Global JavaScript for AccounTech AIS
+ * script.js — Global JavaScript for TALA-AIS
  * Handles: sidebar toggle, dark mode, dropdowns, lucide icons
  */
 
