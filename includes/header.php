@@ -37,6 +37,7 @@ $pageNames = [
     'dashboard' => 'Dashboard',
     'journal_entries' => 'Journal Entries',
     'general_ledger' => 'General Ledger',
+    'subsidiary_ledger' => 'Subsidiary Ledger',
     'trial_balance' => 'Trial Balance',
     'financial_statements' => 'Financial Statements',
     'chart_of_accounts' => 'Chart of Accounts',
@@ -69,15 +70,21 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                         <div style="position: absolute; top: 0; left: 0; right: 0; height: 50%; background: linear-gradient(to bottom, rgba(255,255,255,0.25), transparent);"></div>
                         <i data-lucide="star" color="#ffffff" stroke-width="2.5" fill="#ffffff" style="width: 20px; height: 20px; z-index: 1;"></i>
                     </div>
-                    <span style="font-size: 1.15rem; font-weight: 800; background: linear-gradient(to right, #ffffff, #93c5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.02em;">
-                        TALA-AIS
-                    </span>
+                    <div>
+                        <?php if ($activeCompanyName): ?>
+                        <div style="font-size: 1.05rem; font-weight: 800; background: linear-gradient(to right, #ffffff, #93c5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.02em; line-height: 1.2;">
+                            <?= htmlspecialchars($activeCompanyName) ?>
+                        </div>
+                        <?php else: ?>
+                        <div style="font-size: 1.05rem; font-weight: 800; background: linear-gradient(to right, #ffffff, #93c5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.02em; line-height: 1.2;">
+                            TALA-AIS
+                        </div>
+                        <?php endif; ?>
+                        <div style="font-size: 0.7rem; color: #60a5fa; font-weight: 600; letter-spacing: 0.03em; line-height: 1;">
+                            TALA-AIS
+                        </div>
+                    </div>
                 </div>
-                <?php if ($activeCompanyName): ?>
-                <div style="font-size: 0.75rem; color: #60a5fa; font-weight: 600; padding-left: 0.25rem; margin-top: 0.15rem;">
-                    <?= htmlspecialchars($activeCompanyName) ?>
-                </div>
-                <?php endif; ?>
             </div>
         </div>
 
@@ -136,9 +143,19 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                                     <span style="font-size: 0.75rem;">Cash Disbursements</span>
                                 </a>
                             </div>
-                            <a href="<?= BASE_URL ?>pages/general_ledger.php" class="nav-subitem <?= $current_page==='general_ledger'?'active':'' ?>" style="padding: 0.25rem 0.5rem;">
-                                <div class="flex items-center gap-2"><i data-lucide="layers" style="width: 13px; height: 13px;"></i><span>General Ledger</span></div>
-                            </a>
+                            <!-- Ledgers Dropdown -->
+                            <div class="flex justify-between items-center nav-subitem" onclick="toggleSidebarSection('ledgers_<?= $bt ?>')" style="padding: 0.25rem 0.5rem; cursor: pointer; border-radius: 6px; margin-bottom: 0.25rem; <?= in_array($current_page, ['general_ledger', 'subsidiary_ledger']) ? 'background:rgba(59,130,246,0.1);color:#3b82f6;' : '' ?>">
+                                <div class="flex items-center gap-2"><i data-lucide="layers" style="width: 13px; height: 13px;"></i><span>Ledger</span></div>
+                                <i data-lucide="chevron-down" style="width: 13px; height: 13px; color: var(--sidebar-muted);"></i>
+                            </div>
+                            <div id="ledgers_<?= $bt ?>" class="collapse-smooth <?= in_array($current_page, ['general_ledger', 'subsidiary_ledger']) ? '' : 'is-collapsed' ?>" style="padding-left: 1.5rem; margin-bottom: 0.5rem;">
+                                <a href="<?= BASE_URL ?>pages/general_ledger.php" class="nav-subitem <?= $current_page==='general_ledger'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
+                                    <span style="font-size: 0.75rem;">General Ledger</span>
+                                </a>
+                                <a href="<?= BASE_URL ?>pages/subsidiary_ledger.php" class="nav-subitem <?= $current_page==='subsidiary_ledger'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
+                                    <span style="font-size: 0.75rem;">Subsidiary Ledger</span>
+                                </a>
+                            </div>
                             <a href="<?= BASE_URL ?>pages/trial_balance.php" class="nav-subitem <?= $current_page==='trial_balance'?'active':'' ?>" style="padding: 0.25rem 0.5rem;">
                                 <div class="flex items-center gap-2"><i data-lucide="scale" style="width: 13px; height: 13px;"></i><span>Trial Balance</span></div>
                             </a>

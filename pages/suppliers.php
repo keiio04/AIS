@@ -105,17 +105,30 @@ require_once '../includes/header.php';
 
 // Search Filter
 $search = $_GET['search'] ?? '';
-$query = "SELECT * FROM suppliers WHERE company_id = ?";
+$query = "SELECT s.*, 
+    (
+        s.opening_balance + 
+        COALESCE((
+            SELECT SUM(l.credit - l.debit)
+            FROM journal_entry_lines l
+            JOIN journal_entries e ON l.journal_entry_id = e.id
+            JOIN accounts a ON l.account_id = a.id
+            WHERE e.entity_id = s.id AND e.entity_type = 'supplier'
+              AND e.deleted_at IS NULL
+              AND a.name LIKE '%payable%'
+        ), 0)
+    ) as current_balance
+FROM suppliers s WHERE s.company_id = ?";
 $params = [$company_id];
 $types = "i";
 
 if ($search) {
-    $query .= " AND (name LIKE ? OR contact_person LIKE ? OR email LIKE ? OR phone LIKE ?)";
+    $query .= " AND (s.name LIKE ? OR s.contact_person LIKE ? OR s.email LIKE ? OR s.phone LIKE ?)";
     $like = "%$search%";
     array_push($params, $like, $like, $like, $like);
     $types .= "ssss";
 }
-$query .= " ORDER BY name ASC";
+$query .= " ORDER BY s.name ASC";
 
 $stmt = $db->prepare($query);
 $stmt->bind_param($types, ...$params);
@@ -159,7 +172,7 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     <th>Contact Person</th>
                     <th>Email / Phone</th>
                     <th>Terms</th>
-                    <th class="text-right">Opening Balance</th>
+                    <th class="text-right">Current Balance</th>
                     <th class="text-center">Status</th>
                     <th class="text-center">Actions</th>
                 </tr>
@@ -176,7 +189,7 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <span style="color: var(--text-muted);"><?= htmlspecialchars($s['phone'] ?: '') ?></span>
                     </td>
                     <td style="font-size: 0.8125rem;"><?= htmlspecialchars($s['terms'] ?: '—') ?></td>
-                    <td class="text-right" style="font-weight: 600;">₱<?= number_format($s['opening_balance'], 2) ?></td>
+                    <td class="text-right" style="font-weight: 700; color: var(--primary-color);">₱<?= number_format($s['current_balance'], 2) ?></td>
                     <td class="text-center">
                         <span class="badge <?= $s['status'] === 'Active' ? 'badge-success' : 'badge-neutral' ?>"><?= htmlspecialchars($s['status']) ?></span>
                     </td>

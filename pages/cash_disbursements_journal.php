@@ -61,7 +61,10 @@ $companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_regis
 
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    if ($_POST['action'] === 'add_entry') {
+    if ($_POST['action'] === 'add_entry' || $_POST['action'] === 'edit_entry') {
+        $action = $_POST['action'];
+        $entry_id = ($action === 'edit_entry') ? (int)($_POST['entry_id'] ?? 0) : null;
+        
     $date = $_POST['date'];
     $ref_no = $_POST['reference_no'];
     if (empty(trim($ref_no))) {
@@ -82,14 +85,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $line_vendors = $_POST['line_vendor'] ?? [];
     $debits = $_POST['debit'] ?? [];
     $credits = $_POST['credit'] ?? [];
+    
+    if (!isset($error)) {
+        if ($action === 'edit_entry') {
+            $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND journal_id = 'CDJ'");
+            $check->bind_param('ii', $entry_id, $company_id);
+            $check->execute();
+            if (!$check->get_result()->fetch_assoc()) {
+                $error = "Journal entry not found.";
+            }
+        }
+    }
 
+    if (!isset($error)) {
     $db->begin_transaction();
     try {
         $journal_id = 'CDJ';
-        $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param('isssissssis', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id, $entity_id, $entity_type);
-        $stmt->execute();
-        $entry_id = $stmt->insert_id;
+        
+        if ($action === 'add_entry') {
+            $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param('isssissssis', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id, $entity_id, $entity_type);
+            $stmt->execute();
+            $entry_id = $stmt->insert_id;
+        } else {
+            $stmt = $db->prepare("UPDATE journal_entries SET reference_no = ?, date = ?, description = ?, is_taxable = ?, entity_id = ?, entity_type = ? WHERE id = ? AND company_id = ?");
+            $stmt->bind_param('sssiisii', $ref_no, $date, $description, $is_taxable, $entity_id, $entity_type, $entry_id, $company_id);
+            $stmt->execute();
+
+            $stmtDelLines = $db->prepare("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?");
+            $stmtDelLines->bind_param('i', $entry_id);
+            $stmtDelLines->execute();
+        }
 
         // --- BACKEND VAT LOGIC START (Cash Disbursements Journal: Input VAT only) ---
                 $final_lines = [];
@@ -158,9 +184,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
         // Add to activity log
         $user_id = $_SESSION['user_id'];
-        $log_action = "Created Journal Entry | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2);
-        $logStmt = $db->prepare("INSERT INTO activity_logs (user_id, action) VALUES (?, ?)");
-        $logStmt->bind_param('is', $user_id, $log_action);
+        $log_action = ($action === 'add_entry')
+            ? "Created Journal Entry | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2)
+            : "Edited Journal Entry #$entry_id | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2);
+        $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+        $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
         $logStmt->execute();
 
         $db->commit();
@@ -169,6 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     } catch (Exception $e) {
         $db->rollback();
         $error = "Failed to save journal entry: " . $e->getMessage();
+    }
     }
     } elseif ($_POST['action'] === 'delete') {
     $delete_id = (int)$_POST['id'];
@@ -277,13 +306,33 @@ require_once '../includes/header.php';
                     <td class="text-right"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
                     <td class="text-center" style="vertical-align: middle;">
                         <?php if ($index === 0): ?>
-                        <form method="POST" style="display:inline;" onsubmit="return confirm('Move this entry to Trash Bin?');">
-                            <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="id" value="<?= $tx['id'] ?>">
-                            <button type="submit" style="background: none; border: none; cursor: pointer; color: #ef4444;" title="Move to Trash">
-                                <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+                        <div class="flex gap-1" style="justify-content: center;">
+                            <button type="button" style="background: none; border: none; cursor: pointer; color: var(--primary-color);" title="Edit Entry" onclick='openEditModal(<?= json_encode([
+                                "id" => $tx['id'],
+                                "date" => $tx['date'],
+                                "reference_no" => $tx['reference_no'],
+                                "description" => $tx['description'],
+                                "entity_id" => $tx['entity_id'],
+                                "entity_type" => $tx['entity_type'],
+                                "entity_name" => $tx['entity_name'],
+                                "lines" => array_map(function($l) {
+                                    return [
+                                        "account_id" => $l['account_id'],
+                                        "debit" => $l['debit'],
+                                        "credit" => $l['credit'],
+                                    ];
+                                }, $lines)
+                            ]) ?>)'>
+                                <i data-lucide="edit-2" style="width:15px;height:15px;"></i>
                             </button>
-                        </form>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Move this entry to Trash Bin?');">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="id" value="<?= $tx['id'] ?>">
+                                <button type="submit" style="background: none; border: none; cursor: pointer; color: #ef4444;" title="Move to Trash">
+                                    <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+                                </button>
+                            </form>
+                        </div>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -316,7 +365,7 @@ require_once '../includes/header.php';
         <div class="modal-body">
             <form id="entry-form" method="POST">
                 <input type="hidden" name="action" id="formAction" value="add_entry">
-                <input type="hidden" name="id" id="entryId" value="">
+                <input type="hidden" name="entry_id" id="entryId" value="">
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                     <div class="form-group">
@@ -844,6 +893,7 @@ function openModal() {
     const modal = document.getElementById('entryModal');
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
+    document.getElementById('modalTitle').innerText = 'New Journal Entry';
     document.getElementById('formAction').value = 'add_entry';
     document.getElementById('entryId').value = '';
     document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
@@ -856,6 +906,27 @@ function openModal() {
     lineCount = 0;
     addLine();
     addLine();
+    calcTotals();
+}
+
+function openEditModal(tx) {
+    const modal = document.getElementById('entryModal');
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    document.getElementById('modalTitle').innerText = 'Edit Journal Entry';
+    document.getElementById('formAction').value = 'edit_entry';
+    document.getElementById('entryId').value = tx.id;
+    document.getElementById('entryDate').value = tx.date;
+    document.getElementById('entryRefNo').value = tx.reference_no;
+    document.getElementById('entryDescription').value = tx.description || '';
+    // Pre-fill entity
+    document.getElementById('entitySearchInput').value = tx.entity_name || '';
+    document.getElementById('entityIdInput').value = tx.entity_id || '';
+    document.getElementById('entityTypeInput').value = tx.entity_type || '';
+    document.getElementById('lines-container').innerHTML = '';
+    lineCount = 0;
+    tx.lines.forEach(line => addLine(line));
+    calcTotals();
 }
 
 function closeModal() {

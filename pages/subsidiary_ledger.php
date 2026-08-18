@@ -56,9 +56,8 @@ $stmtLines = $db->prepare("
     WHERE l.account_id = ? AND e.deleted_at IS NULL
 ");
 
-// Prepared statement for a customer/supplier's full, cross-account
-// transaction history -- pulls EVERY line company-wide tagged with that
-// person's name, not just lines that hit the AR/AP account itself.
+// Prepared statement for a customer/supplier's transaction history 
+// specifically for the current control account.
 $stmtVendorLines = $db->prepare("
     SELECT l.debit, l.credit, e.date, e.reference_no,
            a.name as account_name, a.code as account_code, a.category as account_category,
@@ -68,11 +67,13 @@ $stmtVendorLines = $db->prepare("
     JOIN accounts a ON l.account_id = a.id
     WHERE e.company_id = ? AND e.deleted_at IS NULL
       AND e.entity_id = ? AND e.entity_type = ?
+      AND l.account_id = ?
     ORDER BY e.date ASC, e.id ASC
 ");
 $vendorIdParam = 0;
 $vendorTypeParam = '';
-$stmtVendorLines->bind_param('iis', $company_id, $vendorIdParam, $vendorTypeParam);
+$accountIdParam = 0;
+$stmtVendorLines->bind_param('iisi', $company_id, $vendorIdParam, $vendorTypeParam, $accountIdParam);
 
 // Master lists of customers / suppliers with their OWN opening balances.
 // This is what makes each card reconcile correctly instead of always
@@ -190,9 +191,6 @@ function sl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNorm
 
 <div class="page-header no-print" style="justify-content: flex-end; margin-bottom: 1rem; background: transparent; border: none; box-shadow: none; padding: 0.5rem 0;">
     <div style="display: flex; align-items: center; gap: 0.75rem;">
-        <a href="<?= BASE_URL ?>pages/general_ledger.php" class="btn btn-secondary">
-            <i data-lucide="book-open" style="width:15px;height:15px;"></i> General Ledger
-        </a>
         <form method="GET" style="margin: 0;">
             <select name="type" class="form-control" style="width: 200px; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);" onchange="this.form.submit()">
                 <option value="">Receivable &amp; Payable</option>
@@ -230,15 +228,19 @@ foreach ($controlAccounts as $acc) {
     $masterList = sl_is_receivable($acc['name']) ? $customerBalances : $supplierBalances;
 
     // Seed groups from the master list so accounts with only an
-    // opening balance (no activity yet) still appear.
+    // opening balance (no activity yet) still appear, but only for the main control accounts.
     $groups = [];
-    foreach ($masterList as $key => $info) {
-        $groups[$key] = [
-            'display_name' => $info['display_name'],
-            'opening_balance' => $info['opening_balance'],
-            'entity_id' => $info['entity_id'],
-            'entity_type' => $info['entity_type'],
-        ];
+    $isMainControl = (stripos($acc['name'], 'accounts receivable') !== false || stripos($acc['name'], 'accounts payable') !== false);
+    
+    if ($isMainControl) {
+        foreach ($masterList as $key => $info) {
+            $groups[$key] = [
+                'display_name' => $info['display_name'],
+                'opening_balance' => $info['opening_balance'],
+                'entity_id' => $info['entity_id'],
+                'entity_type' => $info['entity_type'],
+            ];
+        }
     }
 
     $stmtLines->bind_param('i', $acc['id']);
@@ -263,6 +265,7 @@ foreach ($controlAccounts as $acc) {
     foreach ($groups as $key => $g) {
         $vendorIdParam = $g['entity_id'];
         $vendorTypeParam = $g['entity_type'];
+        $accountIdParam = $acc['id'];
         
         // Skip if we don't have a valid entity_id
         if (!$vendorIdParam) {
@@ -276,16 +279,7 @@ foreach ($controlAccounts as $acc) {
             continue; // nothing to show for this name
         }
 
-        $byAccount = [];
-        foreach ($vLines as $vl) {
-            $byAccount[$vl['account_name']][] = $vl;
-        }
-
-        // The native AR/AP card (this control account) always shows
-        // first, even if empty, since it carries the opening balance.
-        $g['native_lines'] = $byAccount[$acc['name']] ?? [];
-        unset($byAccount[$acc['name']]);
-        $g['other_accounts'] = $byAccount; // account_name => lines[]
+        $g['native_lines'] = $vLines;
         $finalGroups[$key] = $g;
     }
     $groups = $finalGroups;
@@ -313,23 +307,6 @@ foreach ($controlAccounts as $acc) {
             $isDebitNormal,
             'Description'
         );
-
-        // 2) A separate table per OTHER account this same person shows
-        // up in (e.g. "Other Income - alexa"), each with its own
-        // header, own code, and its own normal-balance rules.
-        foreach ($g['other_accounts'] as $otherAccName => $otherLines) {
-            $otherCode = $otherLines[0]['account_code'] ?? ($acc['code'] . '-' . $n);
-            $otherCategory = $otherLines[0]['account_category'] ?? $acc['category'];
-            $otherIsDebitNormal = in_array($otherCategory, ['Assets', 'Expenses']);
-            echo sl_render_ledger_table(
-                $otherAccName . ' - ' . $g['display_name'],
-                $otherCode,
-                0,
-                $otherLines,
-                $otherIsDebitNormal,
-                'Description'
-            );
-        }
         $n++;
     }
 }

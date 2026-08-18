@@ -115,7 +115,8 @@ $queryCF = "
     SELECT e.type, SUM(l.debit) as total_dr, SUM(l.credit) as total_cr
     FROM journal_entries e
     JOIN journal_entry_lines l ON e.id = l.journal_entry_id
-    WHERE e.company_id = ? AND e.deleted_at IS NULL
+    JOIN accounts a ON l.account_id = a.id
+    WHERE e.company_id = ? AND e.deleted_at IS NULL AND a.name LIKE '%cash%'
     GROUP BY e.type
 ";
 $stmtCF = $db->prepare($queryCF);
