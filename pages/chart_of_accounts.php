@@ -90,6 +90,87 @@ $stmt->bind_param($types, ...$params);
 $stmt->execute();
 $accounts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
+// ------------------------------------------------------------------
+// Subsidiary "card" entities (customers / suppliers / employees) are
+// people, not rows in the accounts table -- but each one still rides
+// under a control account (Accounts Receivable, Accounts Payable,
+// etc.) and displays that control account's own Account Code.
+// ------------------------------------------------------------------
+function coa_is_receivable($accountName) {
+    return preg_match('/receivable/i', $accountName) === 1;
+}
+function coa_is_payable($accountName) {
+    return preg_match('/payable/i', $accountName) === 1;
+}
+
+// Make sure these tables exist even if the user has never opened the
+// Customers / Suppliers pages yet (same defensive pattern used there).
+try {
+    $db->query("
+        CREATE TABLE IF NOT EXISTS customers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            company_id INT NOT NULL,
+            name VARCHAR(150) NOT NULL,
+            contact_person VARCHAR(150) NULL,
+            email VARCHAR(150) NULL,
+            phone VARCHAR(50) NULL,
+            address VARCHAR(255) NULL,
+            tin VARCHAR(50) NULL,
+            terms VARCHAR(50) NULL,
+            opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0,
+            status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+            notes TEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_customers_company (company_id)
+        )
+    ");
+} catch (Exception $e) {}
+
+try {
+    $db->query("
+        CREATE TABLE IF NOT EXISTS suppliers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            company_id INT NOT NULL,
+            name VARCHAR(150) NOT NULL,
+            contact_person VARCHAR(150) NULL,
+            email VARCHAR(150) NULL,
+            phone VARCHAR(50) NULL,
+            address VARCHAR(255) NULL,
+            tin VARCHAR(50) NULL,
+            terms VARCHAR(50) NULL,
+            opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0,
+            status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+            notes TEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_suppliers_company (company_id)
+        )
+    ");
+} catch (Exception $e) {}
+
+// Defensive: add the `code` column for installs where these tables
+// already existed before the auto-ID feature was added (same pattern
+// used in customers.php / suppliers.php).
+try { $db->query("ALTER TABLE customers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE suppliers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
+
+$allCustomers = [];
+$stmtCustList = $db->prepare("SELECT id, name, code FROM customers WHERE company_id = ? ORDER BY name ASC");
+if ($stmtCustList) {
+    $stmtCustList->bind_param('i', $company_id);
+    $stmtCustList->execute();
+    $allCustomers = $stmtCustList->get_result()->fetch_all(MYSQLI_ASSOC);
+}
+
+$allSuppliers = [];
+$stmtSuppList = $db->prepare("SELECT id, name, code FROM suppliers WHERE company_id = ? ORDER BY name ASC");
+if ($stmtSuppList) {
+    $stmtSuppList->bind_param('i', $company_id);
+    $stmtSuppList->execute();
+    $allSuppliers = $stmtSuppList->get_result()->fetch_all(MYSQLI_ASSOC);
+}
+
 require_once '../includes/header.php';
 ?>
 
@@ -176,6 +257,41 @@ require_once '../includes/header.php';
                             </div>
                         </td>
                     </tr>
+                    <?php
+                        // Subsidiary cards riding under this control account.
+                        $subsidiaryList = [];
+                        if (coa_is_receivable($acc['name'])) {
+                            $subsidiaryList = $allCustomers;
+                            $subsidiaryLabel = 'Customer';
+                            $subsidiaryPage = 'customers.php';
+                        } elseif (coa_is_payable($acc['name'])) {
+                            $subsidiaryList = $allSuppliers;
+                            $subsidiaryLabel = 'Supplier';
+                            $subsidiaryPage = 'suppliers.php';
+                        }
+                    ?>
+                    <?php if (!empty($subsidiaryList)): foreach ($subsidiaryList as $sub): ?>
+                    <tr class="account-row" style="color: #475569; background-color: #fafbfc;">
+                        <td style="font-family: monospace; font-weight: 500; font-size: 0.8rem; padding-left: 4.5rem; text-align: left;">
+                            <?= htmlspecialchars($acc['code']) ?>
+                        </td>
+                        <td style="font-size: 0.85rem;">
+                            <i data-lucide="user" style="width:12px;height:12px; vertical-align:middle; margin-right:4px; color:#94a3b8;"></i>
+                            <?= htmlspecialchars($sub['name']) ?>
+                            <?php if (!empty($sub['code'])): ?>
+                            <span style="font-family: monospace; font-size: 0.7rem; font-weight: 600; color: var(--primary-color); margin-left: 6px;">[<?= htmlspecialchars($sub['code']) ?>]</span>
+                            <?php endif; ?>
+                            <span style="font-size: 0.7rem; color: #94a3b8; margin-left: 4px;">(<?= $subsidiaryLabel ?>)</span>
+                        </td>
+                        <td>
+                            <div class="flex justify-center gap-2">
+                                <a class="icon-btn" href="<?= BASE_URL ?>pages/<?= $subsidiaryPage ?>?search=<?= urlencode($sub['name']) ?>" title="View <?= $subsidiaryLabel ?> record">
+                                    <i data-lucide="external-link" style="width:14px;height:14px;"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endforeach; endif; ?>
                     <?php endforeach; ?>
                     <?php endforeach; ?>
                 <?php endforeach; endif; ?>

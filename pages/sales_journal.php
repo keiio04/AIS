@@ -253,7 +253,7 @@ require_once '../includes/header.php';
 
 <div class="page-header">
     <div class="page-header-text">
-        <h1 class="page-title">Sales Journal</h1>
+        <h1 class="page-title">Sales</h1>
     </div>
     <button class="btn btn-primary" onclick="openModal()">
         <i data-lucide="plus" style="width:15px;height:15px;"></i> New Entry

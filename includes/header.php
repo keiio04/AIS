@@ -45,6 +45,7 @@ $pageNames = [
     'trash_bin' => 'Trash Bin',
     'customers' => 'Customers',
     'suppliers' => 'Suppliers',
+    'employees' => 'Employees',
 ];
 $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
 ?>
@@ -128,19 +129,19 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                             </div>
                             <div id="journals_<?= $bt ?>" class="collapse-smooth <?= in_array($current_page, ['journal_entries','sales_journal','purchases_journal','cash_receipts_journal','cash_disbursements_journal']) ? '' : 'is-collapsed' ?>" style="padding-left: 1.5rem; margin-bottom: 0.5rem;">
                                 <a href="<?= BASE_URL ?>pages/journal_entries.php" class="nav-subitem <?= $current_page==='journal_entries'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
-                                    <span style="font-size: 0.75rem;">General Journal</span>
+                                    <span style="font-size: 0.75rem;">General</span>
                                 </a>
                                 <a href="<?= BASE_URL ?>pages/sales_journal.php" class="nav-subitem <?= $current_page==='sales_journal'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
-                                    <span style="font-size: 0.75rem;">Sales Journal</span>
+                                    <span style="font-size: 0.75rem;">Sales</span>
                                 </a>
                                 <a href="<?= BASE_URL ?>pages/purchases_journal.php" class="nav-subitem <?= $current_page==='purchases_journal'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
-                                    <span style="font-size: 0.75rem;">Purchases Journal</span>
+                                    <span style="font-size: 0.75rem;">Purchases</span>
                                 </a>
                                 <a href="<?= BASE_URL ?>pages/cash_receipts_journal.php" class="nav-subitem <?= $current_page==='cash_receipts_journal'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
-                                    <span style="font-size: 0.75rem;">Cash Receipts</span>
+                                    <span style="font-size: 0.75rem;">Receipts</span>
                                 </a>
                                 <a href="<?= BASE_URL ?>pages/cash_disbursements_journal.php" class="nav-subitem <?= $current_page==='cash_disbursements_journal'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
-                                    <span style="font-size: 0.75rem;">Cash Disbursements</span>
+                                    <span style="font-size: 0.75rem;">Disbursements</span>
                                 </a>
                             </div>
                             <!-- Ledgers Dropdown -->
@@ -191,12 +192,22 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                     <a href="<?= BASE_URL ?>pages/chart_of_accounts.php" class="nav-subitem <?= $current_page==='chart_of_accounts'?'active':'' ?>">
                         <div class="flex items-center gap-2"><i data-lucide="book-open" style="width: 15px; height: 15px;"></i><span>Chart of Accounts</span></div>
                     </a>
-                    <a href="<?= BASE_URL ?>pages/customers.php" class="nav-subitem <?= $current_page==='customers'?'active':'' ?>">
-                        <div class="flex items-center gap-2"><i data-lucide="users" style="width: 15px; height: 15px;"></i><span>Customers</span></div>
-                    </a>
-                    <a href="<?= BASE_URL ?>pages/suppliers.php" class="nav-subitem <?= $current_page==='suppliers'?'active':'' ?>">
-                        <div class="flex items-center gap-2"><i data-lucide="truck" style="width: 15px; height: 15px;"></i><span>Suppliers</span></div>
-                    </a>
+                    <!-- Card List Dropdown -->
+                    <div class="flex justify-between items-center nav-subitem" onclick="toggleSidebarSection('cardlist')" style="padding: 0.25rem 0.5rem; cursor: pointer; border-radius: 6px; margin-bottom: 0.25rem; <?= in_array($current_page, ['customers','suppliers','employees']) ? 'background:rgba(59,130,246,0.1);color:#3b82f6;' : '' ?>">
+                        <div class="flex items-center gap-2"><i data-lucide="id-card" style="width: 15px; height: 15px;"></i><span>Card List</span></div>
+                        <i data-lucide="chevron-down" style="width: 13px; height: 13px; color: var(--sidebar-muted);"></i>
+                    </div>
+                    <div id="cardlist" class="collapse-smooth <?= in_array($current_page, ['customers','suppliers','employees']) ? '' : 'is-collapsed' ?>" style="padding-left: 1.5rem; margin-bottom: 0.5rem;">
+                        <a href="<?= BASE_URL ?>pages/customers.php" class="nav-subitem <?= $current_page==='customers'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
+                            <div class="flex items-center gap-2"><i data-lucide="users" style="width: 13px; height: 13px;"></i><span style="font-size: 0.75rem;">Customers</span></div>
+                        </a>
+                        <a href="<?= BASE_URL ?>pages/suppliers.php" class="nav-subitem <?= $current_page==='suppliers'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
+                            <div class="flex items-center gap-2"><i data-lucide="truck" style="width: 13px; height: 13px;"></i><span style="font-size: 0.75rem;">Suppliers</span></div>
+                        </a>
+                        <a href="<?= BASE_URL ?>pages/employees.php" class="nav-subitem <?= $current_page==='employees'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
+                            <div class="flex items-center gap-2"><i data-lucide="user-round" style="width: 13px; height: 13px;"></i><span style="font-size: 0.75rem;">Employees</span></div>
+                        </a>
+                    </div>
                 </div>
             </div>
             <?php endif; ?>

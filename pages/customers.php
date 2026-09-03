@@ -14,6 +14,7 @@ try {
         CREATE TABLE IF NOT EXISTS customers (
             id INT AUTO_INCREMENT PRIMARY KEY,
             company_id INT NOT NULL,
+            code VARCHAR(20) NULL,
             name VARCHAR(150) NOT NULL,
             contact_person VARCHAR(150) NULL,
             email VARCHAR(150) NULL,
@@ -31,6 +32,10 @@ try {
     ");
 } catch (Exception $e) {}
 
+// Defensive: add the `code` column for installs where the table already
+// existed before this feature was added.
+try { $db->query("ALTER TABLE customers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
+
 $company_id = $_SESSION['active_company_id'] ?? null;
 
 if (!$company_id) {
@@ -39,6 +44,28 @@ if (!$company_id) {
     require_once '../includes/footer.php';
     exit;
 }
+
+// Generate a Customer ID (e.g. CUST-0001) for any existing rows that
+// don't have one yet, in creation order, so nothing is left blank.
+try {
+    $stmtBackfill = $db->prepare("SELECT id FROM customers WHERE company_id = ? AND (code IS NULL OR code = '') ORDER BY id ASC");
+    $stmtBackfill->bind_param('i', $company_id);
+    $stmtBackfill->execute();
+    $needsCode = $stmtBackfill->get_result()->fetch_all(MYSQLI_ASSOC);
+    if (count($needsCode) > 0) {
+        $stmtMax = $db->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(code, '-', -1) AS UNSIGNED)) as max_num FROM customers WHERE company_id = ? AND code LIKE 'CUST-%'");
+        $stmtMax->bind_param('i', $company_id);
+        $stmtMax->execute();
+        $nextNum = (int)($stmtMax->get_result()->fetch_assoc()['max_num'] ?? 0) + 1;
+        $stmtSetCode = $db->prepare("UPDATE customers SET code = ? WHERE id = ?");
+        foreach ($needsCode as $row) {
+            $newCode = sprintf('CUST-%04d', $nextNum);
+            $stmtSetCode->bind_param('si', $newCode, $row['id']);
+            $stmtSetCode->execute();
+            $nextNum++;
+        }
+    }
+} catch (Exception $e) {}
 
 // Handle Form Submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -60,10 +87,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if ($name === '') {
             $error = "Customer name is required.";
         } else if ($action === 'add') {
-            $stmt = $db->prepare("INSERT INTO customers (company_id, name, contact_person, email, phone, address, tin, terms, opening_balance, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param('issssssdsss', $company_id, $name, $contact_person, $email, $phone, $address, $tin, $terms, $opening_balance, $status, $notes);
+            // Generate the next sequential Customer ID for this company.
+            $stmtMax = $db->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(code, '-', -1) AS UNSIGNED)) as max_num FROM customers WHERE company_id = ? AND code LIKE 'CUST-%'");
+            $stmtMax->bind_param('i', $company_id);
+            $stmtMax->execute();
+            $nextNum = (int)($stmtMax->get_result()->fetch_assoc()['max_num'] ?? 0) + 1;
+            $customer_code = sprintf('CUST-%04d', $nextNum);
+
+            $stmt = $db->prepare("INSERT INTO customers (company_id, code, name, contact_person, email, phone, address, tin, terms, opening_balance, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param('issssssssdss', $company_id, $customer_code, $name, $contact_person, $email, $phone, $address, $tin, $terms, $opening_balance, $status, $notes);
             $stmt->execute();
-            log_activity($db, $_SESSION['user_id'], 'Create', 'Customers', "Added customer: $name");
+            log_activity($db, $_SESSION['user_id'], 'Create', 'Customers', "Added customer: $name ($customer_code)");
             $success = "Customer added successfully.";
             header("Location: customers.php");
             exit;
@@ -168,6 +202,7 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         <table class="table">
             <thead>
                 <tr>
+                    <th>Customer ID</th>
                     <th>Customer Name</th>
                     <th>Contact Person</th>
                     <th>Email / Phone</th>
@@ -179,9 +214,10 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             </thead>
             <tbody>
                 <?php if (count($customers) === 0): ?>
-                <tr><td colspan="7" class="text-center text-secondary" style="padding: 2rem;">No customers found.</td></tr>
+                <tr><td colspan="8" class="text-center text-secondary" style="padding: 2rem;">No customers found.</td></tr>
                 <?php else: foreach($customers as $c): ?>
                 <tr style="color: #000;">
+                    <td style="font-family: monospace; font-weight: 600; font-size: 0.8rem; color: var(--primary-color);"><?= htmlspecialchars($c['code'] ?: '—') ?></td>
                     <td style="font-weight: 600;"><?= htmlspecialchars($c['name']) ?></td>
                     <td style="font-size: 0.875rem;"><?= htmlspecialchars($c['contact_person'] ?: '—') ?></td>
                     <td style="font-size: 0.8125rem;">
@@ -224,6 +260,11 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             <form id="cust-form" method="POST">
                 <input type="hidden" name="action" id="formAction" value="add">
                 <input type="hidden" name="id" id="custId" value="">
+
+                <div class="form-group" id="custCodeGroup" style="display:none;">
+                    <label class="form-label">Customer ID</label>
+                    <input type="text" id="custCode" class="form-control" readonly disabled style="background: var(--bg-secondary); font-family: monospace; font-weight: 600; color: var(--primary-color);">
+                </div>
 
                 <div class="flex gap-4">
                     <div class="form-group" style="flex: 2;">
@@ -304,6 +345,8 @@ function openModal(c = null) {
         document.getElementById('modalDesc').innerText = 'Update customer details below.';
         document.getElementById('formAction').value = 'edit';
         document.getElementById('custId').value = c.id;
+        document.getElementById('custCodeGroup').style.display = 'block';
+        document.getElementById('custCode').value = c.code || '—';
         document.getElementById('custName').value = c.name;
         document.getElementById('custStatus').value = c.status;
         document.getElementById('custContact').value = c.contact_person || '';
@@ -319,6 +362,7 @@ function openModal(c = null) {
         document.getElementById('modalDesc').innerText = "Fill in the customer's details.";
         document.getElementById('formAction').value = 'add';
         document.getElementById('custId').value = '';
+        document.getElementById('custCodeGroup').style.display = 'none';
         document.getElementById('cust-form').reset();
         document.getElementById('custBal').value = '0';
         document.getElementById('custStatus').value = 'Active';
