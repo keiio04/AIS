@@ -445,7 +445,7 @@ body {
         <div class="graphic-box gb-1"><i data-lucide="bar-chart-3" style="width: 32px; height: 32px;"></i></div>
         <div class="graphic-box gb-2"><i data-lucide="calculator" style="width: 32px; height: 32px;"></i></div>
         <div class="graphic-box gb-3"><i data-lucide="building-2" style="width: 32px; height: 32px;"></i></div>
-        <div class="graphic-box gb-4"></div>
+        <div class="graphic-box gb-4"><i data-lucide="file-text" style="width: 32px; height: 32px;"></i></div>
       </div>
     </div>
 
@@ -489,60 +489,6 @@ body {
           </div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <div class="features-grid">
-    <div class="feature-item">
-      <div class="feature-icon"><i data-lucide="shield-check" style="width: 28px; height: 28px;"></i></div>
-      <div class="feature-text">
-        <h4>Accurate & Reliable</h4>
-        <p>Ensure the accuracy and reliability of your financial data.</p>
-      </div>
-    </div>
-    
-    <div class="feature-item">
-      <div class="feature-icon"><i data-lucide="lock" style="width: 28px; height: 28px;"></i></div>
-      <div class="feature-text">
-        <h4>Secure Data</h4>
-        <p>Your data is protected with industry-standard security.</p>
-      </div>
-    </div>
-
-    <div class="feature-item">
-      <div class="feature-icon"><i data-lucide="line-chart" style="width: 28px; height: 28px;"></i></div>
-      <div class="feature-text">
-        <h4>Real-time Reports</h4>
-        <p>Access up-to-date reports whenever you need them.</p>
-      </div>
-    </div>
-
-    <div class="feature-item">
-      <div class="feature-icon"><i data-lucide="clock" style="width: 28px; height: 28px;"></i></div>
-      <div class="feature-text">
-        <h4>Save Time</h4>
-        <p>Automate tasks and focus on growing your business.</p>
-      </div>
-    </div>
-  </div>
-
-  <div class="cta-box">
-    <div class="cta-content">
-      <div class="cta-icon">
-        <i data-lucide="flag" style="width: 20px; height: 20px;"></i>
-      </div>
-      <div class="cta-text">
-        <h2>Ready to get started?</h2>
-        <p>Click the button to proceed to your dashboard.</p>
-      </div>
-    </div>
-    <div class="cta-actions">
-      <a href="<?= $targetUrl ?>" class="btn-primary">
-        Let's Get Started <i data-lucide="arrow-right" style="width: 18px; height: 18px;"></i>
-      </a>
-      <a href="<?= BASE_URL ?>" class="link-secondary">
-        Go to Homepage <i data-lucide="arrow-right" style="width: 18px; height: 18px;"></i>
-      </a>
     </div>
   </div>
 
