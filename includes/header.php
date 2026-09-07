@@ -105,7 +105,7 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                 <div id="biz_type" class="nav-subitems collapse-smooth">
                     
                     <?php 
-                    $bizTypes = ['Service', 'Merchandise', 'Manufacturing'];
+                    $bizTypes = ['Service'];
                     foreach($bizTypes as $bt): 
                         if ($activeCompanyType === $bt):
                     ?>
