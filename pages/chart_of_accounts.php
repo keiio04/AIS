@@ -204,6 +204,46 @@ require_once '../includes/header.php';
     .account-row:hover {
         background-color: #f1f5f9 !important;
     }
+    .coa-chevron-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        border: 1px solid var(--border-color);
+        background: #fff;
+        color: #64748b;
+        transition: all 0.2s ease;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .coa-chevron-btn:hover {
+        background: #e2e8f0;
+        color: #1e293b;
+    }
+    .coa-chevron-btn.expanded {
+        transform: rotate(90deg);
+        background: var(--primary-color, #2563eb);
+        color: #ffffff;
+        border-color: var(--primary-color, #2563eb);
+    }
+    .coa-subsidiary-pill {
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 9999px;
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid var(--border-color);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-left: 0.4rem;
+    }
+    .coa-subsidiary-panel-row {
+        background-color: #fafbfc;
+    }
 </style>
 <div class="page-header">
     <div class="page-header-text">
@@ -267,25 +307,11 @@ require_once '../includes/header.php';
                     </tr>
                     <?php foreach($catAccounts as $index => $acc): 
                         $rowBg = ($index % 2 === 0) ? '#ffffff' : '#f8fafc';
-                    ?>
-                    <tr class="account-row" style="color: #000; background-color: <?= $rowBg ?>; transition: background-color 0.2s;">
-                        <td style="font-family: monospace; font-weight: 600; font-size: 0.875rem; padding-left: 3rem; text-align: left;"><?= htmlspecialchars($acc['code']) ?></td>
-                        <td style="font-weight: 500;"><?= htmlspecialchars($acc['name']) ?></td>
-                        <td>
-                            <div class="flex justify-center gap-2">
-                                <button class="icon-btn" onclick='openModal(<?= json_encode($acc) ?>)'><i data-lucide="edit-2" style="width:16px;height:16px;"></i></button>
-                                <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this account?');">
-                                    <input type="hidden" name="action" value="delete">
-                                    <input type="hidden" name="id" value="<?= $acc['id'] ?>">
-                                    <button type="submit" class="icon-btn text-danger"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
-                                </form>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php
+
                         // Vendor/customer names actually posted against THIS
                         // account (Cash on Hand, Service Revenue, an Expense
-                        // account, AR/AP -- any of them).
+                        // account, AR/AP -- any of them). Computed BEFORE the
+                        // row is rendered so the chevron/pill can appear on it.
                         $stmtAccEntities->bind_param('i', $acc['id']);
                         $stmtAccEntities->execute();
                         $usedEntities = $stmtAccEntities->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -299,32 +325,81 @@ require_once '../includes/header.php';
                                 'type' => $ue['entity_type'],
                             ];
                         }
+                        $hasSubsidiaries = !empty($subsidiaryList);
+                        $subsidiaryCount = count($subsidiaryList);
+                        $subsidiaryTypes = array_unique(array_column($subsidiaryList, 'type'));
+                        if (count($subsidiaryTypes) === 1) {
+                            $pillLabel = ucfirst($subsidiaryTypes[0]) . ($subsidiaryCount > 1 ? 's' : '');
+                        } else {
+                            $pillLabel = $subsidiaryCount > 1 ? 'Records' : 'Record';
+                        }
                     ?>
-                    <?php if (!empty($subsidiaryList)): foreach ($subsidiaryList as $sub):
-                        $subsidiaryLabel = $sub['type'] === 'customer' ? 'Customer' : 'Supplier';
-                        $subsidiaryPage = $sub['type'] === 'customer' ? 'customers.php' : 'suppliers.php';
-                    ?>
-                    <tr class="account-row" style="color: #475569; background-color: #fafbfc;">
-                        <td style="font-family: monospace; font-weight: 500; font-size: 0.8rem; padding-left: 4.5rem; text-align: left;">
-                            <?= htmlspecialchars($acc['code']) ?>
-                        </td>
-                        <td style="font-size: 0.85rem;">
-                            <i data-lucide="user" style="width:12px;height:12px; vertical-align:middle; margin-right:4px; color:#94a3b8;"></i>
-                            <?= htmlspecialchars($sub['name']) ?>
-                            <?php if (!empty($sub['code'])): ?>
-                            <span style="font-family: monospace; font-size: 0.7rem; font-weight: 600; color: var(--primary-color); margin-left: 6px;">[<?= htmlspecialchars($sub['code']) ?>]</span>
-                            <?php endif; ?>
-                            <span style="font-size: 0.7rem; color: #94a3b8; margin-left: 4px;">(<?= $subsidiaryLabel ?>)</span>
+                    <tr class="account-row" style="color: #000; background-color: <?= $rowBg ?>; transition: background-color 0.2s;">
+                        <td style="font-family: monospace; font-weight: 600; font-size: 0.875rem; padding-left: 3rem; text-align: left;"><?= htmlspecialchars($acc['code']) ?></td>
+                        <td style="font-weight: 500;">
+                            <div class="flex items-center gap-2">
+                                <?php if ($hasSubsidiaries): ?>
+                                    <button type="button" class="coa-chevron-btn" id="chev-btn-<?= $acc['id'] ?>" onclick="toggleSubsidiaryRow(event, <?= $acc['id'] ?>)" title="Toggle linked records">
+                                        <i data-lucide="chevron-right" style="width:13px;height:13px;"></i>
+                                    </button>
+                                <?php else: ?>
+                                    <span style="width: 22px; height: 22px; display: inline-flex; flex-shrink: 0;"></span>
+                                <?php endif; ?>
+                                <span><?= htmlspecialchars($acc['name']) ?></span>
+                                <?php if ($hasSubsidiaries): ?>
+                                    <span class="coa-subsidiary-pill">
+                                        <i data-lucide="user" style="width:11px;height:11px;"></i>
+                                        <?= $subsidiaryCount ?> <?= $pillLabel ?>
+                                    </span>
+                                <?php endif; ?>
+                            </div>
                         </td>
                         <td>
                             <div class="flex justify-center gap-2">
-                                <a class="icon-btn" href="<?= BASE_URL ?>pages/<?= $subsidiaryPage ?>?search=<?= urlencode($sub['name']) ?>" title="View <?= $subsidiaryLabel ?> record">
-                                    <i data-lucide="external-link" style="width:14px;height:14px;"></i>
-                                </a>
+                                <button class="icon-btn" onclick='openModal(<?= json_encode($acc) ?>)'><i data-lucide="edit-2" style="width:16px;height:16px;"></i></button>
+                                <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this account?');">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="id" value="<?= $acc['id'] ?>">
+                                    <button type="submit" class="icon-btn text-danger"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
+                                </form>
                             </div>
                         </td>
                     </tr>
-                    <?php endforeach; endif; ?>
+                    <?php if ($hasSubsidiaries): ?>
+                    <tr id="sub-row-<?= $acc['id'] ?>" class="coa-subsidiary-panel-row" style="display: none;">
+                        <td colspan="3" style="padding: 0;">
+                            <table class="table" style="width: 100%; margin: 0;">
+                                <tbody>
+                                <?php foreach ($subsidiaryList as $sub):
+                                    $subsidiaryLabel = $sub['type'] === 'customer' ? 'Customer' : 'Supplier';
+                                    $subsidiaryPage = $sub['type'] === 'customer' ? 'customers.php' : 'suppliers.php';
+                                ?>
+                                <tr class="account-row" style="color: #475569;">
+                                    <td style="font-family: monospace; font-weight: 500; font-size: 0.8rem; padding-left: 4.5rem; text-align: left; width: 25%;">
+                                        <?= htmlspecialchars($acc['code']) ?>
+                                    </td>
+                                    <td style="font-size: 0.85rem;">
+                                        <i data-lucide="user" style="width:12px;height:12px; vertical-align:middle; margin-right:4px; color:#94a3b8;"></i>
+                                        <?= htmlspecialchars($sub['name']) ?>
+                                        <?php if (!empty($sub['code'])): ?>
+                                        <span style="font-family: monospace; font-size: 0.7rem; font-weight: 600; color: var(--primary-color); margin-left: 6px;">[<?= htmlspecialchars($sub['code']) ?>]</span>
+                                        <?php endif; ?>
+                                        <span style="font-size: 0.7rem; color: #94a3b8; margin-left: 4px;">(<?= $subsidiaryLabel ?>)</span>
+                                    </td>
+                                    <td style="width: 15%;">
+                                        <div class="flex justify-center gap-2">
+                                            <a class="icon-btn" href="<?= BASE_URL ?>pages/<?= $subsidiaryPage ?>?search=<?= urlencode($sub['name']) ?>" title="View <?= $subsidiaryLabel ?> record">
+                                                <i data-lucide="external-link" style="width:14px;height:14px;"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
                     <?php endforeach; ?>
                     <?php endforeach; ?>
                 <?php endforeach; endif; ?>
@@ -475,6 +550,27 @@ function closeModal() {
 document.getElementById('accModal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
 });
+
+// Toggle the collapsible subsidiary (customer/supplier) records under an account
+function toggleSubsidiaryRow(event, accId) {
+    if (event) event.stopPropagation();
+    const row = document.getElementById('sub-row-' + accId);
+    const btn = document.getElementById('chev-btn-' + accId);
+    if (!row) return;
+
+    if (row.style.display === 'none' || row.style.display === '') {
+        row.style.display = 'table-row';
+        if (btn) btn.classList.add('expanded');
+    } else {
+        row.style.display = 'none';
+        if (btn) btn.classList.remove('expanded');
+    }
+}
+
+// Re-render Lucide icons for the newly added chevrons
+if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+}
 </script>
 
 <?php require_once '../includes/footer.php'; ?>
