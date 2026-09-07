@@ -7,6 +7,13 @@ $db = get_db();
 try { $db->query("ALTER TABLE journal_entry_lines ADD COLUMN description VARCHAR(255) NULL AFTER account_id"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE journal_entry_lines ADD COLUMN vendor_name VARCHAR(100) NULL AFTER description"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE activity_logs ADD COLUMN company_id INT NULL AFTER id"); } catch (Exception $e) {}
+// Siguraduhing nandiyan din ang entity_id / entity_type columns -- ito ang
+// nagtatago kung sinong customer/supplier ang naka-attach sa entry, kaya
+// kung wala 'to sa table mo, hindi talaga masesave (o mababasa) ang Name.
+try { $db->query("ALTER TABLE journal_entries ADD COLUMN entity_id INT NULL AFTER type"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE journal_entries ADD COLUMN entity_type VARCHAR(20) NULL AFTER entity_id"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE customers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE suppliers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
 
 
 $db = get_db();
@@ -235,6 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 $query = "
     SELECT e.*,
            COALESCE(c.name, s.name) AS entity_name,
+           COALESCE(c.code, s.code) AS entity_code,
            (SELECT SUM(debit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_debit,
            (SELECT SUM(credit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_credit
     FROM journal_entries e
@@ -302,7 +310,12 @@ require_once '../includes/header.php';
                         <?= htmlspecialchars($line['name']) ?>
                     </td>
                     <td style="color: var(--text-muted); font-size: 0.85rem;">
-                        <?= $index === 0 ? htmlspecialchars($tx['entity_name'] ?? '') : '' ?>
+                        <?php if ($index === 0 && !empty($tx['entity_name'])): ?>
+                            <?= htmlspecialchars($tx['entity_name']) ?>
+                            <?php if (!empty($tx['entity_code'])): ?>
+                                <br><span style="font-family: monospace; font-size: 0.7rem; font-weight: 600; color: #64748b;">[<?= htmlspecialchars($tx['entity_code']) ?>]</span>
+                            <?php endif; ?>
+                        <?php endif; ?>
                     </td>
                     <td style="color: var(--text-muted); font-size: 0.85rem;">
                         <?= htmlspecialchars($line['description'] ?? '') ?>

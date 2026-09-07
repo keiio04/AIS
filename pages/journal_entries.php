@@ -164,14 +164,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 // Fetch existing journal entries (including resolved entity name)
 $query = "
     SELECT e.*,
+           COALESCE(c.name, s.name) AS entity_name,
+           COALESCE(c.code, s.code) AS entity_code,
            (SELECT SUM(debit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_debit,
-           (SELECT SUM(credit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_credit,
-           CASE
-               WHEN e.entity_type = 'customer' THEN (SELECT name FROM customers WHERE id = e.entity_id)
-               WHEN e.entity_type = 'supplier' THEN (SELECT name FROM suppliers WHERE id = e.entity_id)
-               ELSE NULL
-           END as entity_name
+           (SELECT SUM(credit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_credit
     FROM journal_entries e
+    LEFT JOIN customers c ON e.entity_id = c.id AND e.entity_type = 'customer'
+    LEFT JOIN suppliers s ON e.entity_id = s.id AND e.entity_type = 'supplier'
     WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'GJ'
     ORDER BY e.date DESC, e.id DESC
 ";
@@ -204,12 +203,13 @@ require_once '../includes/header.php';
             <thead>
                 <tr>
                     <th style="width: 10%">Date</th>
-                    <th style="width: 28%">Account Title</th>
-                    <th style="width: 20%">Description</th>
-                    <th style="width: 15%">Ref No. / Account Code</th>
-                    <th class="text-right" style="width: 11%">Debit</th>
-                    <th class="text-right" style="width: 11%">Credit</th>
-                    <th style="width: 5%"></th>
+                    <th style="width: 22%">Account Title</th>
+                    <th style="width: 15%">Name</th>
+                    <th style="width: 18%">Description</th>
+                    <th style="width: 13%">Ref No. / Account Code</th>
+                    <th class="text-right" style="width: 10%">Debit</th>
+                    <th class="text-right" style="width: 10%">Credit</th>
+                    <th style="width: 2%"></th>
                 </tr>
             </thead>
             <tbody>
@@ -227,15 +227,18 @@ require_once '../includes/header.php';
                 ?>
                 <tr>
                     <td>
-                        <?php if ($index === 0): ?>
-                            <strong><?= date('M d, Y', strtotime($tx['date'])) ?></strong>
-                            <?php if (!empty($tx['entity_name'])): ?>
-                                <br><span style="font-size:0.78rem; color: var(--primary-color); font-weight:600;"><?= htmlspecialchars($tx['entity_name']) ?></span>
-                            <?php endif; ?>
-                        <?php endif; ?>
+                        <?= $index === 0 ? '<strong>' . date('M d, Y', strtotime($tx['date'])) . '</strong>' : '' ?>
                     </td>
                     <td style="padding-left: <?= $line['credit'] > 0 ? '2.5rem' : '1rem' ?>; font-weight: 500;">
                         <?= htmlspecialchars($line['name']) ?>
+                    </td>
+                    <td style="color: var(--text-muted); font-size: 0.85rem;">
+                        <?php if ($index === 0 && !empty($tx['entity_name'])): ?>
+                            <?= htmlspecialchars($tx['entity_name']) ?>
+                            <?php if (!empty($tx['entity_code'])): ?>
+                                <br><span style="font-family: monospace; font-size: 0.7rem; font-weight: 600; color: #64748b;">[<?= htmlspecialchars($tx['entity_code']) ?>]</span>
+                            <?php endif; ?>
+                        <?php endif; ?>
                     </td>
                     <td style="color: var(--text-muted); font-size: 0.85rem;">
                         <?= $index === 0 ? nl2br(htmlspecialchars($tx['description'] ?? '')) : '' ?>
@@ -284,16 +287,16 @@ require_once '../includes/header.php';
                 </tr>
                 <?php endforeach; ?>
                 <tr style="background-color: #f8fafc;">
-                    <td colspan="4" class="text-right" style="font-weight: 600; padding-right: 1rem;">Total</td>
+                    <td colspan="5" class="text-right" style="font-weight: 600; padding-right: 1rem;">Total</td>
                     <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalDebit, 2) ?></td>
                     <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalCredit, 2) ?></td>
                     <td></td>
                 </tr>
-                <tr><td colspan="7" style="border-bottom: 2px solid var(--border-color); padding: 0;"></td></tr>
+                <tr><td colspan="8" style="border-bottom: 2px solid var(--border-color); padding: 0;"></td></tr>
                 <?php endforeach; ?>
                 <?php if(count($transactions) === 0): ?>
                 <tr>
-                    <td colspan="7" class="text-center text-muted" style="padding: 2rem;">No journal entries found.</td>
+                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;">No journal entries found.</td>
                 </tr>
                 <?php endif; ?>
             </tbody>

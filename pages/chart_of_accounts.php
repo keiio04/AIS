@@ -171,6 +171,31 @@ if ($stmtSuppList) {
     $allSuppliers = $stmtSuppList->get_result()->fetch_all(MYSQLI_ASSOC);
 }
 
+// ------------------------------------------------------------------
+// Names actually used on journal entries posted to a given account.
+// This works for ANY account (Cash on Hand, Service Revenue, an
+// Expense account, etc.) -- not just the Accounts Receivable /
+// Accounts Payable control accounts -- so a vendor/customer chosen
+// on a Cash Disbursements/Receipts entry shows up under every
+// account that entry touched.
+// ------------------------------------------------------------------
+$stmtAccEntities = $db->prepare("
+    SELECT DISTINCT
+        e.entity_type,
+        e.entity_id,
+        CASE WHEN e.entity_type = 'customer' THEN c.name ELSE s.name END AS entity_name,
+        CASE WHEN e.entity_type = 'customer' THEN c.code ELSE s.code END AS entity_code
+    FROM journal_entry_lines l
+    JOIN journal_entries e ON l.journal_entry_id = e.id
+    LEFT JOIN customers c ON e.entity_type = 'customer' AND e.entity_id = c.id
+    LEFT JOIN suppliers s ON e.entity_type = 'supplier' AND e.entity_id = s.id
+    WHERE l.account_id = ?
+      AND e.deleted_at IS NULL
+      AND e.entity_id IS NOT NULL
+      AND e.entity_type IS NOT NULL
+    ORDER BY entity_name ASC
+");
+
 require_once '../includes/header.php';
 ?>
 
@@ -258,19 +283,27 @@ require_once '../includes/header.php';
                         </td>
                     </tr>
                     <?php
-                        // Subsidiary cards riding under this control account.
+                        // Vendor/customer names actually posted against THIS
+                        // account (Cash on Hand, Service Revenue, an Expense
+                        // account, AR/AP -- any of them).
+                        $stmtAccEntities->bind_param('i', $acc['id']);
+                        $stmtAccEntities->execute();
+                        $usedEntities = $stmtAccEntities->get_result()->fetch_all(MYSQLI_ASSOC);
+
                         $subsidiaryList = [];
-                        if (coa_is_receivable($acc['name'])) {
-                            $subsidiaryList = $allCustomers;
-                            $subsidiaryLabel = 'Customer';
-                            $subsidiaryPage = 'customers.php';
-                        } elseif (coa_is_payable($acc['name'])) {
-                            $subsidiaryList = $allSuppliers;
-                            $subsidiaryLabel = 'Supplier';
-                            $subsidiaryPage = 'suppliers.php';
+                        foreach ($usedEntities as $ue) {
+                            if (empty($ue['entity_name'])) continue; // orphaned entity_id, skip
+                            $subsidiaryList[] = [
+                                'name' => $ue['entity_name'],
+                                'code' => $ue['entity_code'],
+                                'type' => $ue['entity_type'],
+                            ];
                         }
                     ?>
-                    <?php if (!empty($subsidiaryList)): foreach ($subsidiaryList as $sub): ?>
+                    <?php if (!empty($subsidiaryList)): foreach ($subsidiaryList as $sub):
+                        $subsidiaryLabel = $sub['type'] === 'customer' ? 'Customer' : 'Supplier';
+                        $subsidiaryPage = $sub['type'] === 'customer' ? 'customers.php' : 'suppliers.php';
+                    ?>
                     <tr class="account-row" style="color: #475569; background-color: #fafbfc;">
                         <td style="font-family: monospace; font-weight: 500; font-size: 0.8rem; padding-left: 4.5rem; text-align: left;">
                             <?= htmlspecialchars($acc['code']) ?>
