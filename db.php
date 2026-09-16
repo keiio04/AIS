@@ -114,8 +114,7 @@ function get_db(): mysqli {
                 `notes` TEXT NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_customers_company (`company_id`),
-                FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
+                INDEX idx_customers_company (`company_id`)
             ) ENGINE=InnoDB",
 
             "CREATE TABLE IF NOT EXISTS `suppliers` (
@@ -134,8 +133,7 @@ function get_db(): mysqli {
                 `notes` TEXT NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_suppliers_company (`company_id`),
-                FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
+                INDEX idx_suppliers_company (`company_id`)
             ) ENGINE=InnoDB",
 
             "CREATE TABLE IF NOT EXISTS `employees` (
@@ -155,8 +153,7 @@ function get_db(): mysqli {
                 `notes` TEXT NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_employees_company (`company_id`),
-                FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
+                INDEX idx_employees_company (`company_id`)
             ) ENGINE=InnoDB",
 
             "CREATE TABLE IF NOT EXISTS `journal_entries` (
