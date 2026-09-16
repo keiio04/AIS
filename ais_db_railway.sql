@@ -69,6 +69,70 @@ CREATE TABLE IF NOT EXISTS `journal_entry_lines` (
     FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
+-- Customers table (AR subsidiary ledger master list)
+CREATE TABLE IF NOT EXISTS `customers` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `company_id` INT NOT NULL,
+    `code` VARCHAR(20) NULL,
+    `name` VARCHAR(150) NOT NULL,
+    `contact_person` VARCHAR(150) NULL,
+    `email` VARCHAR(150) NULL,
+    `phone` VARCHAR(50) NULL,
+    `address` VARCHAR(255) NULL,
+    `tin` VARCHAR(50) NULL,
+    `terms` VARCHAR(50) NULL,
+    `opening_balance` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+    `status` ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+    `notes` TEXT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_customers_company (`company_id`),
+    FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Suppliers table (AP subsidiary ledger master list)
+CREATE TABLE IF NOT EXISTS `suppliers` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `company_id` INT NOT NULL,
+    `code` VARCHAR(20) NULL,
+    `name` VARCHAR(150) NOT NULL,
+    `contact_person` VARCHAR(150) NULL,
+    `email` VARCHAR(150) NULL,
+    `phone` VARCHAR(50) NULL,
+    `address` VARCHAR(255) NULL,
+    `tin` VARCHAR(50) NULL,
+    `terms` VARCHAR(50) NULL,
+    `opening_balance` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+    `status` ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+    `notes` TEXT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_suppliers_company (`company_id`),
+    FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Employees table
+CREATE TABLE IF NOT EXISTS `employees` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `company_id` INT NOT NULL,
+    `code` VARCHAR(20) NULL,
+    `name` VARCHAR(150) NOT NULL,
+    `position` VARCHAR(150) NULL,
+    `department` VARCHAR(150) NULL,
+    `email` VARCHAR(150) NULL,
+    `phone` VARCHAR(50) NULL,
+    `address` VARCHAR(255) NULL,
+    `date_hired` DATE NULL,
+    `rate` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+    `pay_frequency` VARCHAR(50) NULL,
+    `status` ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+    `notes` TEXT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_employees_company (`company_id`),
+    FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- Notes to financial statements table
 CREATE TABLE IF NOT EXISTS `notes_to_fs` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
