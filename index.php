@@ -1144,7 +1144,7 @@ body {
     <!-- Call to Action Buttons (Matching Reference) -->
     <div class="hero-actions">
       <a href="<?= $registerUrl ?>" class="btn-pill btn-pill-blue btn-pill-lg">
-        <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i> Create Free Account
+        <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i> Create Account
       </a>
       <a href="<?= $targetUrl ?>" class="btn-pill btn-pill-dark btn-pill-lg">
         <i data-lucide="log-in" style="width: 18px; height: 18px;"></i> Sign In
