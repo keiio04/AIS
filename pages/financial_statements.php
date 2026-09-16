@@ -340,6 +340,14 @@ function fmt($n) { return '₱' . number_format($n, 2); }
 </div>
 
 <style>
+#printable-area {
+    padding: 1.25rem !important;
+}
+@media (min-width: 640px) {
+    #printable-area {
+        padding: 2.5rem !important;
+    }
+}
 @media print {
     body * { visibility: hidden; }
     #printable-area, #printable-area * { visibility: visible; }

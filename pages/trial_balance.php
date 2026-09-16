@@ -95,37 +95,35 @@ $isBalanced = abs($total_debit_balance - $total_credit_balance) < 0.01;
     </div>
 
     <?php if ($has_activity): ?>
-        <table class="table" style="margin: 0;">
-            <thead>
-                <tr>
-                    <th style="width: 15%;">Account Code</th>
-                    <th style="width: 45%;">Account Name</th>
-                    <th class="text-right" style="width: 20%;">Debit</th>
-                    <th class="text-right" style="width: 20%;">Credit</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($tb_rows as $row): ?>
-                <tr>
-                    <td style="font-family: monospace; font-size: 0.85rem; color: var(--primary-color);"><?= htmlspecialchars($row['code']) ?></td>
-                    <td style="font-weight: 500;"><?= htmlspecialchars($row['name']) ?></td>
-                    <td class="text-right"><?= $row['debit'] > 0 ? '₱'.number_format($row['debit'], 2) : '' ?></td>
-                    <td class="text-right"><?= $row['credit'] > 0 ? '₱'.number_format($row['credit'], 2) : '' ?></td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-            <tfoot>
-                <tr>
-                    <td colspan="2" class="text-right" style="font-weight: 700; font-size: 1rem;">Totals:</td>
-                    <td class="text-right" style="font-weight: 700; font-size: 1rem; border-top: 2px solid var(--border-color); border-bottom: 4px double var(--border-color); color: <?= $isBalanced ? 'var(--text-primary)' : 'var(--danger-color)' ?>;">
-                        ₱<?= number_format($total_debit_balance, 2) ?>
-                    </td>
-                    <td class="text-right" style="font-weight: 700; font-size: 1rem; border-top: 2px solid var(--border-color); border-bottom: 4px double var(--border-color); color: <?= $isBalanced ? 'var(--text-primary)' : 'var(--danger-color)' ?>;">
-                        ₱<?= number_format($total_credit_balance, 2) ?>
-                    </td>
-                </tr>
-            </tfoot>
-        </table>
+        <div class="table-container">
+            <table class="table" style="margin: 0;">
+                <thead>
+                    <tr>
+                        <th style="min-width: 130px; width: 22%; padding-left: 1.5rem;" class="nowrap">Account Code</th>
+                        <th style="min-width: 200px; width: 48%;">Account Title</th>
+                        <th class="text-right nowrap" style="min-width: 120px; width: 15%;">Debit</th>
+                        <th class="text-right nowrap" style="min-width: 120px; width: 15%; padding-right: 1.5rem;">Credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach($tb_rows as $row): ?>
+                    <tr>
+                        <td style="font-family: monospace; font-weight: 600; padding-left: 2rem;"><?= htmlspecialchars($row['code']) ?></td>
+                        <td style="font-weight: 500;"><?= htmlspecialchars($row['name']) ?></td>
+                        <td class="text-right"><?= $row['debit'] > 0 ? number_format($row['debit'], 2) : '—' ?></td>
+                        <td class="text-right" style="padding-right: 2rem;"><?= $row['credit'] > 0 ? number_format($row['credit'], 2) : '—' ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+                <tfoot>
+                    <tr style="font-weight: 700; background-color: var(--bg-tertiary); border-top: 2px solid var(--border-color);">
+                        <td colspan="2" style="padding-left: 2rem;">Total</td>
+                        <td class="text-right" style="border-bottom: 3px double var(--text-primary);"><?= number_format($total_debit_balance, 2) ?></td>
+                        <td class="text-right" style="padding-right: 2rem; border-bottom: 3px double var(--text-primary);"><?= number_format($total_credit_balance, 2) ?></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
         
         <?php if (!$isBalanced): ?>
         <div style="padding: 1.5rem; background-color: var(--bg-secondary); border-top: 1px solid var(--border-color); text-align: center;">

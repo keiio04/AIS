@@ -264,14 +264,14 @@ require_once '../includes/header.php';
         <table class="table">
             <thead>
                 <tr>
-                    <th style="width: 10%">Date</th>
-                    <th style="width: 22%">Account Title</th>
-                    <th style="width: 15%">Name</th>
-                    <th style="width: 18%">Description</th>
-                    <th style="width: 13%">Ref No. / Account Code</th>
-                    <th class="text-right" style="width: 10%">Debit</th>
-                    <th class="text-right" style="width: 10%">Credit</th>
-                    <th style="width: 2%"></th>
+                    <th style="min-width: 105px; width: 11%;" class="nowrap">Date</th>
+                    <th style="min-width: 180px; width: 22%;">Account Title</th>
+                    <th style="min-width: 130px; width: 14%;">Name</th>
+                    <th style="min-width: 150px; width: 17%;">Description</th>
+                    <th style="min-width: 130px; width: 14%;" class="nowrap">Ref No. / Code</th>
+                    <th class="text-right nowrap" style="min-width: 105px; width: 11%;">Debit</th>
+                    <th class="text-right nowrap" style="min-width: 105px; width: 11%;">Credit</th>
+                    <th style="min-width: 44px; width: 44px;"></th>
                 </tr>
             </thead>
             <tbody>

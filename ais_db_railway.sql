@@ -93,6 +93,18 @@ CREATE TABLE IF NOT EXISTS `activity_logs` (
     FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Instructor Students Assignment table
+CREATE TABLE IF NOT EXISTS `instructor_students` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `instructor_id` INT NOT NULL,
+    `student_id` INT NOT NULL,
+    `section` VARCHAR(100) DEFAULT 'Section 1',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uniq_inst_stud` (`instructor_id`, `student_id`),
+    FOREIGN KEY (`instructor_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`student_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- Default admin user (password: password)
 INSERT INTO `users` (`name`, `email`, `password`, `role`)
 SELECT 'Administrator', 'admin@ais.com',

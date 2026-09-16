@@ -272,13 +272,14 @@ require_once '../includes/header.php';
 <?php else: ?>
 
 <div class="card" style="padding: 0; overflow: hidden;">
+  <div class="table-container">
   <table class="table" style="width: 100%;">
     <thead>
       <tr>
-        <th style="width: 15%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Status</th>
-        <th style="width: 45%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Company Name</th>
-        <th style="width: 25%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Business Type</th>
-        <th style="width: 15%; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Actions</th>
+        <th style="min-width: 100px; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);" class="nowrap">Status</th>
+        <th style="min-width: 240px; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Company Name</th>
+        <th style="min-width: 150px; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);">Business Type</th>
+        <th style="min-width: 100px; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--text-muted);" class="nowrap">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -355,6 +356,7 @@ require_once '../includes/header.php';
       <?php endforeach; ?>
     </tbody>
   </table>
+  </div>
 </div>
 <?php endif; ?>
 

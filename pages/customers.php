@@ -202,14 +202,14 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         <table class="table">
             <thead>
                 <tr>
-                    <th>Customer ID</th>
-                    <th>Customer Name</th>
-                    <th>Contact Person</th>
-                    <th>Email / Phone</th>
-                    <th>Terms</th>
-                    <th class="text-right">Current Balance</th>
-                    <th class="text-center">Status</th>
-                    <th class="text-center">Actions</th>
+                    <th style="min-width: 110px;" class="nowrap">Customer ID</th>
+                    <th style="min-width: 160px;">Customer Name</th>
+                    <th style="min-width: 130px;">Contact Person</th>
+                    <th style="min-width: 160px;">Email / Phone</th>
+                    <th style="min-width: 90px;" class="nowrap">Terms</th>
+                    <th class="text-right nowrap" style="min-width: 130px;">Current Balance</th>
+                    <th class="text-center nowrap" style="min-width: 80px;">Status</th>
+                    <th class="text-center nowrap" style="min-width: 90px;">Actions</th>
                 </tr>
             </thead>
             <tbody>

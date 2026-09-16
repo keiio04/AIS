@@ -39,6 +39,22 @@ function get_db(): mysqli {
         // Auto-migrations for dynamic customer/vendor at header level
         try { $conn->query("ALTER TABLE journal_entries ADD COLUMN entity_id INT NULL AFTER journal_id"); } catch (Exception $e) {}
         try { $conn->query("ALTER TABLE journal_entries ADD COLUMN entity_type ENUM('customer', 'supplier') NULL AFTER entity_id"); } catch (Exception $e) {}
+
+        // Auto-migration for instructor_students table
+        try {
+            $conn->query("
+                CREATE TABLE IF NOT EXISTS `instructor_students` (
+                    `id` INT AUTO_INCREMENT PRIMARY KEY,
+                    `instructor_id` INT NOT NULL,
+                    `student_id` INT NOT NULL,
+                    `section` VARCHAR(100) DEFAULT 'Section 1',
+                    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY `uniq_inst_stud` (`instructor_id`, `student_id`),
+                    FOREIGN KEY (`instructor_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+                    FOREIGN KEY (`student_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+                ) ENGINE=InnoDB
+            ");
+        } catch (Exception $e) {}
     }
     return $conn;
 }

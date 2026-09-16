@@ -34,7 +34,7 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
 
 // Simple page titles for Topbar
 $pageNames = [
-    'dashboard' => 'Dashboard',
+    'dashboard' => in_array($userRole, ['Instructor', 'Admin']) ? 'Reports/Outputs' : 'Dashboard',
     'journal_entries' => 'Journal Entries',
     'general_ledger' => 'General Ledger',
     'subsidiary_ledger' => 'Subsidiary Ledger',
@@ -46,6 +46,7 @@ $pageNames = [
     'customers' => 'Customers',
     'suppliers' => 'Suppliers',
     'employees' => 'Employees',
+    'student_output' => 'Student Output Review',
 ];
 $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
 ?>
@@ -67,7 +68,7 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
         <div class="sidebar-header">
             <div class="logo-container" style="flex-direction: column; align-items: flex-start; gap: 0.25rem;">
                 <div class="flex items-center gap-2">
-                    <div style="background: linear-gradient(135deg, #0ea5e9, #3b82f6, #4f46e5); padding: 6px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.5), inset 0 2px 4px rgba(255,255,255,0.3); position: relative; overflow: hidden;">
+                    <div class="star-glow-badge" style="background: linear-gradient(135deg, #0ea5e9, #3b82f6, #4f46e5); padding: 6px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.5), inset 0 2px 4px rgba(255,255,255,0.3); position: relative; overflow: hidden;">
                         <div style="position: absolute; top: 0; left: 0; right: 0; height: 50%; background: linear-gradient(to bottom, rgba(255,255,255,0.25), transparent);"></div>
                         <i data-lucide="star" color="#ffffff" stroke-width="2.5" fill="#ffffff" style="width: 20px; height: 20px; z-index: 1;"></i>
                     </div>
@@ -90,10 +91,15 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
         </div>
 
         <nav class="sidebar-nav">
-            <div style="padding: 0 0.75rem; margin-bottom: 0.5rem; pointer-events: <?= $activeCompanyId ? 'auto' : 'none' ?>; opacity: <?= $activeCompanyId ? '1' : '0.5' ?>;">
-                <a href="<?= BASE_URL ?>pages/dashboard.php" class="nav-item <?= $current_page==='dashboard'?'active':'' ?>">
+            <div style="padding: 0 0.75rem; margin-bottom: 0.5rem;">
+                <a href="<?= BASE_URL ?>pages/dashboard.php" class="nav-item <?= in_array($current_page, ['dashboard','instructor_dashboard','student_output']) ? 'active' : '' ?>" <?= in_array($userRole, ['Instructor', 'Admin']) ? '' : ($activeCompanyId ? '' : 'style="pointer-events:none;opacity:0.5;"') ?>>
+                    <?php if (in_array($userRole, ['Instructor', 'Admin'])): ?>
+                    <i data-lucide="graduation-cap" style="width: 17px; height: 17px;"></i>
+                    <span>Reports/Outputs</span>
+                    <?php else: ?>
                     <i data-lucide="layout-dashboard" style="width: 17px; height: 17px;"></i>
                     <span>Dashboard</span>
+                    <?php endif; ?>
                 </a>
             </div>
 
@@ -224,6 +230,8 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
         </div>
         <?php endif; ?>
 
+
+
         <div style="padding: 0 0.75rem; padding-top: 0.5rem; pointer-events: <?= $activeCompanyId ? 'auto' : 'none' ?>; opacity: <?= $activeCompanyId ? '1' : '0.5' ?>;">
             <a href="<?= BASE_URL ?>pages/trash_bin.php" class="nav-item <?= $current_page==='trash_bin'?'active':'' ?>" style="margin-bottom: 0;">
                 <i data-lucide="trash-2" style="width: 17px; height: 17px;"></i>
@@ -275,6 +283,9 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
         </script>
         <script src="<?= BASE_URL ?>assets/js/script.js"></script>
     </div>
+
+    <!-- Mobile Sidebar Backdrop -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleMainSidebar()"></div>
 
     <!-- MAIN WRAPPER -->
     <div class="main-wrapper">
@@ -352,6 +363,24 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                 </div>
             </div>
         </div>
+
+        <?php 
+        require_once __DIR__ . '/access_control.php';
+        if (is_view_only()): 
+            $vStudent = $_SESSION['instructor_viewing_student_name'] ?? 'Student';
+            $vCompany = $_SESSION['instructor_viewing_company_name'] ?? 'Simulation';
+        ?>
+        <div style="background: linear-gradient(90deg, #1e1b4b, #312e81); border-bottom: 1px solid #4f46e5; padding: 0.6rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: #fff; font-size: 0.85rem; z-index: 50; flex-wrap: wrap;">
+            <div class="flex items-center gap-2" style="flex-wrap: wrap;">
+                <span class="badge" style="background: #ef4444; color: #fff; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px;">READ-ONLY</span>
+                <span>Instructor Viewing Mode: <strong><?= htmlspecialchars($vStudent) ?></strong> (<em><?= htmlspecialchars($vCompany) ?></em>)</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <a href="<?= BASE_URL ?>pages/student_output.php" class="btn btn-sm" style="background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.25); padding: 3px 10px; font-size: 0.75rem; text-decoration: none; border-radius: 6px;">Output Hub</a>
+                <a href="<?= BASE_URL ?>pages/dashboard.php?action=exit_view" class="btn btn-sm btn-primary" style="padding: 3px 12px; font-size: 0.75rem; text-decoration: none; border-radius: 6px;">Exit Student View</a>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- MAIN CONTENT -->
         <main class="main-content">

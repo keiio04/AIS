@@ -188,15 +188,15 @@ $employees = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         <table class="table">
             <thead>
                 <tr>
-                    <th>Employee ID</th>
-                    <th>Employee Name</th>
-                    <th>Position</th>
-                    <th>Department</th>
-                    <th>Email / Phone</th>
-                    <th>Date Hired</th>
-                    <th class="text-right">Rate</th>
-                    <th class="text-center">Status</th>
-                    <th class="text-center">Actions</th>
+                    <th style="min-width: 110px;" class="nowrap">Employee ID</th>
+                    <th style="min-width: 160px;">Employee Name</th>
+                    <th style="min-width: 120px;">Position</th>
+                    <th style="min-width: 120px;">Department</th>
+                    <th style="min-width: 160px;">Email / Phone</th>
+                    <th style="min-width: 110px;" class="nowrap">Date Hired</th>
+                    <th class="text-right nowrap" style="min-width: 110px;">Rate</th>
+                    <th class="text-center nowrap" style="min-width: 80px;">Status</th>
+                    <th class="text-center nowrap" style="min-width: 90px;">Actions</th>
                 </tr>
             </thead>
             <tbody>

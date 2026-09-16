@@ -276,9 +276,9 @@ require_once '../includes/header.php';
         <table class="table">
             <thead>
                 <tr>
-                    <th style="width: 25%; padding-left: 3rem;">Account Code</th>
-                    <th style="width: 60%;">Account Name</th>
-                    <th class="text-center" style="width: 15%;">Actions</th>
+                    <th style="min-width: 140px; width: 22%; padding-left: 2rem;" class="nowrap">Account Code</th>
+                    <th style="min-width: 220px; width: 63%;">Account Name</th>
+                    <th class="text-center nowrap" style="min-width: 100px; width: 15%;">Actions</th>
                 </tr>
             </thead>
             <tbody>

@@ -110,7 +110,8 @@ function sl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNorm
     $running = $openingBal;
     ob_start();
     ?>
-    <table class="table" style="margin: 0 0 1.75rem 0; border: 1px solid var(--border-color);">
+    <div class="table-container" style="margin-bottom: 1.75rem;">
+    <table class="table" style="margin: 0; border: 1px solid var(--border-color);">
         <thead>
             <tr style="background-color: #f1f5f9;">
                 <td colspan="6" style="padding: 0.85rem 1rem; border-bottom: 1px solid var(--border-color);">
@@ -125,12 +126,12 @@ function sl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNorm
                 </td>
             </tr>
             <tr style="border-bottom: 2px solid var(--text-primary);">
-                <th style="width: 10%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Date</th>
-                <th style="width: 32%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);"><?= htmlspecialchars($descLabel) ?></th>
-                <th style="width: 15%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Reference</th>
-                <th class="text-right" style="width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Debit</th>
-                <th class="text-right" style="width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Credit</th>
-                <th class="text-right" style="width: 15%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Balance</th>
+                <th style="min-width: 95px; width: 12%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);" class="nowrap">Date</th>
+                <th style="min-width: 180px; width: 30%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);"><?= htmlspecialchars($descLabel) ?></th>
+                <th style="min-width: 120px; width: 16%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);" class="nowrap">Reference</th>
+                <th class="text-right nowrap" style="min-width: 110px; width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Debit</th>
+                <th class="text-right nowrap" style="min-width: 110px; width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Credit</th>
+                <th class="text-right nowrap" style="min-width: 120px; width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Balance</th>
             </tr>
         </thead>
         <tbody>
@@ -184,6 +185,7 @@ function sl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNorm
             </tr>
         </tbody>
     </table>
+    </div>
     <?php
     return ob_get_clean();
 }

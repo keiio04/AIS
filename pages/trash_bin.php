@@ -107,14 +107,14 @@ require_once '../includes/header.php';
         <table class="table">
             <thead>
                 <tr>
-                    <th style="width: 12%">Date</th>
-                    <th style="width: 20%">Account Title</th>
-                    <th style="width: 20%">Description</th>
-                    <th style="width: 13%">Ref No.</th>
-                    <th class="text-right" style="width: 10%">Debit</th>
-                    <th class="text-right" style="width: 10%">Credit</th>
-                    <th style="width: 15%">Deleted On</th>
-                    <th style="width: 10%; text-align: center;">Actions</th>
+                    <th style="min-width: 105px;" class="nowrap">Date</th>
+                    <th style="min-width: 180px;">Account Title</th>
+                    <th style="min-width: 160px;">Description</th>
+                    <th style="min-width: 120px;" class="nowrap">Ref No.</th>
+                    <th class="text-right nowrap" style="min-width: 105px;">Debit</th>
+                    <th class="text-right nowrap" style="min-width: 105px;">Credit</th>
+                    <th style="min-width: 120px;" class="nowrap">Deleted On</th>
+                    <th style="min-width: 90px; text-align: center;" class="nowrap">Actions</th>
                 </tr>
             </thead>
             <tbody>

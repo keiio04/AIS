@@ -414,8 +414,26 @@ h4 { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
 .form-control::placeholder { color: var(--text-muted); }
 
 /* ============================================================
-   TABLES
+   TABLES & RESPONSIVE CONTAINER
    ============================================================ */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-xl);
+  background: var(--bg-secondary);
+}
+
+.table-container > table {
+  min-width: 820px;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table-container.table-wide > table {
+  min-width: 950px;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -424,22 +442,27 @@ h4 { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
 }
 
 .table th {
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
   background-color: var(--bg-tertiary);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   border-bottom: 1px solid var(--border-color);
   white-space: nowrap;
 }
 
 .table td {
-  padding: 0.9rem 1rem;
+  padding: 0.85rem 1rem;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-primary);
   vertical-align: middle;
+}
+
+.table td.nowrap, .table th.nowrap,
+.table td.text-right, .table th.text-right {
+  white-space: nowrap;
 }
 
 .table tbody tr {
@@ -489,7 +512,9 @@ h4 { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-xl);
   border: 1px solid var(--border-color);
-  width: 100%;
+  width: calc(100% - 2rem);
+  max-width: 560px;
+  margin: 1rem auto;
   max-height: 90vh;
   overflow-y: auto;
   animation: slideUpModal 0.2s ease;
@@ -679,6 +704,34 @@ body.sidebar-hidden .metric-cards-grid {
   font-weight: 800;
   letter-spacing: -0.02em;
   box-shadow: 0 2px 8px rgba(59,130,246,0.4);
+}
+
+/* ── Sidebar Animated Star Badge ── */
+.star-glow-badge {
+  animation: badgeGlow 3s ease-in-out infinite alternate, badgeFloat 4s ease-in-out infinite;
+}
+
+.star-glow-badge i, .star-glow-badge svg {
+  animation: starTwinkleSmall 2.5s ease-in-out infinite alternate;
+}
+
+@keyframes badgeGlow {
+  0% {
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4), inset 0 2px 4px rgba(255,255,255,0.3);
+  }
+  100% {
+    box-shadow: 0 6px 22px rgba(59, 130, 246, 0.8), 0 0 15px rgba(14, 165, 233, 0.5), inset 0 2px 4px rgba(255,255,255,0.5);
+  }
+}
+
+@keyframes badgeFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes starTwinkleSmall {
+  0% { transform: scale(0.92) rotate(-3deg); filter: drop-shadow(0 0 2px rgba(255,255,255,0.4)); }
+  100% { transform: scale(1.1) rotate(4deg); filter: drop-shadow(0 0 8px rgba(255,255,255,0.9)); }
 }
 
 .sidebar-nav {
@@ -894,13 +947,183 @@ body.sidebar-hidden .metric-cards-grid {
 }
 
 /* ============================================================
-   RESPONSIVE
+   RESPONSIVE & MOBILE DRAWER
    ============================================================ */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+  z-index: 1040;
+  display: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.sidebar-backdrop.show {
+  display: block;
+  opacity: 1;
+}
+
 @media (max-width: 768px) {
-  .sidebar { display: none; }
-  .main-content { padding: 1rem; }
-  .topbar { padding: 0 1rem; }
-  .topbar-search { display: none; }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    height: 100vh;
+    z-index: 1050;
+    width: 270px;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex !important;
+    box-shadow: var(--shadow-xl);
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .main-wrapper {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .main-content {
+    padding: 0.875rem 0.75rem !important;
+  }
+
+  .topbar {
+    padding: 0 0.875rem !important;
+    height: 56px !important;
+  }
+
+  .topbar-search {
+    display: none;
+  }
+
+  .breadcrumb-current {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .user-name, .user-role {
+    display: none;
+  }
+
+  .page-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .page-header > div:last-child {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+  }
+
+  .page-header .btn {
+    flex: 1 1 auto !important;
+    min-width: 120px !important;
+    justify-content: center !important;
+  }
+
+  .page-title {
+    font-size: 1.35rem !important;
+  }
+
+  /* Metric cards responsive */
+  .metric-cards-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+    gap: 0.75rem !important;
+  }
+
+  .metric-card {
+    padding: 1rem !important;
+  }
+
+  .metric-card-value {
+    font-size: 1.35rem !important;
+  }
+
+  /* Cards */
+  .card {
+    padding: 1rem !important;
+    border-radius: var(--radius-lg) !important;
+  }
+
+  .card[style*="padding: 0"] {
+    padding: 0 !important;
+  }
+
+  /* Modals on mobile */
+  .modal {
+    width: calc(100% - 1rem) !important;
+    max-width: 100% !important;
+    margin: 0.5rem auto !important;
+    border-radius: var(--radius-xl) !important;
+    max-height: 92vh !important;
+  }
+
+  .modal-header {
+    padding: 1rem 1.125rem !important;
+  }
+
+  .modal-body {
+    padding: 1rem 1.125rem !important;
+  }
+
+  .modal-footer {
+    padding: 0.875rem 1.125rem !important;
+    flex-direction: column-reverse !important;
+    gap: 0.5rem !important;
+  }
+
+  .modal-footer .btn {
+    width: 100% !important;
+  }
+
+  /* Modal Form Grid auto-collapse to 1 column */
+  .modal-body form div[style*="grid-template-columns: 1fr 1fr"],
+  .modal-body form div[style*="grid-template-columns:1fr 1fr"],
+  .modal-body div[style*="display: grid; grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  /* Table horizontal scrolling enhancement */
+  .table-container {
+    border: 1px solid var(--border-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+
+  .table-container > table {
+    min-width: 780px !important;
+  }
+
+  /* Dashboard widgets mobile stacking */
+  #dashboard-widgets {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .metric-cards-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .page-title {
+    font-size: 1.2rem !important;
+  }
+
+  .main-content {
+    padding: 0.75rem 0.5rem !important;
+  }
 }
 
 /* ============================================================

@@ -3,10 +3,20 @@
  * Handles: sidebar toggle, dark mode, dropdowns, lucide icons
  */
 
-// ── Sidebar Main Toggle ──────────────────────────────────────
+// ── Sidebar Main Toggle (Responsive: Mobile Drawer + Desktop Collapse) ───
 function toggleMainSidebar() {
     const sb = document.getElementById('mainSidebar');
-    if (sb) {
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (!sb) return;
+
+    const isMobile = window.innerWidth <= 768;
+
+    if (isMobile) {
+        sb.classList.toggle('mobile-open');
+        if (backdrop) {
+            backdrop.classList.toggle('show', sb.classList.contains('mobile-open'));
+        }
+    } else {
         sb.classList.toggle('is-hidden');
         const isHidden = sb.classList.contains('is-hidden');
         localStorage.setItem('main_sidebar_hidden', isHidden);
@@ -105,9 +115,31 @@ document.addEventListener('click', function(event) {
     }
 })();
 
-// ── Initialize Lucide Icons (after full DOM is ready) ────────
+// ── Initialize Lucide Icons & Mobile Sidebar Nav Listeners ────────
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
+
+    // Auto-close sidebar on mobile after clicking a link
+    const sb = document.getElementById('mainSidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (sb) {
+        sb.querySelectorAll('a').forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (window.innerWidth <= 768) {
+                    sb.classList.remove('mobile-open');
+                    if (backdrop) backdrop.classList.remove('show');
+                }
+            });
+        });
+    }
+
+    // Handle viewport resize cleanups
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 768 && sb && backdrop) {
+            sb.classList.remove('mobile-open');
+            backdrop.classList.remove('show');
+        }
+    });
 });

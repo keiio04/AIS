@@ -94,14 +94,14 @@ $initials = strtoupper(substr($parts[0], 0, 1) . (isset($parts[1]) ? substr($par
     <div style="display: grid; grid-template-columns: 1fr; gap: 1.5rem;">
         
         <!-- Profile Information -->
-        <div class="card" style="padding: 2rem;">
-            <div style="display: flex; gap: 2rem; align-items: flex-start;">
+        <div class="card" style="padding: 1.5rem;">
+            <div style="display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap;">
                 
-                <div style="width: 100px; height: 100px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6, #1d4ed8); display: flex; align-items: center; justify-content: center; color: white; font-size: 2.5rem; font-weight: 700; flex-shrink: 0; box-shadow: 0 10px 25px rgba(59,130,246,0.3);">
+                <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6, #1d4ed8); display: flex; align-items: center; justify-content: center; color: white; font-size: 2rem; font-weight: 700; flex-shrink: 0; box-shadow: 0 10px 25px rgba(59,130,246,0.3); margin: 0 auto;">
                     <?= $initials ?>
                 </div>
 
-                <div style="flex: 1;">
+                <div style="flex: 1; min-width: 260px;">
                     <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
                         <i data-lucide="user" style="width: 18px; height: 18px; color: var(--primary-color);"></i> Profile Information
                     </h3>

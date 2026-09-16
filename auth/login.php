@@ -93,43 +93,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TALA-AIS – Sign In</title>
-<meta name="description" content="Sign in to TALA-AIS – Laguna State Polytechnic University Accounting Information System.">
+<title>TALA-AIS – Authentication</title>
+<meta name="description" content="Sign in or create an account on TALA-AIS – Laguna State Polytechnic University Accounting Information System.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800;900&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+:root {
+  --bg-deep: #070b14;
+  --bg-card: rgba(13, 21, 41, 0.78);
+  --border-card: rgba(59, 130, 246, 0.25);
+  --border-card-hover: rgba(96, 165, 250, 0.55);
+
+  --brand-blue: #0070f3;
+  --brand-electric: #007aff;
+  --brand-glow: #3b82f6;
+  --brand-cyan: #06b6d4;
+
+  --text-white: #ffffff;
+  --text-muted: #94a3b8;
+  --text-light-blue: #cbd5e1;
+
+  --shadow-card: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(37, 99, 235, 0.15);
+  --shadow-glow: 0 0 35px rgba(0, 112, 243, 0.6);
+}
+
 html, body {
-  height: 100%;
+  min-height: 100%;
   font-family: 'Inter', sans-serif;
-}
-
-/* ─────────────────────────────────────────
-   FULL PAGE: single seamless gradient
-   Left = soft blue, Right = near white
-───────────────────────────────────────── */
-body {
-  min-height: 100vh;
-  /* Matches the screenshot: periwinkle-blue left → white right */
-  background: linear-gradient(to right,
-    #c2d8f5 0%,
-    #cde0f7 20%,
-    #daeaf9 38%,
-    #eaf4fc 55%,
-    #f4f9fe 70%,
-    #fafcff 84%,
-    #ffffff 100%
-  );
-  display: flex;
+  color: var(--text-white);
+  background-color: var(--bg-deep);
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(30, 58, 138, 0.45) 0%, transparent 60%),
+    radial-gradient(circle at 80% 60%, rgba(37, 99, 235, 0.25) 0%, transparent 50%),
+    radial-gradient(circle at 20% 90%, rgba(14, 165, 233, 0.2) 0%, transparent 45%),
+    linear-gradient(180deg, #070b14 0%, #0b1329 45%, #0f214d 80%, #173275 100%);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
-/* ─────────────────────────────────────────
-   WAVE LINES — fixed to bottom-left
-   (matches screenshot exactly)
-───────────────────────────────────────── */
+/* Hero Background Layer matching index.php */
+.hero-bg-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(180deg, rgba(6, 10, 18, 0.55) 0%, rgba(7, 11, 20, 0.45) 45%, rgba(11, 19, 41, 0.88) 88%, #0b1329 100%),
+    radial-gradient(circle at 50% 35%, rgba(0, 112, 243, 0.15) 0%, rgba(6, 10, 18, 0.6) 80%),
+    url('<?= BASE_URL ?>assets/images/hero-accounting-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.5;
+}
+
+/* Ambient Radial Glow Overlays */
+.ambient-glow-top {
+  position: absolute;
+  top: -120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 900px;
+  height: 500px;
+  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.45) 0%, rgba(6, 10, 18, 0) 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ambient-glow-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 400px;
+  background: radial-gradient(ellipse at 50% 100%, rgba(37, 99, 235, 0.35) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Background Glowing Wave lines (bottom-left) */
 .bg-waves {
   position: fixed;
   bottom: -20px;
@@ -137,7 +185,8 @@ body {
   width: 52vw;
   min-width: 360px;
   pointer-events: none;
-  z-index: 0;
+  z-index: 1;
+  opacity: 0.25;
 }
 
 /* ─────────────────────────────────────────
@@ -145,92 +194,124 @@ body {
 ───────────────────────────────────────── */
 .page-wrap {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   width: 100%;
   min-height: 100vh;
 }
 
 /* ─────────────────────────────────────────
-   LEFT — brand area, fully transparent
+   LEFT — brand area
 ───────────────────────────────────────── */
 .auth-left {
-  flex: 0 0 45%;
-  /* grid: logo top | content centered | badge bottom */
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  padding: 3.5rem 1rem 3.5rem 8rem;
+  flex: 0 0 48%;
+  display: flex;
+  flex-direction: column;
+  padding: 3.5rem 2rem 3.5rem 7rem;
   min-height: 100vh;
-  background: transparent;
+  position: relative;
 }
 
-/* Brand icon + name (top) */
+/* Back Link (Top) */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s, transform 0.2s;
+  margin-bottom: 1.5rem;
+}
+.back-link:hover {
+  color: #ffffff;
+  transform: translateX(-3px);
+}
+
+/* Brand icon + name */
 .brand-logo {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
-}
-.brand-icon {
-  width: 60px; height: 60px;
-  background: #ffffff;
-  border-radius: 16px;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 24px rgba(37,99,235,0.15);
-  color: #2563eb;
-  flex-shrink: 0;
+  gap: 1rem;
 }
 
-/* Main heading block — vertically centered in the 1fr row */
+.brand-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #0ea5e9, #3b82f6, #1d4ed8);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 25px rgba(0, 112, 243, 0.7);
+  color: #ffffff;
+  flex-shrink: 0;
+  animation: starFloat 4s ease-in-out infinite;
+}
+
+.brand-icon svg {
+  animation: starTwinkle 4s ease-in-out infinite alternate;
+}
+
+@keyframes starFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes starTwinkle {
+  0% { transform: scale(0.97); }
+  50% { transform: scale(1.05) rotate(2deg); }
+  100% { transform: scale(1); }
+}
+
+/* Main heading block */
 .auth-left-body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 1rem 0;
+  margin: auto 0;
+  padding: 2rem 0;
 }
+
 .auth-left-body h1 {
-  font-family: 'Outfit', sans-serif;
-  font-size: 4.4rem;
-  font-weight: 800;
-  color: #1a2f6e;
-  line-height: 1.08;
-  letter-spacing: -0.03em;
+  font-family: 'Plus Jakarta Sans', 'Outfit', sans-serif;
+  font-size: clamp(3.8rem, 5.5vw, 5.4rem);
+  font-weight: 900;
+  background: linear-gradient(180deg, #ffffff 40%, #cbd5e1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
   margin-bottom: 0.85rem;
+  filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.7));
 }
-/* Short blue underline accent */
+
+.auth-left-body h1 .gradient-text {
+  background: linear-gradient(135deg, #60a5fa 0%, #38bdf8 50%, #93c5fd 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 .h1-underline {
-  width: 64px;
+  width: 80px;
   height: 5px;
-  background: #2563eb;
-  border-radius: 3px;
-  margin-bottom: 1.5rem;
+  background: linear-gradient(90deg, #0070f3, #00d2ff);
+  border-radius: 6px;
+  margin-bottom: 1.85rem;
+  box-shadow: 0 0 14px rgba(0, 112, 243, 0.7);
 }
+
 .auth-left-body p {
-  font-size: 1.2rem;
-  color: #3558a0;
+  font-size: 1.25rem;
+  color: var(--text-light-blue);
   line-height: 1.7;
-  max-width: 360px;
+  max-width: 480px;
   font-weight: 400;
 }
 
-/* Campus badge (bottom) */
-.campus-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.55rem 1.25rem;
-  background: rgba(255,255,255,0.55);
-  border: 1px solid rgba(255,255,255,0.85);
-  border-radius: 50px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #1e40af;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
 /* ─────────────────────────────────────────
-   RIGHT — form area, fully transparent
-   (no card, no border — matches screenshot)
+   RIGHT — form area
 ───────────────────────────────────────── */
 .auth-right {
   flex: 1;
@@ -238,203 +319,301 @@ body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 3.5rem 4rem;
-  background: transparent;
+  padding: 2.5rem 4rem;
   min-height: 100vh;
 }
 
 .auth-form-wrap {
   width: 100%;
-  max-width: 420px;
-  background: #ffffff;
-  padding: 2rem;
-  border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  max-width: 440px;
+  background: rgba(13, 21, 41, 0.82);
+  padding: 2.25rem 2rem;
+  border-radius: 24px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 35px rgba(37, 99, 235, 0.18);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .auth-form-wrap h2 {
-  font-family: 'Outfit', sans-serif;
-  font-size: 2rem;
+  font-family: 'Plus Jakarta Sans', 'Outfit', sans-serif;
+  font-size: 1.85rem;
   font-weight: 800;
-  color: #0f172a;
+  color: #ffffff;
   letter-spacing: -0.025em;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.35rem;
 }
+
 .auth-subtitle {
-  font-size: 0.9rem;
-  color: #64748b;
+  font-size: 0.875rem;
+  color: var(--text-muted);
   margin-bottom: 1.5rem;
 }
 
 /* ─── Tabs ─── */
 .auth-tabs {
   display: flex;
-  border-bottom: 1.5px solid #dde6f0;
-  margin-bottom: 1.6rem;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 1.5rem;
   gap: 0;
 }
+
 .auth-tab-btn {
   flex: 1;
   padding: 0.75rem 0.5rem;
   border: none;
   background: transparent;
   font-family: 'Inter', sans-serif;
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--text-muted);
   cursor: pointer;
   border-bottom: 2.5px solid transparent;
   margin-bottom: -1.5px;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   text-align: center;
 }
-.auth-tab-btn.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
-}
-.auth-tab-btn:hover:not(.active) { color: #475569; }
 
-/* ─── Alert ─── */
+.auth-tab-btn.active {
+  color: #60a5fa;
+  border-bottom-color: #0070f3;
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(96, 165, 250, 0.35);
+}
+
+.auth-tab-btn:hover:not(.active) { 
+  color: #ffffff; 
+}
+
+/* ─── Alerts ─── */
 .auth-alert {
-  display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.8rem 1rem; border-radius: 10px;
-  font-size: 0.875rem; font-weight: 500;
+  display: flex; 
+  align-items: center; 
+  gap: 0.6rem;
+  padding: 0.8rem 1rem; 
+  border-radius: 12px;
+  font-size: 0.85rem; 
+  font-weight: 500;
   margin-bottom: 1.2rem;
 }
-.auth-alert.error   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
-.auth-alert.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+.auth-alert.error { 
+  background: rgba(239, 68, 68, 0.15); 
+  border: 1px solid rgba(239, 68, 68, 0.35); 
+  color: #fca5a5; 
+}
+.auth-alert.success { 
+  background: rgba(16, 185, 129, 0.15); 
+  border: 1px solid rgba(16, 185, 129, 0.35); 
+  color: #6ee7b7; 
+}
 
 /* ─── Form fields ─── */
-.auth-field { margin-bottom: 0.9rem; }
+.auth-field { margin-bottom: 1rem; }
 .auth-field > label {
   display: block;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 0.35rem;
+  color: var(--text-light-blue);
+  margin-bottom: 0.4rem;
 }
 .input-wrap { position: relative; display: flex; align-items: center; }
 .input-icon {
   position: absolute;
-  left: 0.9rem;
-  color: #94a3b8;
-  display: flex; align-items: center;
+  left: 0.95rem;
+  color: #60a5fa;
+  display: flex; 
+  align-items: center;
   pointer-events: none;
   z-index: 1;
+  transition: color 0.2s ease;
+}
+.input-wrap:focus-within .input-icon {
+  color: #38bdf8;
 }
 .auth-input {
   width: 100%;
-  padding: 0.75rem 1rem 0.75rem 2.5rem;
-  border: 1.5px solid #dde6f2;
-  border-radius: 10px;
+  padding: 0.75rem 1rem 0.75rem 2.6rem;
+  border: 1.5px solid rgba(59, 130, 246, 0.25);
+  border-radius: 12px;
   font-family: 'Inter', sans-serif;
-  font-size: 0.95rem;
-  color: #0f172a;
-  background: #ffffff;
+  font-size: 0.925rem;
+  color: #ffffff;
+  background: rgba(10, 18, 36, 0.75);
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: all 0.2s ease;
 }
 .auth-input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+  border-color: #0070f3;
+  box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.25);
+  background: rgba(14, 25, 50, 0.95);
+}
+.auth-input::placeholder {
+  color: #64748b;
 }
 .auth-input.no-icon { padding-left: 1rem; }
-select.auth-input   { padding-left: 1rem; cursor: pointer; }
+select.auth-input { 
+  padding-left: 1rem; 
+  cursor: pointer;
+  background-color: #0a1224;
+}
+select.auth-input option {
+  background: #0a1224;
+  color: #ffffff;
+}
 
 .pw-toggle {
-  position: absolute; right: 0.85rem;
-  background: none; border: none; cursor: pointer;
-  color: #94a3b8; display: flex; align-items: center;
+  position: absolute; 
+  right: 0.85rem;
+  background: none; 
+  border: none; 
+  cursor: pointer;
+  color: #64748b; 
+  display: flex; 
+  align-items: center;
   transition: color 0.2s;
 }
-.pw-toggle:hover { color: #2563eb; }
+.pw-toggle:hover { color: #60a5fa; }
 
 /* ─── Remember me row ─── */
 .auth-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1.3rem;
+  margin-bottom: 1.35rem;
 }
 .remember-label {
-  display: flex; align-items: center; gap: 0.5rem;
-  font-size: 0.95rem; color: #374151;
-  cursor: pointer; font-weight: 500;
+  display: flex; 
+  align-items: center; 
+  gap: 0.5rem;
+  font-size: 0.875rem; 
+  color: var(--text-muted);
+  cursor: pointer; 
+  font-weight: 500;
 }
 .remember-label input[type="checkbox"] {
-  width: 17px; height: 17px;
-  accent-color: #2563eb; cursor: pointer;
+  width: 16px; 
+  height: 16px;
+  accent-color: #0070f3; 
+  cursor: pointer;
 }
 .forgot-link {
-  font-size: 0.95rem; color: #2563eb;
-  text-decoration: none; font-weight: 500;
+  font-size: 0.875rem; 
+  color: #60a5fa;
+  text-decoration: none; 
+  font-weight: 500;
+  transition: color 0.2s;
 }
-.forgot-link:hover { text-decoration: underline; }
+.forgot-link:hover { 
+  color: #93c5fd; 
+  text-decoration: underline; 
+}
 
 /* ─── Submit button ─── */
 .auth-submit {
   width: 100%;
   padding: 0.85rem;
-  background: #2563eb;
+  background: linear-gradient(135deg, #0070f3, #0051cc);
   color: #ffffff;
   border: none;
-  border-radius: 10px;
-  font-family: 'Outfit', sans-serif;
-  font-size: 1.05rem;
+  border-radius: 9999px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
   letter-spacing: 0.01em;
-  box-shadow: 0 4px 16px rgba(37,99,235,0.3);
-  transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+  box-shadow: 0 4px 20px rgba(0, 112, 243, 0.45);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .auth-submit:hover {
-  background: #1d4ed8;
-  box-shadow: 0 8px 24px rgba(37,99,235,0.38);
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #1a82ff, #0060e6);
+  box-shadow: 0 8px 30px rgba(0, 112, 243, 0.7);
+  transform: translateY(-2px);
 }
 .auth-submit:active { transform: translateY(0); }
 
 /* ─── Password strength ─── */
 .strength-wrap  { margin-top: 0.4rem; display: flex; align-items: center; gap: 0.5rem; }
-.strength-bar   { flex: 1; height: 4px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+.strength-bar   { flex: 1; height: 5px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; overflow: hidden; }
 .strength-fill  { height: 100%; border-radius: 4px; transition: width .3s, background .3s; }
 .strength-label { font-size: 0.73rem; font-weight: 600; color: #94a3b8; min-width: 40px; }
 
-
 /* ─── Responsive ─── */
-@media (max-width: 820px) {
-  .page-wrap { flex-direction: column; }
+@media (max-width: 900px) {
+  .page-wrap {
+    flex-direction: column;
+    min-height: auto;
+  }
   .auth-left {
     flex: none;
-    padding: 2.5rem 2rem 1.5rem;
+    min-height: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 2.25rem 1.25rem 0.5rem;
   }
-  .auth-left-body h1 { font-size: 2.2rem; }
+  .brand-logo {
+    justify-content: center;
+    margin-bottom: 0.5rem;
+  }
+  .brand-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+  }
+  .auth-left-body {
+    padding: 0.25rem 0;
+    align-items: center;
+  }
+  .auth-left-body h1 {
+    font-size: 2.2rem;
+    margin-bottom: 0.25rem;
+  }
+  .h1-underline {
+    margin: 0.35rem auto 0.75rem;
+    height: 3px;
+    width: 48px;
+  }
+  .auth-left-body p {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    max-width: 320px;
+  }
   .auth-right {
-    padding: 2rem 1.5rem 3rem;
+    min-height: auto;
+    padding: 1rem 1rem 3rem;
+    width: 100%;
     align-items: center;
   }
   .auth-form-wrap {
-    padding: 1.5rem;
+    width: 100%;
+    max-width: 420px;
+    padding: 1.6rem 1.35rem;
+    border-radius: 20px;
   }
-  .bg-waves { width: 100vw; }
+  .auth-form-wrap h2 {
+    font-size: 1.5rem;
+  }
+  .bg-waves {
+    width: 100vw;
+    opacity: 0.15;
+  }
 }
 </style>
 </head>
 <body>
 
-<!-- SVG Wave lines (bottom-left) — matches screenshot style -->
+<div class="hero-bg-layer"></div>
+<div class="ambient-glow-top"></div>
+<div class="ambient-glow-bottom"></div>
+
+<!-- SVG Glowing Wave lines (bottom-left) -->
 <svg class="bg-waves" viewBox="0 0 860 500" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMax meet">
-  <!-- Multiple flowing wave paths layered for depth -->
-  <path d="M-40 460 C 120 390, 340 430, 560 370 S 780 310, 900 330" stroke="rgba(255,255,255,0.7)" stroke-width="2.5" fill="none"/>
-  <path d="M-40 440 C 130 370, 350 410, 570 350 S 790 285, 900 310" stroke="rgba(255,255,255,0.55)" stroke-width="2" fill="none"/>
-  <path d="M-40 420 C 140 352, 360 392, 580 332 S 800 268, 900 292" stroke="rgba(255,255,255,0.42)" stroke-width="1.5" fill="none"/>
-  <path d="M-40 400 C 150 332, 370 374, 590 314 S 810 250, 900 274" stroke="rgba(255,255,255,0.30)" stroke-width="1.5" fill="none"/>
-  <path d="M-40 378 C 160 310, 380 354, 600 295 S 820 232, 900 255" stroke="rgba(255,255,255,0.22)" stroke-width="1" fill="none"/>
-  <path d="M-40 356 C 170 289, 390 334, 610 276 S 830 213, 900 237" stroke="rgba(255,255,255,0.16)" stroke-width="1" fill="none"/>
-  <path d="M-40 334 C 180 268, 400 314, 620 257 S 840 195, 900 218" stroke="rgba(255,255,255,0.11)" stroke-width="1" fill="none"/>
-  <path d="M-40 480 C 110 412, 330 452, 550 392 S 770 330, 900 350" stroke="rgba(255,255,255,0.80)" stroke-width="2.5" fill="none"/>
-  <path d="M-40 498 C 100 432, 320 470, 540 412 S 760 350, 900 368" stroke="rgba(255,255,255,0.60)" stroke-width="2" fill="none"/>
+  <path d="M-40 460 C 120 390, 340 430, 560 370 S 780 310, 900 330" stroke="rgba(59,130,246,0.3)" stroke-width="2.5" fill="none"/>
+  <path d="M-40 440 C 130 370, 350 410, 570 350 S 790 285, 900 310" stroke="rgba(59,130,246,0.22)" stroke-width="2" fill="none"/>
+  <path d="M-40 420 C 140 352, 360 392, 580 332 S 800 268, 900 292" stroke="rgba(14,165,233,0.18)" stroke-width="1.5" fill="none"/>
+  <path d="M-40 400 C 150 332, 370 374, 590 314 S 810 250, 900 274" stroke="rgba(14,165,233,0.12)" stroke-width="1.5" fill="none"/>
+  <path d="M-40 480 C 110 412, 330 452, 550 392 S 770 330, 900 350" stroke="rgba(59,130,246,0.35)" stroke-width="2.5" fill="none"/>
 </svg>
 
 <div class="page-wrap">
@@ -442,25 +621,29 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
   <!-- ══════════ LEFT PANEL ══════════ -->
   <div class="auth-left">
 
-    <!-- Top: Brand logo -->
-    <div class="brand-logo">
-      <div class="brand-icon">
-        <!-- New TALA-AIS Star Logo -->
-        <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24"
-          fill="#2563eb" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-        </svg>
+    <!-- Top: Back Link & Brand logo -->
+    <div>
+      <a href="<?= BASE_URL ?>" class="back-link">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        Back to Home
+      </a>
+      <div class="brand-logo">
+        <div class="brand-icon">
+          <!-- TALA-AIS Glowing Star -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"
+            fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+        </div>
       </div>
     </div>
 
     <!-- Middle: Heading + description -->
     <div class="auth-left-body">
-      <h1>TALA-AIS</h1>
+      <h1>TALA-<span class="gradient-text">AIS</span></h1>
       <div class="h1-underline"></div>
-      <p>Empowering Laguna State Polytechnic University with modern, reliable, and secure accounting tools.</p>
+      <p>Making accounting learning more practical, interactive, and accessible through guided simulation and hands-on practice.</p>
     </div>
-
-
 
   </div><!-- /auth-left -->
 
@@ -480,13 +663,13 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
       <!-- Alerts -->
       <?php if ($error): ?>
       <div class="auth-alert error">
-        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <?= htmlspecialchars($error) ?>
       </div>
       <?php endif; ?>
       <?php if ($success): ?>
       <div class="auth-alert success">
-        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         <?= htmlspecialchars($success) ?>
       </div>
       <?php endif; ?>
@@ -499,7 +682,7 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
           <label for="login-email">Email Address</label>
           <div class="input-wrap">
             <span class="input-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             </span>
             <input type="email" id="login-email" name="email" class="auth-input"
               placeholder="you@example.com"
@@ -511,7 +694,7 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
           <label for="lpw">Password</label>
           <div class="input-wrap">
             <span class="input-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </span>
             <input type="password" id="lpw" name="password" class="auth-input" placeholder="••••••••" required>
             <button type="button" class="pw-toggle" onclick="togglePw('lpw',this)" aria-label="Show/hide password">
@@ -539,7 +722,7 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
           <label for="reg-name">Full Name</label>
           <div class="input-wrap">
             <span class="input-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </span>
             <input type="text" id="reg-name" name="name" class="auth-input"
               placeholder="Juan dela Cruz"
@@ -551,7 +734,7 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
           <label for="reg-email">Email Address</label>
           <div class="input-wrap">
             <span class="input-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             </span>
             <input type="email" id="reg-email" name="email" class="auth-input"
               placeholder="you@example.com"
@@ -571,7 +754,7 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
           <label for="rpw">Password</label>
           <div class="input-wrap">
             <span class="input-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </span>
             <input type="password" id="rpw" name="password" class="auth-input"
               placeholder="Min 6 characters" oninput="strengthCheck(this.value)" required>
@@ -589,7 +772,7 @@ select.auth-input   { padding-left: 1rem; cursor: pointer; }
           <label for="cpw">Confirm Password</label>
           <div class="input-wrap">
             <span class="input-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </span>
             <input type="password" id="cpw" name="confirm_pass" class="auth-input" placeholder="Re-enter password" required>
             <button type="button" class="pw-toggle" onclick="togglePw('cpw',this)" aria-label="Show/hide password">
@@ -632,7 +815,7 @@ function togglePw(id, btn) {
   const el = document.getElementById(id);
   const isText = el.type === 'password';
   el.type = isText ? 'text' : 'password';
-  btn.style.color = isText ? '#2563eb' : '#94a3b8';
+  btn.style.color = isText ? '#2563eb' : '#64748b';
 }
 
 function strengthCheck(pw) {
