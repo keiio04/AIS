@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/access_control.php';
 
 // Calculate initials
 $userName = $_SESSION['user_name'] ?? 'Admin';
@@ -73,7 +74,11 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                         <i data-lucide="star" color="#ffffff" stroke-width="2.5" fill="#ffffff" style="width: 20px; height: 20px; z-index: 1;"></i>
                     </div>
                     <div>
-                        <?php if ($activeCompanyName): ?>
+                        <?php if (defined('IS_ADMIN_PANEL')): ?>
+                        <div style="font-size: 1.05rem; font-weight: 800; background: linear-gradient(to right, #ffffff, #93c5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.02em; line-height: 1.2;">
+                            Admin Panel
+                        </div>
+                        <?php elseif ($activeCompanyName): ?>
                         <div style="font-size: 1.05rem; font-weight: 800; background: linear-gradient(to right, #ffffff, #93c5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.02em; line-height: 1.2;">
                             <?= htmlspecialchars($activeCompanyName) ?>
                         </div>
@@ -91,6 +96,7 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
         </div>
 
         <nav class="sidebar-nav">
+            <?php if (!defined('IS_ADMIN_PANEL')): ?>
             <div style="padding: 0 0.75rem; margin-bottom: 0.5rem;">
                 <a href="<?= BASE_URL ?>pages/dashboard.php" class="nav-item <?= in_array($current_page, ['dashboard','instructor_dashboard','student_output']) ? 'active' : '' ?>" <?= in_array($userRole, ['Instructor', 'Admin']) ? '' : ($activeCompanyId ? '' : 'style="pointer-events:none;opacity:0.5;"') ?>>
                     <?php if (in_array($userRole, ['Instructor', 'Admin'])): ?>
@@ -102,7 +108,30 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
                     <?php endif; ?>
                 </a>
             </div>
+            <?php endif; ?>
 
+            <?php if (defined('IS_ADMIN_PANEL')): ?>
+            <div style="padding: 0 0.75rem; margin-bottom: 0.5rem;">
+                <?php
+                $adminSidebarItems = [
+                    'dashboard'   => ['icon' => 'layout-dashboard', 'label' => 'Dashboard',     'href' => 'dashboard.php'],
+                    'users'       => ['icon' => 'users',            'label' => 'Users',          'href' => 'users.php'],
+                    'companies'   => ['icon' => 'building-2',       'label' => 'Companies',      'href' => 'companies.php'],
+                    'assignments' => ['icon' => 'link',             'label' => 'Assignments',    'href' => 'assignments.php'],
+                    'logs'        => ['icon' => 'scroll-text',      'label' => 'Activity Logs',  'href' => 'logs.php'],
+                ];
+                foreach ($adminSidebarItems as $key => $item):
+                    $isActive = ($current_page === $key);
+                ?>
+                <a href="<?= $item['href'] ?>" class="nav-item <?= $isActive ? 'active' : '' ?>" style="margin-bottom: 2px;">
+                    <i data-lucide="<?= $item['icon'] ?>" style="width: 17px; height: 17px;"></i>
+                    <span><?= $item['label'] ?></span>
+                </a>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if (!defined('IS_ADMIN_PANEL') && ($userRole !== 'Instructor' || is_view_only())): ?>
             <div class="nav-section" style="pointer-events: <?= $activeCompanyId ? 'auto' : 'none' ?>; opacity: <?= $activeCompanyId ? '1' : '0.5' ?>;">
                 <div class="nav-section-title" onclick="toggleSidebarSection('biz_type')">
                     <div class="flex items-center gap-2"><i data-lucide="building" style="width: 15px; height: 15px;"></i><span>Business Type</span></div>
@@ -184,8 +213,9 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
 
                 </div>
             </div>
+            <?php endif; ?>
 
-            <?php if (in_array($userRole, ['Admin', 'Instructor', 'Student'])): ?>
+            <?php if (!defined('IS_ADMIN_PANEL') && (in_array($userRole, ['Admin', 'Student']) || ($userRole === 'Instructor' && is_view_only()))): ?>
             <div class="nav-section">
                 <div class="nav-section-title" onclick="toggleSidebarSection('setup')">
                     <span>Setup & Accounts</span>
@@ -221,7 +251,7 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
 
         </nav>
 
-        <?php if ($userRole === 'Admin'): ?>
+        <?php if ($userRole === 'Admin' && !defined('IS_ADMIN_PANEL')): ?>
         <div style="padding: 0 0.75rem; margin-bottom: 0.5rem;">
             <a href="<?= BASE_URL ?>admin/dashboard.php" class="nav-item" style="width: 100%; background: rgba(59,130,246,0.1); color: #60a5fa; justify-content: center; text-decoration: none;">
                 <i data-lucide="settings" style="width: 15px; height: 15px;"></i>
@@ -232,12 +262,14 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
 
 
 
+        <?php if (!defined('IS_ADMIN_PANEL') && ($userRole !== 'Instructor' || is_view_only())): ?>
         <div style="padding: 0 0.75rem; padding-top: 0.5rem; pointer-events: <?= $activeCompanyId ? 'auto' : 'none' ?>; opacity: <?= $activeCompanyId ? '1' : '0.5' ?>;">
             <a href="<?= BASE_URL ?>pages/trash_bin.php" class="nav-item <?= $current_page==='trash_bin'?'active':'' ?>" style="margin-bottom: 0;">
                 <i data-lucide="trash-2" style="width: 17px; height: 17px;"></i>
                 <span>Trash Bin</span>
             </a>
         </div>
+        <?php endif; ?>
 
         <div class="sidebar-footer">
             <div class="flex items-center justify-between">
@@ -365,7 +397,6 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
         </div>
 
         <?php 
-        require_once __DIR__ . '/access_control.php';
         if (is_view_only()): 
             $vStudent = $_SESSION['instructor_viewing_student_name'] ?? 'Student';
             $vCompany = $_SESSION['instructor_viewing_company_name'] ?? 'Simulation';

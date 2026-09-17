@@ -235,6 +235,7 @@ $latest_users = $db->query("SELECT name, email, role, created_at FROM users ORDE
 }
 </style>
 
+
 <div class="adm-wrapper">
 
     <!-- HERO BANNER -->
@@ -249,8 +250,11 @@ $latest_users = $db->query("SELECT name, email, role, created_at FROM users ORDE
                 <a href="logs.php" class="adm-hero-btn adm-hero-btn-ghost">
                     <i data-lucide="scroll-text" style="width:15px;height:15px;"></i> View Logs
                 </a>
-                <a href="<?= BASE_URL ?>pages/company_setup.php" class="adm-hero-btn adm-hero-btn-ghost">
+                <a href="companies.php" class="adm-hero-btn adm-hero-btn-ghost">
                     <i data-lucide="building-2" style="width:15px;height:15px;"></i> Companies
+                </a>
+                <a href="assignments.php" class="adm-hero-btn adm-hero-btn-ghost">
+                    <i data-lucide="link" style="width:15px;height:15px;"></i> Assignments
                 </a>
             </div>
         </div>
@@ -367,6 +371,14 @@ $latest_users = $db->query("SELECT name, email, role, created_at FROM users ORDE
                     <a href="<?= BASE_URL ?>pages/chart_of_accounts.php" class="adm-action-btn">
                         <div class="adm-action-icon"><i data-lucide="book-open" style="width:16px;height:16px;"></i></div>
                         Chart of Accounts
+                    </a>
+                    <a href="companies.php" class="adm-action-btn">
+                        <div class="adm-action-icon"><i data-lucide="building-2" style="width:16px;height:16px;"></i></div>
+                        Manage Companies
+                    </a>
+                    <a href="assignments.php" class="adm-action-btn">
+                        <div class="adm-action-icon"><i data-lucide="link" style="width:16px;height:16px;"></i></div>
+                        Manage Assignments
                     </a>
                 </div>
             </div>
