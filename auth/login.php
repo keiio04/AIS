@@ -348,13 +348,8 @@ html, body {
   font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.025em;
-  margin-bottom: 0.35rem;
-}
-
-.auth-subtitle {
-  font-size: 0.875rem;
-  color: var(--text-muted);
-  margin-bottom: 1.5rem;
+  text-align: center;
+  margin-bottom: 1.25rem;
 }
 
 /* ─── Tabs ─── */
@@ -667,7 +662,6 @@ select.auth-input option {
     <div class="auth-form-wrap">
 
       <h2 id="form-title"><?= $mode === 'register' ? 'Create Account' : 'Welcome back' ?></h2>
-      <p id="form-subtitle" class="auth-subtitle"><?= $mode === 'register' ? 'Please fill in the details to register.' : 'Please enter your details to sign in.' ?></p>
 
       <!-- Tabs -->
       <div class="auth-tabs">
@@ -811,18 +805,15 @@ function switchTab(tab) {
   const tl = document.getElementById('tab-login');
   const tr = document.getElementById('tab-register');
   const ft = document.getElementById('form-title');
-  const fs = document.getElementById('form-subtitle');
 
   if (tab === 'login') {
     lf.style.display = 'block'; rf.style.display = 'none';
     tl.classList.add('active'); tr.classList.remove('active');
     if (ft) ft.textContent = 'Welcome back';
-    if (fs) fs.textContent = 'Please enter your details to sign in.';
   } else {
     rf.style.display = 'block'; lf.style.display = 'none';
     tr.classList.add('active'); tl.classList.remove('active');
     if (ft) ft.textContent = 'Create Account';
-    if (fs) fs.textContent = 'Please fill in the details to register.';
   }
 }
 
