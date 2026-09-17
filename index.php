@@ -21,7 +21,7 @@ $registerUrl = $isLoggedIn
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TALA-AIS – Smart Financial Solution For Modern Accounting</title>
+<title>TALA-AIS – Accounting Simulation System</title>
 <meta name="description" content="TALA-AIS: Smart, automated accounting information system for Laguna State Polytechnic University. Setup accounts, record specialized journals, and generate instant financial statements.">
 
 <!-- Google Fonts -->
