@@ -1141,7 +1141,7 @@ body {
     <!-- Big Headline with Gradient & Refined Typography -->
     <h1 class="hero-heading">
       <span class="hero-title-main">Learn Accounting</span><br>
-      <span class="hero-title-highlight">Through Simlation</span> <span class="title-chip gem">🌍</span>
+      <span class="hero-title-highlight">Through Simulation</span> <span class="title-chip gem">🌍</span>
     </h1>
 
     <!-- Subtitle -->
