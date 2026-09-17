@@ -212,21 +212,28 @@ html, body {
   position: relative;
 }
 
-/* Back Link (Top) */
+/* Back Link (Top Left Arrow) */
 .back-link {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  font-weight: 600;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(18, 28, 51, 0.6);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  color: var(--text-light-blue);
   text-decoration: none;
-  transition: color 0.2s, transform 0.2s;
-  margin-bottom: 1.5rem;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: 2rem;
+  backdrop-filter: blur(10px);
 }
 .back-link:hover {
+  background: rgba(0, 112, 243, 0.25);
+  border-color: rgba(96, 165, 250, 0.6);
   color: #ffffff;
   transform: translateX(-3px);
+  box-shadow: 0 0 20px rgba(0, 112, 243, 0.4);
 }
 
 /* Brand icon + name */
@@ -551,6 +558,15 @@ select.auth-input option {
     align-items: center;
     text-align: center;
     padding: 2.25rem 1.25rem 0.5rem;
+    position: relative;
+  }
+  .back-link {
+    position: absolute;
+    top: 1.25rem;
+    left: 1.25rem;
+    margin-bottom: 0;
+    width: 38px;
+    height: 38px;
   }
   .brand-logo {
     justify-content: center;
@@ -623,9 +639,8 @@ select.auth-input option {
 
     <!-- Top: Back Link & Brand logo -->
     <div>
-      <a href="<?= BASE_URL ?>" class="back-link">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-        Back to Home
+      <a href="<?= BASE_URL ?>" class="back-link" title="Back to Home" aria-label="Back to Home">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
       </a>
       <div class="brand-logo">
         <div class="brand-icon">
