@@ -11,3 +11,10 @@ if ($_SESSION['user_role'] !== 'Admin') {
     header('Location: ' . BASE_URL . 'pages/dashboard.php?error=access_denied');
     exit;
 }
+
+// Lets includes/header.php know it's being loaded from an Admin Panel page
+// (admin/dashboard.php, users.php, companies.php, assignments.php, logs.php)
+// so it can render the admin sidebar instead of the accounting sidebar.
+if (!defined('IS_ADMIN_PANEL')) {
+    define('IS_ADMIN_PANEL', true);
+}

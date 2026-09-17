@@ -155,7 +155,7 @@ require_once '../includes/header.php';
     <div class="page-header-text">
         <h1 class="page-title" style="display: flex; align-items: center; gap: 0.6rem;">
             <i data-lucide="graduation-cap" style="width: 28px; height: 28px; color: #34d399;"></i>
-            <span>Instructor Monitoring Hub</span>
+            <span>Instructor Monitoring</span>
         </h1>
         <p class="text-sm text-muted" style="margin-top: 0.25rem;">
             Monitor assigned students, evaluate accounting simulations, and review submitted journals and financial statements.
@@ -258,7 +258,7 @@ require_once '../includes/header.php';
                 <tr>
                     <th style="min-width: 220px;">Student Information</th>
                     <th style="min-width: 110px;" class="nowrap">Section</th>
-                    <th style="min-width: 200px;">Simulation Company</th>
+                    <th style="min-width: 200px;">Company</th>
                     <th style="min-width: 110px;" class="nowrap text-center">Entries</th>
                     <th style="min-width: 130px;" class="nowrap text-center">Balance Status</th>
                     <th style="min-width: 120px;" class="nowrap text-center">Progress</th>

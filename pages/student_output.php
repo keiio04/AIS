@@ -21,7 +21,7 @@ $stmtStudent->execute();
 $student = $stmtStudent->get_result()->fetch_assoc();
 
 if (!$student) {
-    echo '<div style="padding:3rem; text-align:center; color:#fff; font-family:sans-serif;"><h2>Student Not Found</h2><p style="color:#94a3b8; margin-top:0.5rem;">The requested student record does not exist.</p><a href="dashboard.php" style="display:inline-block; margin-top:1rem; color:#3b82f6;">&larr; Back to Dashboard</a></div>';
+    echo '<div style="padding:3rem; text-align:center; color:#1e293b; font-family:sans-serif;"><h2>Student Not Found</h2><p style="color:#94a3b8; margin-top:0.5rem;">The requested student record does not exist.</p><a href="dashboard.php" style="display:inline-block; margin-top:1rem; color:#3b82f6;">&larr; Back to Dashboard</a></div>';
     exit;
 }
 
@@ -32,7 +32,7 @@ if (!$isAdmin) {
     $stmtCheck->execute();
     $assignedRow = $stmtCheck->get_result()->fetch_assoc();
     if (!$assignedRow) {
-        echo '<div style="padding:3rem; text-align:center; color:#fff; font-family:sans-serif;"><h2>Access Denied</h2><p style="color:#94a3b8; margin-top:0.5rem;">This student is not assigned to your instructor roster.</p><a href="dashboard.php" style="display:inline-block; margin-top:1rem; color:#3b82f6;">&larr; Back to Dashboard</a></div>';
+        echo '<div style="padding:3rem; text-align:center; color:#1e293b; font-family:sans-serif;"><h2>Access Denied</h2><p style="color:#94a3b8; margin-top:0.5rem;">This student is not assigned to your instructor roster.</p><a href="dashboard.php" style="display:inline-block; margin-top:1rem; color:#3b82f6;">&larr; Back to Dashboard</a></div>';
         exit;
     }
     $studentSection = $assignedRow['section'];
@@ -245,7 +245,7 @@ require_once '../includes/header.php';
             </div>
             <div>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <h1 style="font-size: 1.35rem; font-weight: 800; color: #ffffff; margin: 0;"><?= htmlspecialchars($student['name']) ?></h1>
+                    <h1 style="font-size: 1.35rem; font-weight: 800; color: #fff; margin: 0;"><?= htmlspecialchars($student['name']) ?></h1>
                     <span class="badge" style="background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); font-size: 0.75rem; padding: 2px 8px; border-radius: 99px;">
                         Section: <?= htmlspecialchars($studentSection) ?>
                     </span>
@@ -263,7 +263,7 @@ require_once '../includes/header.php';
             <form method="GET" style="display: flex; align-items: center; gap: 0.5rem;">
                 <input type="hidden" name="student_id" value="<?= $studentId ?>">
                 <input type="hidden" name="tab" value="<?= htmlspecialchars($activeTab) ?>">
-                <select name="company_id" onchange="this.form.submit()" class="form-control" style="font-size: 0.85rem; padding: 0.4rem 0.75rem; border-radius: 8px; background: var(--bg-tertiary); color: #fff; max-width: 220px;">
+                <select name="company_id" onchange="this.form.submit()" class="form-control" style="font-size: 0.85rem; padding: 0.4rem 0.75rem; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-primary); max-width: 220px;">
                     <?php foreach ($companies as $co): ?>
                     <option value="<?= $co['id'] ?>" <?= ((int)$co['id'] === $companyId) ? 'selected' : '' ?>>
                         🏢 <?= htmlspecialchars($co['name']) ?> (<?= htmlspecialchars($co['business_type']) ?>)
@@ -335,7 +335,7 @@ require_once '../includes/header.php';
 <?php if (!$selectedCompany): ?>
 <div class="card text-center" style="padding: 4rem 1rem; background: var(--bg-secondary);">
     <i data-lucide="folder-x" style="width: 56px; height: 56px; color: #64748b; margin-bottom: 1rem;"></i>
-    <h3 style="font-size: 1.15rem; color: #fff;">No Accounting Simulation Created</h3>
+    <h3 style="font-size: 1.15rem; color: var(--text-primary);">No Accounting Simulation Created</h3>
     <p class="text-muted" style="margin-top: 0.5rem; max-width: 450px; margin-left: auto; margin-right: auto; font-size: 0.9rem;">
         This student has not yet created a simulation company in the system. Once they initialize a company and post journal entries, their complete ledger outputs will be displayed here.
     </p>
@@ -379,7 +379,7 @@ require_once '../includes/header.php';
     
     <!-- Left Column: Health Check -->
     <div class="card" style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem;">
-        <h3 style="font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+        <h3 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
             <i data-lucide="shield-check" style="width: 18px; height: 18px; color: #34d399;"></i>
             Simulation Health &amp; Equality Check
         </h3>
@@ -387,7 +387,7 @@ require_once '../includes/header.php';
         <div style="display: flex; flex-direction: column; gap: 0.85rem;">
             <div style="padding: 0.85rem; border-radius: 10px; background: var(--bg-tertiary); display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <div style="font-weight: 600; font-size: 0.85rem; color: #fff;">Double-Entry Equality</div>
+                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Double-Entry Equality</div>
                     <div style="font-size: 0.75rem; color: #94a3b8;">Total debits must equal total credits</div>
                 </div>
                 <div>
@@ -403,7 +403,7 @@ require_once '../includes/header.php';
 
             <div style="padding: 0.85rem; border-radius: 10px; background: var(--bg-tertiary); display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <div style="font-weight: 600; font-size: 0.85rem; color: #fff;">Accounting Equation Check</div>
+                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Accounting Equation Check</div>
                     <div style="font-size: 0.75rem; color: #94a3b8;">Assets = Liabilities + Equity</div>
                 </div>
                 <div>
@@ -419,17 +419,17 @@ require_once '../includes/header.php';
 
             <div style="padding: 0.85rem; border-radius: 10px; background: var(--bg-tertiary); display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <div style="font-weight: 600; font-size: 0.85rem; color: #fff;">Active Accounts Configured</div>
+                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Active Accounts Configured</div>
                     <div style="font-size: 0.75rem; color: #94a3b8;">Chart of accounts defined</div>
                 </div>
-                <div style="font-weight: 700; color: #fff; font-size: 0.95rem;">
+                <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">
                     <?= count($accounts) ?> accounts
                 </div>
             </div>
 
             <div style="padding: 0.85rem; border-radius: 10px; background: var(--bg-tertiary); display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <div style="font-weight: 600; font-size: 0.85rem; color: #fff;">Customer &amp; Supplier Master Lists</div>
+                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Customer &amp; Supplier Master Lists</div>
                     <div style="font-size: 0.75rem; color: #94a3b8;">Subsidiary records count</div>
                 </div>
                 <div style="font-weight: 700; color: #60a5fa; font-size: 0.95rem;">
@@ -441,7 +441,7 @@ require_once '../includes/header.php';
 
     <!-- Right Column: Financial Snapshot -->
     <div class="card" style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem;">
-        <h3 style="font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+        <h3 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
             <i data-lucide="bar-chart-3" style="width: 18px; height: 18px; color: #60a5fa;"></i>
             Financial Position Summary
         </h3>
@@ -450,15 +450,15 @@ require_once '../includes/header.php';
             <tbody>
                 <tr>
                     <td style="color: #94a3b8; font-size: 0.875rem;">Total Assets</td>
-                    <td class="text-right" style="font-weight: 700; color: #fff; font-size: 0.95rem;"><?= fmtMoney($totalAssets) ?></td>
+                    <td class="text-right" style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;"><?= fmtMoney($totalAssets) ?></td>
                 </tr>
                 <tr>
                     <td style="color: #94a3b8; font-size: 0.875rem;">Total Liabilities</td>
-                    <td class="text-right" style="font-weight: 700; color: #fff; font-size: 0.95rem;"><?= fmtMoney($totalLiabilities) ?></td>
+                    <td class="text-right" style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;"><?= fmtMoney($totalLiabilities) ?></td>
                 </tr>
                 <tr>
                     <td style="color: #94a3b8; font-size: 0.875rem;">Ending Owner's Equity</td>
-                    <td class="text-right" style="font-weight: 700; color: #fff; font-size: 0.95rem;"><?= fmtMoney($endingEquity) ?></td>
+                    <td class="text-right" style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;"><?= fmtMoney($endingEquity) ?></td>
                 </tr>
                 <tr>
                     <td style="color: #94a3b8; font-size: 0.875rem;">Total Revenue</td>
@@ -469,7 +469,7 @@ require_once '../includes/header.php';
                     <td class="text-right" style="font-weight: 700; color: #f87171; font-size: 0.95rem;"><?= fmtMoney($totalExpenses) ?></td>
                 </tr>
                 <tr style="border-top: 2px solid var(--border-color);">
-                    <td style="color: #fff; font-weight: 700; font-size: 0.95rem;">Net Income / (Loss)</td>
+                    <td style="color: var(--text-primary); font-weight: 700; font-size: 0.95rem;">Net Income / (Loss)</td>
                     <td class="text-right" style="font-weight: 800; font-size: 1.1rem; color: <?= $netIncome >= 0 ? '#10b981' : '#ef4444' ?>;">
                         <?= fmtMoney($netIncome) ?>
                     </td>
@@ -486,7 +486,7 @@ require_once '../includes/header.php';
 <div class="card" style="padding: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 16px; overflow: hidden;">
     <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
         <div>
-            <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff;">Student Journal Entries</h3>
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">Student Journal Entries</h3>
             <p class="text-xs text-muted">All General &amp; Special Journal entries posted in this simulation.</p>
         </div>
         <div style="font-size: 0.85rem; color: #94a3b8;">
@@ -528,7 +528,7 @@ require_once '../includes/header.php';
                             <tbody>
                                 <?php foreach ($entry['lines'] as $line): ?>
                                 <tr>
-                                    <td style="padding: 0.5rem 0.75rem; <?= (float)$line['credit'] > 0 ? 'padding-left: 2rem;' : '' ?> font-size: 0.85rem; color: #fff;">
+                                    <td style="padding: 0.5rem 0.75rem; <?= (float)$line['credit'] > 0 ? 'padding-left: 2rem;' : '' ?> font-size: 0.85rem; color: var(--text-primary);">
                                         <?= htmlspecialchars($line['account_name']) ?>
                                         <span style="font-size: 0.7rem; color: #64748b; margin-left: 4px;">(<?= htmlspecialchars($line['account_code']) ?>)</span>
                                         <?php if ($line['description']): ?>
@@ -583,7 +583,7 @@ require_once '../includes/header.php';
         <div style="padding: 1rem 1.25rem; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
             <div>
                 <span style="font-size: 0.75rem; font-weight: 700; color: #60a5fa;"><?= htmlspecialchars($acc['code']) ?></span>
-                <strong style="font-size: 1rem; color: #fff; margin-left: 0.5rem;"><?= htmlspecialchars($acc['name']) ?></strong>
+                <strong style="font-size: 1rem; color: var(--text-primary); margin-left: 0.5rem;"><?= htmlspecialchars($acc['name']) ?></strong>
                 <span class="badge badge-neutral" style="font-size: 0.7rem; margin-left: 0.5rem;"><?= htmlspecialchars($acc['category']) ?></span>
             </div>
             <div style="font-weight: 700; color: #34d399; font-size: 0.95rem;">
@@ -628,14 +628,14 @@ require_once '../includes/header.php';
                     ?>
                     <tr>
                         <td class="nowrap" style="color: #94a3b8;"><?= date('M d, Y', strtotime($line['date'])) ?></td>
-                        <td><?= htmlspecialchars($line['entry_desc'] ?: $line['description']) ?></td>
+                        <td><?= htmlspecialchars(($line['entry_desc'] ?: $line['description']) ?? '') ?></td>
                         <td class="nowrap">
-                            <span class="badge badge-neutral" style="font-size: 0.65rem;"><?= htmlspecialchars($line['journal_id']) ?></span>
-                            <?= htmlspecialchars($line['reference_no']) ?>
+                            <span class="badge badge-neutral" style="font-size: 0.65rem;"><?= htmlspecialchars($line['journal_id'] ?? '') ?></span>
+                            <?= htmlspecialchars($line['reference_no'] ?? '') ?>
                         </td>
                         <td class="text-right nowrap" style="color: #10b981;"><?= $dr > 0 ? fmtMoney($dr) : '—' ?></td>
                         <td class="text-right nowrap" style="color: #ef4444;"><?= $cr > 0 ? fmtMoney($cr) : '—' ?></td>
-                        <td class="text-right nowrap" style="font-weight: 600; color: #fff;"><?= fmtMoney($runningBal) ?></td>
+                        <td class="text-right nowrap" style="font-weight: 600; color: var(--text-primary);"><?= fmtMoney($runningBal) ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -650,7 +650,7 @@ require_once '../includes/header.php';
 <?php if ($activeTab === 'trial_bal'): ?>
 <div class="card" style="padding: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 16px; overflow: hidden;">
     <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); text-align: center;">
-        <h3 style="font-size: 1.2rem; font-weight: 800; color: #fff;"><?= htmlspecialchars($selectedCompany['name']) ?></h3>
+        <h3 style="font-size: 1.2rem; font-weight: 800; color: var(--text-primary);"><?= htmlspecialchars($selectedCompany['name']) ?></h3>
         <h4 style="font-size: 1rem; color: #94a3b8; margin-top: 2px;">Trial Balance</h4>
         <p class="text-xs text-muted" style="margin-top: 2px;">As of <?= date('F j, Y') ?></p>
     </div>
@@ -685,7 +685,7 @@ require_once '../includes/header.php';
                 ?>
                 <tr>
                     <td class="nowrap" style="color: #60a5fa; font-weight: 600;"><?= htmlspecialchars($a['code']) ?></td>
-                    <td style="color: #fff; font-weight: 500;"><?= htmlspecialchars($a['name']) ?></td>
+                    <td style="color: var(--text-primary); font-weight: 500;"><?= htmlspecialchars($a['name']) ?></td>
                     <td class="text-right nowrap" style="font-weight: 600;"><?= $drVal > 0 ? fmtMoney($drVal) : '—' ?></td>
                     <td class="text-right nowrap" style="font-weight: 600;"><?= $crVal > 0 ? fmtMoney($crVal) : '—' ?></td>
                 </tr>
@@ -693,7 +693,7 @@ require_once '../includes/header.php';
 
                 <!-- Totals Row -->
                 <tr style="border-top: 2px solid var(--border-color); background: var(--bg-tertiary);">
-                    <td colspan="2" style="font-weight: 800; color: #fff; font-size: 0.95rem;">TOTALS</td>
+                    <td colspan="2" style="font-weight: 800; color: var(--text-primary); font-size: 0.95rem;">TOTALS</td>
                     <td class="text-right nowrap" style="font-weight: 800; font-size: 1rem; color: <?= abs($tbDrSum - $tbCrSum) < 0.01 ? '#34d399' : '#f87171' ?>;">
                         <?= fmtMoney($tbDrSum) ?>
                     </td>
@@ -815,7 +815,7 @@ require_once '../includes/header.php';
 <?php if ($activeTab === 'accounts'): ?>
 <div class="card" style="padding: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 16px; overflow: hidden;">
     <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
-        <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff;">Chart of Accounts &amp; Master Directory</h3>
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">Chart of Accounts &amp; Master Directory</h3>
         <p class="text-xs text-muted">Configured general ledger accounts for this simulation.</p>
     </div>
 
@@ -834,10 +834,10 @@ require_once '../includes/header.php';
                 <?php foreach ($accounts as $acc): ?>
                 <tr>
                     <td class="nowrap" style="font-weight: 600; color: #60a5fa;"><?= htmlspecialchars($acc['code']) ?></td>
-                    <td style="color: #fff; font-weight: 500;"><?= htmlspecialchars($acc['name']) ?></td>
+                    <td style="color: var(--text-primary); font-weight: 500;"><?= htmlspecialchars($acc['name']) ?></td>
                     <td class="nowrap"><span class="badge badge-neutral" style="font-size: 0.7rem;"><?= htmlspecialchars($acc['category']) ?></span></td>
                     <td class="nowrap" style="color: #94a3b8; font-size: 0.8rem;"><?= htmlspecialchars($acc['sub_category'] ?: '—') ?></td>
-                    <td class="text-right nowrap" style="font-weight: 600; color: <?= (float)$acc['balance'] >= 0 ? '#fff' : '#f87171' ?>;">
+                    <td class="text-right nowrap" style="font-weight: 600; color: <?= (float)$acc['balance'] >= 0 ? 'var(--text-primary)' : '#f87171' ?>;">
                         <?= fmtMoney($acc['balance']) ?>
                     </td>
                 </tr>
@@ -852,7 +852,7 @@ require_once '../includes/header.php';
 <?php if ($activeTab === 'audit'): ?>
 <div class="card" style="padding: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 16px; overflow: hidden;">
     <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
-        <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff;">Student Activity &amp; Audit Logs</h3>
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">Student Activity &amp; Audit Logs</h3>
         <p class="text-xs text-muted">Chronological history of operations performed by the student.</p>
     </div>
 
