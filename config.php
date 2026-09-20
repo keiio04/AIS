@@ -39,4 +39,3 @@ define('SMTP_PASS', getenv('SMTP_PASS') ?: '');
 define('SMTP_SECURE', getenv('SMTP_SECURE') ?: 'tls'); // 'tls' (587) or 'ssl' (465)
 define('SMTP_FROM_EMAIL', getenv('SMTP_FROM_EMAIL') ?: '');
 define('SMTP_FROM_NAME', getenv('SMTP_FROM_NAME') ?: 'TALA-AIS Security');
-

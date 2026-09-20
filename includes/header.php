@@ -50,6 +50,25 @@ $pageNames = [
     'student_output' => 'Student Output Review',
 ];
 $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
+
+// Top search bar: on pages that can filter their own list, search stays on the same page;
+// everywhere else it falls back to Journal Entries (as before).
+$searchPages = ['journal_entries', 'sales_journal', 'purchases_journal', 'cash_receipts_journal', 'cash_disbursements_journal', 'chart_of_accounts', 'employees', 'company_setup'];
+$searchOnThisPage = in_array($current_page, $searchPages, true);
+$searchAction = BASE_URL . 'pages/' . ($searchOnThisPage ? $current_page : 'journal_entries') . '.php';
+$searchValue = $searchOnThisPage ? trim($_GET['search'] ?? '') : '';
+$searchPlaceholders = [
+    'chart_of_accounts' => 'Search by code or name…',
+    'employees' => 'Search employees…',
+    'company_setup' => 'Search companies…',
+];
+$searchPlaceholder = $searchPlaceholders[$current_page]
+    ?? (in_array($current_page, ['journal_entries', 'sales_journal', 'purchases_journal', 'cash_receipts_journal', 'cash_disbursements_journal'], true)
+        ? 'Search ref no., name, account, amount…' : 'Search accounts, entries…');
+
+// Pages where the top search bar is hidden (these pages use their own in-page search, or none at all).
+$hideTopSearchPages = ['dashboard', 'chart_of_accounts', 'trial_balance', 'financial_statements', 'employees', 'customers', 'suppliers'];
+$showTopSearch = !in_array($current_page, $hideTopSearchPages, true);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -340,10 +359,12 @@ $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
             </div>
 
             <div class="topbar-search" style="position: relative;">
-                <form action="<?= BASE_URL ?>pages/journal_entries.php" method="GET" style="margin: 0;">
+                <?php if ($showTopSearch): ?>
+                <form action="<?= $searchAction ?>" method="GET" style="margin: 0;">
                     <i data-lucide="search" class="topbar-search-icon" style="width: 14px; height: 14px; position: absolute; left: 0.875rem; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
-                    <input type="text" name="search" class="form-control" placeholder="Search accounts, entries…" style="padding-left: 2.5rem; border-radius: 999px; height: 36px; font-size: 0.825rem; background-color: var(--bg-tertiary); border: 1px solid var(--border-color);">
+                    <input type="text" name="search" class="form-control" placeholder="<?= htmlspecialchars($searchPlaceholder) ?>" value="<?= htmlspecialchars($searchValue) ?>" style="padding-left: 2.5rem; border-radius: 999px; height: 36px; font-size: 0.825rem; background-color: var(--bg-tertiary); border: 1px solid var(--border-color);">
                 </form>
+                <?php endif; ?>
             </div>
 
             <div class="topbar-actions">
