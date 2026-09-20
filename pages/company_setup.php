@@ -251,6 +251,17 @@ $stmtU->bind_param('i', $userId);
 $stmtU->execute();
 $activeCompanyId = $stmtU->get_result()->fetch_assoc()['active_company_id'] ?? null;
 
+// ── Search filter (top search bar) ────────────────────────
+$totalCompanies = count($companies);
+$search = trim($_GET['search'] ?? '');
+if ($search !== '') {
+    $companies = array_values(array_filter($companies, function ($co) use ($search) {
+        $taxLabel = !empty($co['tax_registered']) ? ($co['tax_type'] ?: 'Tax Registered') : 'Non-VAT';
+        $haystack = implode(' ', [$co['name'], $co['business_type'], $taxLabel, $co['period_type'] ?? '']);
+        return stripos($haystack, $search) !== false;
+    }));
+}
+
 // Page setup
 $pageTitle    = 'Company Setup';
 $pageSubtitle = 'Manage your companies and switch between them';
@@ -266,14 +277,14 @@ require_once '../includes/header.php';
   <div>
     <h1 class="page-title">Company Setup</h1>
   </div>
-  <?php if (count($companies) > 0): ?>
+  <?php if ($totalCompanies > 0): ?>
   <button class="btn btn-primary" onclick="openModal('addModal')">
     <i data-lucide="plus" style="width:15px;height:15px;"></i> Add Company
   </button>
   <?php endif; ?>
 </div>
 
-<?php if (count($companies) === 0): ?>
+<?php if ($totalCompanies === 0): ?>
 <div style="text-align: center; padding: 3rem 1rem;">
     <h3 style="color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 500;">No companies found</h3>
     <p style="color: var(--text-muted); font-size: 0.9rem;">Get started by adding your first company.</p>
@@ -295,6 +306,9 @@ require_once '../includes/header.php';
       </tr>
     </thead>
     <tbody>
+      <?php if (count($companies) === 0): ?>
+      <tr><td colspan="4" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">No companies match &ldquo;<?= htmlspecialchars($search) ?>&rdquo;. <a href="<?= BASE_URL ?>pages/company_setup.php">Clear search</a></td></tr>
+      <?php endif; ?>
       <?php foreach ($companies as $co):
         $isActive = ($co['id'] == $activeCompanyId);
       ?>

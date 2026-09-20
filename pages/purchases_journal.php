@@ -19,7 +19,7 @@ $db = get_db();
 $company_id = $_SESSION['active_company_id'] ?? null;
 
 if (!$company_id) {
-    echo '<div class="alert alert-warning" style="margin: 2rem;">Please <a href="'.BASE_URL.'pages/company_setup.php">select or create a company</a> first to view journal entries.</div>';
+    echo '<div class="alert alert-warning" style="margin: 2rem;">Please <a href="'.BASE_URL.'pages/company_setup.php">select or create a company</a> first to view entries.</div>';
     require_once '../includes/footer.php';
     exit;
 }
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $entry_id = ($action === 'edit_entry') ? (int)($_POST['entry_id'] ?? 0) : null;
         
     $date = $_POST['date'];
-    $ref_no = $_POST['reference_no'];
+    $ref_no = ($action === 'add_entry') ? '' : trim($_POST['reference_no'] ?? '');
     if (empty(trim($ref_no))) {
         $ref_no = 'PJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
     }
@@ -105,11 +105,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $has_payable = in_array('Liabilities', $cats);
         // Block if it has Revenue (Sales) or Cash (should be CDJ)
         if ($has_rev) {
-            $toast_data = ['reason' => 'Credit sales must be recorded in the', 'journal' => 'Sales Journal', 'url' => 'sales_journal.php'];
+            $toast_data = ['reason' => 'Credit sales must be recorded in', 'journal' => 'Sales', 'url' => 'sales_journal.php'];
         } elseif ($has_cash) {
-            $toast_data = ['reason' => 'Cash purchases must be recorded in the', 'journal' => 'Cash Disbursements Journal', 'url' => 'cash_disbursements_journal.php'];
+            $toast_data = ['reason' => 'Cash purchases must be recorded in', 'journal' => 'Cash Disbursements', 'url' => 'cash_disbursements_journal.php'];
         } elseif (!$has_payable) {
-            $toast_data = ['reason' => 'A Payable or Liability account is required for credit purchases.', 'journal' => 'Purchases Journal', 'url' => null];
+            $toast_data = ['reason' => 'A Payable or Liability account is required for credit purchases.', 'journal' => 'Purchases', 'url' => null];
         }
         if (isset($toast_data)) {
             $jn = $toast_data['journal'] ?? '';
@@ -124,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $check->bind_param('ii', $entry_id, $company_id);
             $check->execute();
             if (!$check->get_result()->fetch_assoc()) {
-                $error = "Journal entry not found.";
+                $error = "Entry not found.";
             }
         }
     }
@@ -162,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Purchases Journal: VAT-registered companies generate INPUT VAT on Expense/Asset debits.
                 // Output VAT does NOT apply here (no sales in a Purchases Journal).
-                if ($is_taxable && $inputVatId) {
+                if ($action === 'add_entry' && $is_taxable && $inputVatId) { // VAT is only auto-added on new entries; on edit the posted lines already contain VAT
                     $added_input_vat = 0;
 
                     foreach ($final_lines as $line) {
@@ -228,7 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     } catch (Exception $e) {
         $db->rollback();
-        $error = "Failed to save journal entry: " . $e->getMessage();
+        $error = "Failed to save entry: " . $e->getMessage();
     }
     } // end if !isset($error)
     } elseif ($_POST['action'] === 'delete') {
@@ -248,6 +248,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 }
 
+// ── Search (from the top search bar) ─────────────────────────────
+// Matches: reference no., description, date, name (customer/vendor) + code, account title/code, and amounts.
+// Several words = every word must match something in the entry.
+$search = trim($_GET['search'] ?? '');
+$searchSql = '';
+$searchTypes = '';
+$searchParams = [];
+if ($search !== '') {
+    foreach (array_slice(preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY), 0, 6) as $term) {
+        $like = '%' . addcslashes($term, '%_\\') . '%';
+        $group = "(e.reference_no LIKE ? OR e.description LIKE ? OR e.date LIKE ? OR DATE_FORMAT(e.date, '%b %d, %Y') LIKE ? OR COALESCE(c.name, s.name) LIKE ? OR COALESCE(c.code, s.code) LIKE ?"
+               . " OR EXISTS (SELECT 1 FROM journal_entry_lines sl JOIN accounts sa ON sl.account_id = sa.id WHERE sl.journal_entry_id = e.id AND (sa.name LIKE ? OR sa.code LIKE ?))";
+        array_push($searchParams, $like, $like, $like, $like, $like, $like, $like, $like);
+        $searchTypes .= 'ssssssss';
+        $amount = str_replace([',', '₱'], '', $term);
+        if (is_numeric($amount)) {
+            $group .= " OR EXISTS (SELECT 1 FROM journal_entry_lines sl2 WHERE sl2.journal_entry_id = e.id AND (ROUND(sl2.debit, 2) = ROUND(?, 2) OR ROUND(sl2.credit, 2) = ROUND(?, 2)))";
+            array_push($searchParams, $amount, $amount);
+            $searchTypes .= 'ss';
+        }
+        $searchSql .= ' AND ' . $group . ')';
+    }
+}
+
 // Fetch existing journal entries
 $query = "
     SELECT e.*,
@@ -258,11 +282,11 @@ $query = "
     FROM journal_entries e
     LEFT JOIN customers c ON e.entity_id = c.id AND e.entity_type = 'customer'
     LEFT JOIN suppliers s ON e.entity_id = s.id AND e.entity_type = 'supplier'
-    WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'PJ'
+    WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'PJ' $searchSql
     ORDER BY e.date DESC, e.id DESC
 ";
 $stmt = $db->prepare($query);
-$stmt->bind_param('i', $company_id);
+$stmt->bind_param('i' . $searchTypes, $company_id, ...$searchParams);
 $stmt->execute();
 $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
@@ -282,6 +306,13 @@ require_once '../includes/header.php';
     <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
         <?= htmlspecialchars($error) ?>
     </div>
+<?php endif; ?>
+
+<?php if ($search !== ''): ?>
+<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem; font-size:0.875rem; color: var(--text-secondary);">
+    <span>Showing <strong><?= count($transactions) ?></strong> <?= count($transactions) === 1 ? 'result' : 'results' ?> for "<strong><?= htmlspecialchars($search) ?></strong>"</span>
+    <a href="<?= htmlspecialchars(basename($_SERVER['PHP_SELF'])) ?>" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">Clear search</a>
+</div>
 <?php endif; ?>
 
 <div class="card" style="padding: 0; overflow: hidden;">
@@ -319,7 +350,7 @@ require_once '../includes/header.php';
                     <td style="padding-left: <?= $line['credit'] > 0 ? '2.5rem' : '1rem' ?>; font-weight: 500;">
                         <?= htmlspecialchars($line['name']) ?>
                     </td>
-                    <td style="color: var(--text-muted); font-size: 0.85rem;">
+                    <td style="color: #475569 !important; font-size: 0.85rem; opacity: 1;">
                         <?php if ($index === 0 && !empty($tx['entity_name'])): ?>
                             <?= htmlspecialchars($tx['entity_name']) ?>
                             <?php if (!empty($tx['entity_code'])): ?>
@@ -327,8 +358,8 @@ require_once '../includes/header.php';
                             <?php endif; ?>
                         <?php endif; ?>
                     </td>
-                    <td style="color: var(--text-muted); font-size: 0.85rem;">
-                        <?= htmlspecialchars($line['description'] ?? '') ?>
+                    <td style="color: #334155 !important; font-size: 0.85rem; white-space: normal; word-break: break-word; opacity: 1;">
+                        <?= $index === 0 ? nl2br(htmlspecialchars(($tx['description'] ?? '') !== '' ? $tx['description'] : ($line['description'] ?? ''))) : nl2br(htmlspecialchars($line['description'] ?? '')) ?>
                     </td>
                     <td style="font-family: monospace; font-size: 0.85rem;">
                         <?php if ($index === 0): ?>
@@ -382,7 +413,7 @@ require_once '../includes/header.php';
                 <?php endforeach; ?>
                 <?php if(count($transactions) === 0): ?>
                 <tr>
-                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;">No journal entries found.</td>
+                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;"><?= $search !== '' ? 'No entries match your search.' : 'No journal entries found.' ?></td>
                 </tr>
                 <?php endif; ?>
             </tbody>
@@ -407,22 +438,18 @@ require_once '../includes/header.php';
                         <label class="form-label">Date</label>
                         <input type="date" name="date" id="entryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Ref No.</label>
-                        <input type="text" name="reference_no" id="entryRefNo" class="form-control">
+                    <input type="hidden" name="reference_no" id="entryRefNo" value="">
+                    <!-- Header-level Name (Customer/Vendor) — optional -->
+                    <div class="form-group" style="position: relative;">
+                        <label class="form-label">Name <span style="font-weight:400; color: var(--text-muted); font-size:0.78rem;">(Customer / Vendor — optional)</span></label>
+                        <input type="text" id="entitySearchInput" class="form-control" placeholder="Search customer or vendor..." autocomplete="off"
+                               oninput="onEntitySearchInput()"
+                               onfocus="onEntitySearchInput()"
+                               onkeydown="onEntitySearchKeydown(event)"
+                               onblur="onEntitySearchBlur()">
+                        <input type="hidden" name="entity_id" id="entityIdInput" value="">
+                        <input type="hidden" name="entity_type" id="entityTypeInput" value="">
                     </div>
-                </div>
-
-                <!-- Header-level Name (Customer/Vendor) — optional -->
-                <div class="form-group" style="margin-bottom: 1rem; position: relative;">
-                    <label class="form-label">Name <span style="font-weight:400; color: var(--text-muted); font-size:0.78rem;">(Customer / Vendor — optional)</span></label>
-                    <input type="text" id="entitySearchInput" class="form-control" placeholder="Search customer or vendor..." autocomplete="off"
-                           oninput="onEntitySearchInput()"
-                           onfocus="onEntitySearchInput()"
-                           onkeydown="onEntitySearchKeydown(event)"
-                           onblur="onEntitySearchBlur()">
-                    <input type="hidden" name="entity_id" id="entityIdInput" value="">
-                    <input type="hidden" name="entity_type" id="entityTypeInput" value="">
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1.5rem;">
@@ -1002,17 +1029,17 @@ function _detectMismatch(lines) {
 
     // Cash transactions don't belong here
     if (hasCash && hasExp)
-        return { journal: 'Cash Disbursements Journal', url: 'cash_disbursements_journal.php', reason: 'Cash purchases must be recorded in the' };
+        return { journal: 'Cash Disbursements', url: 'cash_disbursements_journal.php', reason: 'Cash purchases must be recorded in' };
     if (hasCash)
-        return { journal: 'Cash Disbursements Journal', url: 'cash_disbursements_journal.php', reason: 'Entries with a Cash or Bank account belong in the' };
+        return { journal: 'Cash Disbursements', url: 'cash_disbursements_journal.php', reason: 'Entries with a Cash or Bank account belong in' };
     // Sales-type entries don't belong here
     if (hasRev && hasRec)
-        return { journal: 'Sales Journal', url: 'sales_journal.php', reason: 'It looks like you\'re recording a credit sale, which belongs in the', hint: 'If this is a purchase, please check your Debit/Credit entries.' };
+        return { journal: 'Sales', url: 'sales_journal.php', reason: 'It looks like you\'re recording a credit sale, which belongs in', hint: 'If this is a purchase, please check your Debit/Credit entries.' };
     if (hasRev)
-        return { journal: 'Sales Journal', url: 'sales_journal.php', reason: 'Entries with a Revenue account belong in the' };
+        return { journal: 'Sales', url: 'sales_journal.php', reason: 'Entries with a Revenue account belong in' };
     // Must have a Payable to be a valid purchase entry
     if (!hasPay)
-        return { journal: 'Purchases Journal', url: null, reason: 'A Payable or Liability account is required for credit purchases.' };
+        return { journal: 'Purchases', url: null, reason: 'A Payable or Liability account is required for credit purchases.' };
     return null;
 }
 

@@ -6,11 +6,13 @@ require_once '../includes/auth.php';
 $db = get_db();
 try { $db->query("CREATE TABLE IF NOT EXISTS customers (id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, code VARCHAR(20) NULL, name VARCHAR(150) NOT NULL, opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0, status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"); } catch (Exception $e) {}
 try { $db->query("CREATE TABLE IF NOT EXISTS suppliers (id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, code VARCHAR(20) NULL, name VARCHAR(150) NOT NULL, opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0, status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"); } catch (Exception $e) {}
+try { $db->query("CREATE TABLE IF NOT EXISTS employees (id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, code VARCHAR(20) NULL, name VARCHAR(150) NOT NULL, position VARCHAR(150) NULL, department VARCHAR(150) NULL, email VARCHAR(150) NULL, phone VARCHAR(50) NULL, address VARCHAR(255) NULL, date_hired DATE NULL, rate DECIMAL(15,2) NOT NULL DEFAULT 0, pay_frequency VARCHAR(50) NULL, status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active', notes TEXT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX idx_employees_company (company_id))"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE journal_entry_lines ADD COLUMN description VARCHAR(255) NULL AFTER account_id"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE journal_entry_lines ADD COLUMN vendor_name VARCHAR(100) NULL AFTER description"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE activity_logs ADD COLUMN company_id INT NULL AFTER id"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE journal_entries ADD COLUMN entity_id INT NULL AFTER type"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE journal_entries ADD COLUMN entity_type VARCHAR(20) NULL AFTER entity_id"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE journal_entries ADD COLUMN employee_id INT NULL"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE customers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE suppliers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
 
@@ -19,7 +21,7 @@ $db = get_db();
 $company_id = $_SESSION['active_company_id'] ?? null;
 
 if (!$company_id) {
-    echo '<div class="alert alert-warning" style="margin: 2rem;">Please <a href="'.BASE_URL.'pages/company_setup.php">select or create a company</a> first to view journal entries.</div>';
+    echo '<div class="alert alert-warning" style="margin: 2rem;">Please <a href="'.BASE_URL.'pages/company_setup.php">select or create a company</a> first to view entries.</div>';
     require_once '../includes/footer.php';
     exit;
 }
@@ -42,7 +44,16 @@ $stmtSupp->bind_param('i', $company_id);
 $stmtSupp->execute();
 $suppliersList = $stmtSupp->get_result()->fetch_all(MYSQLI_ASSOC);
 
-$entitiesList = array_merge($customersList, $suppliersList);
+// Employees (Cash Disbursements only) — so payments to employees can be tagged with a Name
+$employeesList = [];
+try {
+    $stmtEmp = $db->prepare("SELECT id, name, 'employee' as type FROM employees WHERE company_id = ? ORDER BY name ASC");
+    $stmtEmp->bind_param('i', $company_id);
+    $stmtEmp->execute();
+    $employeesList = $stmtEmp->get_result()->fetch_all(MYSQLI_ASSOC);
+} catch (Exception $e) { $employeesList = []; }
+
+$entitiesList = array_merge($customersList, $suppliersList, $employeesList);
 usort($entitiesList, function($a, $b) {
     return strcasecmp($a['name'], $b['name']);
 });
@@ -72,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $entry_id = ($action === 'edit_entry') ? (int)($_POST['entry_id'] ?? 0) : null;
         
     $date = $_POST['date'];
-    $ref_no = $_POST['reference_no'];
+    $ref_no = ($action === 'add_entry') ? '' : trim($_POST['reference_no'] ?? '');
     if (empty(trim($ref_no))) {
         $ref_no = 'CDJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
     }
@@ -84,6 +95,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($entity_id === '') $entity_id = null;
     $entity_type = $_POST['entity_type'] ?? null;
     if ($entity_type === '') $entity_type = null;
+    // Employees are stored in their own column (employee_id) so they never depend on entity_type's allowed values
+    $employee_id = null;
+    if ($entity_type === 'employee') {
+        $empPick = (int)$entity_id;
+        $chkEmp = $db->prepare("SELECT id FROM employees WHERE id = ? AND company_id = ?");
+        $chkEmp->bind_param('ii', $empPick, $company_id);
+        $chkEmp->execute();
+        if ($chkEmp->get_result()->fetch_assoc()) { $employee_id = $empPick; }
+        $entity_id = null;
+        $entity_type = null;
+    }
     $vendor_name = null; // Legacy field
 
     $account_ids = $_POST['account_id'] ?? [];
@@ -98,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $check->bind_param('ii', $entry_id, $company_id);
             $check->execute();
             if (!$check->get_result()->fetch_assoc()) {
-                $error = "Journal entry not found.";
+                $error = "Entry not found.";
             }
         }
     }
@@ -109,13 +131,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $journal_id = 'CDJ';
         
         if ($action === 'add_entry') {
-            $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param('isssissssis', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id, $entity_id, $entity_type);
+            $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id, entity_id, entity_type, employee_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param('isssissssisi', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id, $entity_id, $entity_type, $employee_id);
             $stmt->execute();
             $entry_id = $stmt->insert_id;
         } else {
-            $stmt = $db->prepare("UPDATE journal_entries SET reference_no = ?, date = ?, description = ?, is_taxable = ?, entity_id = ?, entity_type = ? WHERE id = ? AND company_id = ?");
-            $stmt->bind_param('sssiisii', $ref_no, $date, $description, $is_taxable, $entity_id, $entity_type, $entry_id, $company_id);
+            $stmt = $db->prepare("UPDATE journal_entries SET reference_no = ?, date = ?, description = ?, is_taxable = ?, entity_id = ?, entity_type = ?, employee_id = ? WHERE id = ? AND company_id = ?");
+            $stmt->bind_param('sssiisiii', $ref_no, $date, $description, $is_taxable, $entity_id, $entity_type, $employee_id, $entry_id, $company_id);
             $stmt->execute();
 
             $stmtDelLines = $db->prepare("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?");
@@ -136,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Cash Disbursements Journal: VAT-registered companies generate INPUT VAT on Expense/Asset debits.
                 // Output VAT does NOT apply here (no sales in a Cash Disbursements Journal).
-                if ($is_taxable && $inputVatId) {
+                if ($action === 'add_entry' && $is_taxable && $inputVatId) { // VAT is only auto-added on new entries; on edit the posted lines already contain VAT
                     $added_input_vat = 0;
 
                     foreach ($final_lines as $line) {
@@ -202,7 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     } catch (Exception $e) {
         $db->rollback();
-        $error = "Failed to save journal entry: " . $e->getMessage();
+        $error = "Failed to save entry: " . $e->getMessage();
     }
     }
     } elseif ($_POST['action'] === 'delete') {
@@ -222,21 +244,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 }
 
+// ── Search (from the top search bar) ─────────────────────────────
+// Matches: reference no., description, date, name (customer/vendor/employee) + code, account title/code, and amounts.
+// Several words = every word must match something in the entry.
+$search = trim($_GET['search'] ?? '');
+$searchSql = '';
+$searchTypes = '';
+$searchParams = [];
+if ($search !== '') {
+    foreach (array_slice(preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY), 0, 6) as $term) {
+        $like = '%' . addcslashes($term, '%_\\') . '%';
+        $group = "(e.reference_no LIKE ? OR e.description LIKE ? OR e.date LIKE ? OR DATE_FORMAT(e.date, '%b %d, %Y') LIKE ? OR COALESCE(c.name, s.name, emp.name) LIKE ? OR COALESCE(c.code, s.code, emp.code) LIKE ?"
+               . " OR EXISTS (SELECT 1 FROM journal_entry_lines sl JOIN accounts sa ON sl.account_id = sa.id WHERE sl.journal_entry_id = e.id AND (sa.name LIKE ? OR sa.code LIKE ?))";
+        array_push($searchParams, $like, $like, $like, $like, $like, $like, $like, $like);
+        $searchTypes .= 'ssssssss';
+        $amount = str_replace([',', '₱'], '', $term);
+        if (is_numeric($amount)) {
+            $group .= " OR EXISTS (SELECT 1 FROM journal_entry_lines sl2 WHERE sl2.journal_entry_id = e.id AND (ROUND(sl2.debit, 2) = ROUND(?, 2) OR ROUND(sl2.credit, 2) = ROUND(?, 2)))";
+            array_push($searchParams, $amount, $amount);
+            $searchTypes .= 'ss';
+        }
+        $searchSql .= ' AND ' . $group . ')';
+    }
+}
+
 // Fetch existing journal entries
 $query = "
     SELECT e.*,
-           COALESCE(c.name, s.name) AS entity_name,
-           COALESCE(c.code, s.code) AS entity_code,
+           COALESCE(c.name, s.name, emp.name) AS entity_name,
+           COALESCE(c.code, s.code, emp.code) AS entity_code,
            (SELECT SUM(debit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_debit,
            (SELECT SUM(credit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_credit
     FROM journal_entries e
     LEFT JOIN customers c ON e.entity_id = c.id AND e.entity_type = 'customer'
     LEFT JOIN suppliers s ON e.entity_id = s.id AND e.entity_type = 'supplier'
-    WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'CDJ'
+    LEFT JOIN employees emp ON e.employee_id = emp.id
+    WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'CDJ' $searchSql
     ORDER BY e.date DESC, e.id DESC
 ";
 $stmt = $db->prepare($query);
-$stmt->bind_param('i', $company_id);
+$stmt->bind_param('i' . $searchTypes, $company_id, ...$searchParams);
 $stmt->execute();
 $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
@@ -256,6 +303,13 @@ require_once '../includes/header.php';
     <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
         <?= htmlspecialchars($error) ?>
     </div>
+<?php endif; ?>
+
+<?php if ($search !== ''): ?>
+<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem; font-size:0.875rem; color: var(--text-secondary);">
+    <span>Showing <strong><?= count($transactions) ?></strong> <?= count($transactions) === 1 ? 'result' : 'results' ?> for "<strong><?= htmlspecialchars($search) ?></strong>"</span>
+    <a href="<?= htmlspecialchars(basename($_SERVER['PHP_SELF'])) ?>" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">Clear search</a>
+</div>
 <?php endif; ?>
 
 <div class="card" style="padding: 0; overflow: hidden;">
@@ -293,7 +347,7 @@ require_once '../includes/header.php';
                     <td style="padding-left: <?= $line['credit'] > 0 ? '2.5rem' : '1rem' ?>; font-weight: 500;">
                         <?= htmlspecialchars($line['name']) ?>
                     </td>
-                    <td style="color: var(--text-muted); font-size: 0.85rem;">
+                    <td style="color: #475569 !important; font-size: 0.85rem; opacity: 1;">
                         <?php if ($index === 0 && !empty($tx['entity_name'])): ?>
                             <?= htmlspecialchars($tx['entity_name']) ?>
                             <?php if (!empty($tx['entity_code'])): ?>
@@ -301,8 +355,8 @@ require_once '../includes/header.php';
                             <?php endif; ?>
                         <?php endif; ?>
                     </td>
-                    <td style="color: var(--text-muted); font-size: 0.85rem;">
-                        <?= htmlspecialchars($line['description'] ?? '') ?>
+                    <td style="color: #334155 !important; font-size: 0.85rem; white-space: normal; word-break: break-word; opacity: 1;">
+                        <?= $index === 0 ? nl2br(htmlspecialchars(($tx['description'] ?? '') !== '' ? $tx['description'] : ($line['description'] ?? ''))) : nl2br(htmlspecialchars($line['description'] ?? '')) ?>
                     </td>
                     <td style="font-family: monospace; font-size: 0.85rem;">
                         <?php if ($index === 0): ?>
@@ -321,8 +375,8 @@ require_once '../includes/header.php';
                                 "date" => $tx['date'],
                                 "reference_no" => $tx['reference_no'],
                                 "description" => $tx['description'],
-                                "entity_id" => $tx['entity_id'],
-                                "entity_type" => $tx['entity_type'],
+                                "entity_id" => !empty($tx['employee_id']) ? $tx['employee_id'] : $tx['entity_id'],
+                                "entity_type" => !empty($tx['employee_id']) ? 'employee' : $tx['entity_type'],
                                 "entity_name" => $tx['entity_name'],
                                 "lines" => array_map(function($l) {
                                     return [
@@ -356,7 +410,7 @@ require_once '../includes/header.php';
                 <?php endforeach; ?>
                 <?php if(count($transactions) === 0): ?>
                 <tr>
-                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;">No journal entries found.</td>
+                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;"><?= $search !== '' ? 'No entries match your search.' : 'No journal entries found.' ?></td>
                 </tr>
                 <?php endif; ?>
             </tbody>
@@ -381,22 +435,18 @@ require_once '../includes/header.php';
                         <label class="form-label">Date</label>
                         <input type="date" name="date" id="entryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Ref No.</label>
-                        <input type="text" name="reference_no" id="entryRefNo" class="form-control">
+                    <input type="hidden" name="reference_no" id="entryRefNo" value="">
+                    <!-- Header-level Name (Customer/Vendor) — optional -->
+                    <div class="form-group" style="position: relative;">
+                        <label class="form-label">Name <span style="font-weight:400; color: var(--text-muted); font-size:0.78rem;">(Customer / Vendor / Employee — optional)</span></label>
+                        <input type="text" id="entitySearchInput" class="form-control" placeholder="Search customer, vendor or employee..." autocomplete="off"
+                               oninput="onEntitySearchInput()"
+                               onfocus="onEntitySearchInput()"
+                               onkeydown="onEntitySearchKeydown(event)"
+                               onblur="onEntitySearchBlur()">
+                        <input type="hidden" name="entity_id" id="entityIdInput" value="">
+                        <input type="hidden" name="entity_type" id="entityTypeInput" value="">
                     </div>
-                </div>
-
-                <!-- Header-level Name (Customer/Vendor) — optional -->
-                <div class="form-group" style="margin-bottom: 1rem; position: relative;">
-                    <label class="form-label">Name <span style="font-weight:400; color: var(--text-muted); font-size:0.78rem;">(Customer / Vendor — optional)</span></label>
-                    <input type="text" id="entitySearchInput" class="form-control" placeholder="Search customer or vendor..." autocomplete="off"
-                           oninput="onEntitySearchInput()"
-                           onfocus="onEntitySearchInput()"
-                           onkeydown="onEntitySearchKeydown(event)"
-                           onblur="onEntitySearchBlur()">
-                    <input type="hidden" name="entity_id" id="entityIdInput" value="">
-                    <input type="hidden" name="entity_type" id="entityTypeInput" value="">
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1.5rem;">
@@ -471,6 +521,7 @@ const accounts = <?= json_encode($accountsList) ?>;
 let entitiesList = <?= json_encode($entitiesList ?? []) ?>;
 const customersList = <?= json_encode($customersList ?? []) ?>;
 const suppliersList = <?= json_encode($suppliersList ?? []) ?>;
+const employeesList = <?= json_encode($employeesList ?? []) ?>;
 
 
 const globalInputVatId = <?= $inputVatId ?: 'null' ?>;
@@ -802,7 +853,7 @@ function renderEntityList(matches, highlightIndex = -1) {
             <div class="entity-opt" data-idx="${idx}"
                  style="padding:0.5rem 0.75rem; cursor:pointer; font-size:0.85rem; background:${idx === highlightIndex ? 'var(--bg-secondary)' : '#fff'};display:flex;align-items:center;gap:0.5rem;"
                  onmousedown="selectEntityOption(${idx})">
-                <span style="font-size:0.7rem; padding:1px 6px; border-radius:20px; font-weight:600; background:${e.type==='customer'?'#dbeafe':'#dcfce7'}; color:${e.type==='customer'?'#1d4ed8':'#15803d'};">${e.type==='customer'?'C':'V'}</span>
+                <span style="font-size:0.7rem; padding:1px 6px; border-radius:20px; font-weight:600; background:${e.type==='customer'?'#dbeafe':(e.type==='employee'?'#fef3c7':'#dcfce7')}; color:${e.type==='customer'?'#1d4ed8':(e.type==='employee'?'#b45309':'#15803d')};">${e.type==='customer'?'C':(e.type==='employee'?'E':'V')}</span>
                 ${escapeHtml(e.name)}
             </div>`).join('') + addBtns;
     }
@@ -977,10 +1028,10 @@ function _detectMismatch(lines) {
     // No Cash/Bank — check if it belongs elsewhere
     if (!hasCash) {
         if (hasRev && hasRec)
-            return { journal: 'Sales Journal', url: 'sales_journal.php', reason: 'It looks like you\'re recording a credit sale, which belongs in the', hint: 'If this is a purchase, please check your Debit/Credit entries.' };
+            return { journal: 'Sales', url: 'sales_journal.php', reason: 'It looks like you\'re recording a credit sale, which belongs in', hint: 'If this is a purchase, please check your Debit/Credit entries.' };
         if (hasExp && hasPay)
-            return { journal: 'Purchases Journal', url: 'purchases_journal.php', reason: 'It looks like you\'re recording a credit purchase, which belongs in the', hint: 'If this is a sale, please check your Debit/Credit entries.' };
-        return { journal: 'Cash Disbursements Journal', url: null, reason: 'A Cash or Bank account is required for cash disbursements.' };
+            return { journal: 'Purchases', url: 'purchases_journal.php', reason: 'It looks like you\'re recording a credit purchase, which belongs in', hint: 'If this is a sale, please check your Debit/Credit entries.' };
+        return { journal: 'Cash Disbursements', url: null, reason: 'A Cash or Bank account is required for cash disbursements.' };
     }
     return null;
 }
