@@ -234,6 +234,12 @@ $isBalanced = (count($journalEntries) > 0 && abs($totalDr - $totalCr) < 0.001);
 require_once '../includes/header.php';
 ?>
 
+<div class="mb-4">
+    <a href="dashboard.php" class="btn btn-secondary btn-sm">
+        <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back
+    </a>
+</div>
+
 <!-- STUDENT HEADER BANNER -->
 <div class="card mb-4" style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95)); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 16px; padding: 1.5rem;">
     
@@ -283,10 +289,6 @@ require_once '../includes/header.php';
             <button onclick="window.print()" class="btn btn-secondary btn-sm">
                 <i data-lucide="printer" style="width: 14px; height: 14px;"></i> Print / PDF
             </button>
-
-            <a href="dashboard.php" class="btn btn-secondary btn-sm">
-                <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back
-            </a>
         </div>
     </div>
 

@@ -77,7 +77,7 @@ $searchPlaceholder = $searchPlaceholders[$current_page]
         ? 'Search ref no., name, account, amount…' : 'Search accounts, entries…');
 
 // Pages where the top search bar is hidden (these pages use their own in-page search, or none at all).
-$hideTopSearchPages = ['dashboard', 'chart_of_accounts', 'trial_balance', 'financial_statements', 'employees', 'customers', 'suppliers', 'system_notices'];
+$hideTopSearchPages = ['dashboard', 'chart_of_accounts', 'trial_balance', 'financial_statements', 'employees', 'customers', 'suppliers', 'system_notices', 'instructor_dashboard', 'student_output'];
 $showTopSearch = !in_array($current_page, $hideTopSearchPages, true);
 ?>
 <!DOCTYPE html>
