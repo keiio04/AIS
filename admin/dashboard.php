@@ -9,19 +9,20 @@ $db = get_db();
 // --- Stats ---
 $users_count     = $db->query("SELECT COUNT(*) FROM users")->fetch_row()[0];
 $companies_count = $db->query("SELECT COUNT(*) FROM companies")->fetch_row()[0];
-$logs_count      = $db->query("SELECT COUNT(*) FROM activity_logs")->fetch_row()[0];
+$logs_count      = $db->query("SELECT COUNT(*) FROM activity_logs WHERE module='Authentication'")->fetch_row()[0];
 $admin_count     = $db->query("SELECT COUNT(*) FROM users WHERE role='Admin'")->fetch_row()[0];
 $instructor_count= $db->query("SELECT COUNT(*) FROM users WHERE role='Instructor'")->fetch_row()[0];
 $student_count   = $db->query("SELECT COUNT(*) FROM users WHERE role='Student'")->fetch_row()[0];
 
-// --- Today's logs ---
-$today_logs = $db->query("SELECT COUNT(*) FROM activity_logs WHERE DATE(created_at)=CURDATE()")->fetch_row()[0];
+// --- Today's logins ---
+$today_logs = $db->query("SELECT COUNT(*) FROM activity_logs WHERE module='Authentication' AND DATE(created_at)=CURDATE()")->fetch_row()[0];
 
-// --- Recent Logs ---
+// --- Recent Logins ---
 $recent_logs = $db->query("
     SELECT l.*, u.name as user_name, u.role as user_role
     FROM activity_logs l
     LEFT JOIN users u ON l.user_id = u.id
+    WHERE l.module = 'Authentication'
     ORDER BY l.created_at DESC
     LIMIT 8
 ")->fetch_all(MYSQLI_ASSOC);
@@ -291,18 +292,18 @@ $latest_users = $db->query("SELECT name, email, role, created_at FROM users ORDE
             <div class="adm-stat-icon" style="background:rgba(245,158,11,0.12); color:#f59e0b;">
                 <i data-lucide="scroll-text" style="width:22px;height:22px;"></i>
             </div>
-            <div class="adm-stat-label">Total Logs</div>
+            <div class="adm-stat-label">Total Logins</div>
             <div class="adm-stat-value"><?= number_format($logs_count) ?></div>
-            <div class="adm-stat-sub">All-time activity records</div>
+            <div class="adm-stat-sub">All-time sign-in records</div>
             <div class="adm-stat-glow" style="background:#f59e0b;"></div>
         </div>
         <div class="adm-stat-card">
             <div class="adm-stat-icon" style="background:rgba(239,68,68,0.12); color:#ef4444;">
                 <i data-lucide="zap" style="width:22px;height:22px;"></i>
             </div>
-            <div class="adm-stat-label">Today's Activity</div>
+            <div class="adm-stat-label">Logins Today</div>
             <div class="adm-stat-value"><?= $today_logs ?></div>
-            <div class="adm-stat-sub">Actions logged today</div>
+            <div class="adm-stat-sub">Sign-ins recorded today</div>
             <div class="adm-stat-glow" style="background:#ef4444;"></div>
         </div>
     </div>
@@ -314,8 +315,8 @@ $latest_users = $db->query("SELECT name, email, role, created_at FROM users ORDE
         <div class="adm-panel">
             <div class="adm-panel-header">
                 <div class="adm-panel-title">
-                    <i data-lucide="activity" style="width:16px;height:16px;color:#6366f1;"></i>
-                    Recent Activity
+                    <i data-lucide="log-in" style="width:16px;height:16px;color:#6366f1;"></i>
+                    Recent Logins
                 </div>
                 <a href="logs.php" class="adm-panel-link">
                     View All <i data-lucide="arrow-right" style="width:13px;height:13px;"></i>
@@ -323,12 +324,12 @@ $latest_users = $db->query("SELECT name, email, role, created_at FROM users ORDE
             </div>
             <div class="adm-activity">
                 <?php if (empty($recent_logs)): ?>
-                <div style="padding:2rem;text-align:center;color:var(--text-muted);font-size:0.875rem;">No activity yet.</div>
+                <div style="padding:2rem;text-align:center;color:var(--text-muted);font-size:0.875rem;">No login activity yet.</div>
                 <?php else: foreach($recent_logs as $log):
                     $colors = ['Admin'=>'#6366f1','Instructor'=>'#10b981','Student'=>'#f59e0b'];
                     $avatarColor = $colors[$log['user_role'] ?? 'Student'] ?? '#6b7280';
                     $initials = strtoupper(substr($log['user_name'] ?? 'S', 0, 2));
-                    $actionColors = ['Create'=>'#10b981','Update'=>'#3b82f6','Delete'=>'#ef4444','Login'=>'#6366f1','Logout'=>'#f59e0b'];
+                    $actionColors = ['Login'=>'#6366f1','Google Login'=>'#22c55e','Logout'=>'#f59e0b'];
                     $actionColor = $actionColors[$log['action']] ?? '#6b7280';
                     $timeAgo = date('M d, h:i A', strtotime($log['created_at']));
                 ?>
