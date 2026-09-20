@@ -58,8 +58,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Company name is required.';
             $msgType = 'danger';
         } else {
-            $ins = $db->prepare("INSERT INTO companies (user_id, name, business_type, tax_registered, tax_type, period_type, fiscal_start_month, fiscal_start_date, fiscal_year_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $ins->bind_param('isssissss', $userId, $name, $btype, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end);
+            if ($tax_type === null) {
+                $ins = $db->prepare("INSERT INTO companies (user_id, name, business_type, tax_registered, tax_type, period_type, fiscal_start_month, fiscal_start_date, fiscal_year_end) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)");
+                $ins->bind_param('ississss', $userId, $name, $btype, $tax_registered, $period_type, $fiscal_month, $fiscal_date, $fiscal_end);
+            } else {
+                $ins = $db->prepare("INSERT INTO companies (user_id, name, business_type, tax_registered, tax_type, period_type, fiscal_start_month, fiscal_start_date, fiscal_year_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $ins->bind_param('isssissss', $userId, $name, $btype, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end);
+            }
             $ins->execute();
             $newId = $db->insert_id;
 
@@ -118,8 +123,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($cid && $name) {
-            $upd = $db->prepare("UPDATE companies SET name=?, tax_registered=?, tax_type=?, period_type=?, fiscal_start_month=?, fiscal_start_date=?, fiscal_year_end=? WHERE id=? AND user_id=?");
-            $upd->bind_param('sisssssii', $name, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end, $cid, $userId);
+            if ($tax_type === null) {
+                $upd = $db->prepare("UPDATE companies SET name=?, tax_registered=?, tax_type=NULL, period_type=?, fiscal_start_month=?, fiscal_start_date=?, fiscal_year_end=? WHERE id=? AND user_id=?");
+                $upd->bind_param('sissssii', $name, $tax_registered, $period_type, $fiscal_month, $fiscal_date, $fiscal_end, $cid, $userId);
+            } else {
+                $upd = $db->prepare("UPDATE companies SET name=?, tax_registered=?, tax_type=?, period_type=?, fiscal_start_month=?, fiscal_start_date=?, fiscal_year_end=? WHERE id=? AND user_id=?");
+                $upd->bind_param('sisssssii', $name, $tax_registered, $tax_type, $period_type, $fiscal_month, $fiscal_date, $fiscal_end, $cid, $userId);
+            }
             $upd->execute();
             // Update session if editing active company
             if ($cid == $activeCompanyId) {
