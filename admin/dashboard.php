@@ -256,6 +256,9 @@ $latest_users = $db->query("SELECT name, email, role, created_at FROM users ORDE
                 <a href="assignments.php" class="adm-hero-btn adm-hero-btn-ghost">
                     <i data-lucide="link" style="width:15px;height:15px;"></i> Assignments
                 </a>
+                <a href="system_notices.php" class="adm-hero-btn adm-hero-btn-ghost">
+                    <i data-lucide="megaphone" style="width:15px;height:15px;"></i> System Notices
+                </a>
             </div>
         </div>
         <div class="adm-hero-right">
@@ -379,6 +382,10 @@ $latest_users = $db->query("SELECT name, email, role, created_at FROM users ORDE
                     <a href="assignments.php" class="adm-action-btn">
                         <div class="adm-action-icon"><i data-lucide="link" style="width:16px;height:16px;"></i></div>
                         Manage Assignments
+                    </a>
+                    <a href="system_notices.php" class="adm-action-btn" style="grid-column: 1 / -1;">
+                        <div class="adm-action-icon"><i data-lucide="megaphone" style="width:16px;height:16px;"></i></div>
+                        Send System Notice
                     </a>
                 </div>
             </div>

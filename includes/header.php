@@ -1,12 +1,21 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/access_control.php';
+require_once __DIR__ . '/notifications.php';
 
 // Calculate initials
 $userName = $_SESSION['user_name'] ?? 'Admin';
 $userRole = $_SESSION['user_role'] ?? 'Super Admin';
 $parts = explode(' ', $userName);
 $initials = strtoupper(substr($parts[0], 0, 1) . (isset($parts[1]) ? substr($parts[1], 0, 1) : ''));
+
+// Notifications for the bell (the Admin Panel has no bell, so skip the queries there)
+$notifUnread = 0;
+$notifItems = [];
+if (!defined('IS_ADMIN_PANEL') && !empty($_SESSION['user_id'])) {
+    $notifUnread = notif_unread_count(get_db(), (int)$_SESSION['user_id']);
+    $notifItems  = notif_recent(get_db(), (int)$_SESSION['user_id'], 10);
+}
 
 // Get active company info if needed (for sidebar display)
 $activeCompanyId = $_SESSION['active_company_id'] ?? null;
@@ -48,6 +57,7 @@ $pageNames = [
     'suppliers' => 'Suppliers',
     'employees' => 'Employees',
     'student_output' => 'Student Output Review',
+    'system_notices' => 'System Notices',
 ];
 $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
 
@@ -67,7 +77,7 @@ $searchPlaceholder = $searchPlaceholders[$current_page]
         ? 'Search ref no., name, account, amount…' : 'Search accounts, entries…');
 
 // Pages where the top search bar is hidden (these pages use their own in-page search, or none at all).
-$hideTopSearchPages = ['dashboard', 'chart_of_accounts', 'trial_balance', 'financial_statements', 'employees', 'customers', 'suppliers'];
+$hideTopSearchPages = ['dashboard', 'chart_of_accounts', 'trial_balance', 'financial_statements', 'employees', 'customers', 'suppliers', 'system_notices'];
 $showTopSearch = !in_array($current_page, $hideTopSearchPages, true);
 ?>
 <!DOCTYPE html>
@@ -77,6 +87,13 @@ $showTopSearch = !in_array($current_page, $hideTopSearchPages, true);
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= htmlspecialchars($pageTitle) ?> - TALA-AIS</title>
 <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/style.css">
+<?php if (!defined('IS_ADMIN_PANEL')): ?>
+<style>
+.notif-msg { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; word-break: break-word; }
+.notif-msg.open { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.notif-item:hover { background: var(--bg-tertiary) !important; }
+</style>
+<?php endif; ?>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -137,6 +154,7 @@ $showTopSearch = !in_array($current_page, $hideTopSearchPages, true);
                     'users'       => ['icon' => 'users',            'label' => 'Users',          'href' => 'users.php'],
                     'companies'   => ['icon' => 'building-2',       'label' => 'Companies',      'href' => 'companies.php'],
                     'assignments' => ['icon' => 'link',             'label' => 'Assignments',    'href' => 'assignments.php'],
+    'system_notices' => ['icon' => 'megaphone',     'label' => 'System Notices', 'href' => 'system_notices.php'],
                     'logs'        => ['icon' => 'scroll-text',      'label' => 'Activity Logs',  'href' => 'logs.php'],
                 ];
                 foreach ($adminSidebarItems as $key => $item):
@@ -373,20 +391,111 @@ $showTopSearch = !in_array($current_page, $hideTopSearchPages, true);
                 </button>
                 <div class="topbar-divider" style="width: 1px; height: 20px; background: var(--border-color); margin: 0 0.25rem;"></div>
                 
+                <?php if (!defined('IS_ADMIN_PANEL')): ?>
                 <!-- Notifications Dropdown -->
                 <div style="position: relative;" id="notifDropdownContainer">
-                    <button class="icon-btn" style="position: relative;" onclick="document.getElementById('notifMenu').classList.toggle('hidden')">
+                    <button class="icon-btn" style="position: relative;" onclick="toggleNotifMenu(event)" title="Notifications" aria-label="Notifications">
                         <i data-lucide="bell" style="width: 18px; height: 18px;"></i>
-                        <span style="position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; border: 2px solid var(--bg-secondary);"></span>
+                        <span id="notifBadge" style="position: absolute; top: 0; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 99px; background: #ef4444; color: #fff; font-size: 0.6rem; font-weight: 700; line-height: 14px; text-align: center; border: 2px solid var(--bg-secondary); box-sizing: content-box; <?= $notifUnread > 0 ? '' : 'display: none;' ?>"><?= $notifUnread > 99 ? '99+' : (int)$notifUnread ?></span>
                     </button>
-                    <div id="notifMenu" class="hidden" style="position: absolute; right: 0; top: 110%; width: 280px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); z-index: 50; padding: 1rem;">
-                        <h4 style="margin-bottom: 0.5rem; font-size: 0.875rem;">Notifications</h4>
-                        <div style="font-size: 0.8125rem; color: var(--text-muted); text-align: center; padding: 1rem 0;">No new notifications</div>
+                    <div id="notifMenu" class="hidden" style="position: absolute; right: 0; top: 110%; width: 340px; max-width: calc(100vw - 2rem); background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); z-index: 50; overflow: hidden;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-color);">
+                            <h4 style="margin: 0; font-size: 0.875rem;">Notifications</h4>
+                            <button type="button" id="notifMarkAll" onclick="notifMarkAll()" style="background: none; border: none; cursor: pointer; color: var(--primary-color); font-size: 0.75rem; font-weight: 600; <?= $notifUnread > 0 ? '' : 'display: none;' ?>">Mark all as read</button>
+                        </div>
+                        <div style="max-height: 360px; overflow-y: auto;">
+                            <?php if (empty($notifItems)): ?>
+                            <div style="font-size: 0.8125rem; color: var(--text-muted); text-align: center; padding: 2rem 1rem;">No notifications yet</div>
+                            <?php else: foreach ($notifItems as $notif):
+                                [$nIcon, $nColor, $nBg] = notif_visual($notif['type'], $notif['severity']);
+                                $nUnread = !$notif['is_read'];
+                            ?>
+                            <div class="notif-item" data-id="<?= (int)$notif['id'] ?>" data-url="<?= htmlspecialchars(notif_url($notif['link'])) ?>" data-unread="<?= $nUnread ? 1 : 0 ?>" onclick="notifOpen(this)"
+                                 style="display: flex; gap: 0.65rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-color); cursor: pointer; <?= $nUnread ? 'background: rgba(59,130,246,0.06);' : '' ?>">
+                                <div style="width: 30px; height: 30px; border-radius: 50%; background: <?= $nBg ?>; color: <?= $nColor ?>; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                    <i data-lucide="<?= $nIcon ?>" style="width: 15px; height: 15px;"></i>
+                                </div>
+                                <div style="min-width: 0; flex: 1;">
+                                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                        <span class="notif-title" style="font-size: 0.8125rem; font-weight: <?= $nUnread ? 600 : 500 ?>; color: var(--text-primary); word-break: break-word;"><?= htmlspecialchars($notif['title']) ?></span>
+                                        <span class="notif-dot" style="width: 7px; height: 7px; border-radius: 50%; background: #3b82f6; flex-shrink: 0; <?= $nUnread ? '' : 'display: none;' ?>"></span>
+                                    </div>
+                                    <?php if (!empty($notif['message'])): ?>
+                                    <div class="notif-msg" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;"><?= htmlspecialchars($notif['message']) ?></div>
+                                    <?php endif; ?>
+                                    <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.8;"><?= htmlspecialchars(notif_time_ago((int)$notif['age_sec'])) ?></div>
+                                </div>
+                            </div>
+                            <?php endforeach; endif; ?>
+                        </div>
                     </div>
                 </div>
+                <script>
+                (function () {
+                    var API = '<?= BASE_URL ?>pages/notifications_api.php';
+
+                    function post(params) {
+                        return fetch(API, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: new URLSearchParams(params).toString()
+                        }).then(function (r) { return r.json(); });
+                    }
+                    function setBadge(n) {
+                        var badge = document.getElementById('notifBadge');
+                        var all = document.getElementById('notifMarkAll');
+                        badge.textContent = n > 99 ? '99+' : n;
+                        badge.style.display = n > 0 ? '' : 'none';
+                        all.style.display = n > 0 ? '' : 'none';
+                    }
+                    function markItemRead(el) {
+                        el.dataset.unread = '0';
+                        el.style.background = '';
+                        var dot = el.querySelector('.notif-dot');
+                        if (dot) dot.style.display = 'none';
+                        var title = el.querySelector('.notif-title');
+                        if (title) title.style.fontWeight = '500';
+                    }
+
+                    window.toggleNotifMenu = function (e) {
+                        e.stopPropagation();
+                        document.getElementById('notifMenu').classList.toggle('hidden');
+                    };
+                    document.addEventListener('click', function (e) {
+                        var box = document.getElementById('notifDropdownContainer');
+                        if (box && !box.contains(e.target)) document.getElementById('notifMenu').classList.add('hidden');
+                    });
+
+                    window.notifOpen = function (el) {
+                        var url = el.dataset.url;
+                        var wasUnread = el.dataset.unread === '1';
+                        if (!url) {
+                            var msg = el.querySelector('.notif-msg');
+                            if (msg) msg.classList.toggle('open');
+                        }
+                        if (wasUnread) {
+                            markItemRead(el);
+                            post({ action: 'read', id: el.dataset.id })
+                                .then(function (d) { if (d && typeof d.unread === 'number') setBadge(d.unread); })
+                                .catch(function () {})
+                                .then(function () { if (url) window.location.href = url; });
+                        } else if (url) {
+                            window.location.href = url;
+                        }
+                    };
+
+                    window.notifMarkAll = function () {
+                        document.querySelectorAll('#notifMenu .notif-item').forEach(markItemRead);
+                        setBadge(0);
+                        post({ action: 'read_all' }).catch(function () {});
+                    };
+                })();
+                </script>
 
                 <div class="topbar-divider" style="width: 1px; height: 20px; background: var(--border-color); margin: 0 0.25rem;"></div>
-                
+                <?php endif; ?>
+
                 <!-- User Profile Dropdown -->
                 <div class="user-profile-container" style="position: relative;">
                     <div class="user-profile" style="display: flex; align-items: center; gap: 0.625rem; padding: 0.375rem 0.75rem; border-radius: 8px; cursor: pointer;" onclick="document.getElementById('profileMenu').classList.toggle('hidden')">
