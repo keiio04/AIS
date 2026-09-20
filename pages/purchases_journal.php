@@ -187,13 +187,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             }
                         }
                         // Input VAT: Expense/Asset debited is VAT-inclusive → split into Net Expense/Asset and Input VAT (12%)
+                        // Exclude non-VATable/exempt accounts (Cash, Bank, Receivables, Salaries/Wages, Employee Benefits, SSS/PhilHealth/Pag-IBIG, Depreciation, Taxes, Interest, etc.)
+                        $is_vat_exempt = (
+                            strpos($name_lower, 'cash') !== false ||
+                            strpos($name_lower, 'bank') !== false ||
+                            strpos($name_lower, 'receivable') !== false ||
+                            strpos($name_lower, 'salar') !== false ||
+                            strpos($name_lower, 'wage') !== false ||
+                            strpos($name_lower, 'payroll') !== false ||
+                            strpos($name_lower, 'labor') !== false ||
+                            strpos($name_lower, 'sss') !== false ||
+                            strpos($name_lower, 'philhealth') !== false ||
+                            strpos($name_lower, 'pag-ibig') !== false ||
+                            strpos($name_lower, 'pagibig') !== false ||
+                            strpos($name_lower, 'benefit') !== false ||
+                            strpos($name_lower, 'bonus') !== false ||
+                            strpos($name_lower, 'allowance') !== false ||
+                            strpos($name_lower, 'depreciation') !== false ||
+                            strpos($name_lower, 'amortization') !== false ||
+                            strpos($name_lower, 'bad debt') !== false ||
+                            strpos($name_lower, 'doubtful') !== false ||
+                            strpos($name_lower, 'tax') !== false ||
+                            strpos($name_lower, 'license') !== false ||
+                            strpos($name_lower, 'interest') !== false ||
+                            strpos($name_lower, 'bank charge') !== false ||
+                            strpos($name_lower, 'penalty') !== false
+                        );
+
                         if (($cat === 'Expenses' || $cat === 'Assets')
                             && $line['debit'] > 0
                             && $line['account_id'] != $inputVatId
                             && $line['account_id'] != $outputVatId
-                            && strpos($name_lower, 'cash') === false
-                            && strpos($name_lower, 'bank') === false
-                            && strpos($name_lower, 'receivable') === false) {
+                            && !$is_vat_exempt) {
                             $gross = $line['debit'];
                             $net = round($gross / 1.12, 2);
                             $vat = round($gross - $net, 2);
