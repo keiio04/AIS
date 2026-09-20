@@ -153,7 +153,7 @@ $allStudents = $db->query("SELECT id, name, email FROM users WHERE role = 'Stude
         Unassigned Students (<?= count($unassignedStudents) ?>)
     </h3>
     <div class="text-muted" style="font-size: 0.85rem; margin-bottom: 0.75rem;">These students are not yet monitored by any instructor.</div>
-    <div class="flex flex-wrap gap-2">
+    <div class="flex flex-col gap-2" style="align-items: flex-start;">
         <?php foreach ($unassignedStudents as $s): ?>
             <span class="badge badge-neutral"><?= htmlspecialchars($s['name']) ?></span>
         <?php endforeach; ?>
