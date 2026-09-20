@@ -8,7 +8,75 @@
 require_once __DIR__ . '/../config.php';
 
 /**
- * Send an email via SMTP.
+ * Send an email via Brevo REST API (v3) over HTTPS (Port 443).
+ * This completely bypasses SMTP port blocking on cloud hosts like Railway.
+ *
+ * @param string $apiKey Brevo API Key (starts with xkeysib-)
+ * @param string $toEmail Recipient email
+ * @param string $toName Recipient name
+ * @param string $subject Email subject
+ * @param string $htmlBody HTML content
+ * @param string|null $plainBody Plain text fallback
+ * @return array ['success' => bool, 'error' => string]
+ */
+function send_brevo_api_mail(string $apiKey, string $toEmail, string $toName, string $subject, string $htmlBody, ?string $plainBody = null): array {
+    $fromEmail = defined('SMTP_FROM_EMAIL') && SMTP_FROM_EMAIL ? SMTP_FROM_EMAIL : 'catrinaguevarra19@gmail.com';
+    $fromName  = defined('SMTP_FROM_NAME') && SMTP_FROM_NAME ? SMTP_FROM_NAME : 'TALA-AIS Security';
+
+    $payload = [
+        'sender' => [
+            'name'  => $fromName,
+            'email' => $fromEmail,
+        ],
+        'to' => [
+            [
+                'email' => $toEmail,
+                'name'  => !empty($toName) ? $toName : $toEmail,
+            ]
+        ],
+        'subject'     => $subject,
+        'htmlContent' => $htmlBody,
+    ];
+
+    if ($plainBody !== null) {
+        $payload['textContent'] = $plainBody;
+    }
+
+    $ch = curl_init('https://api.brevo.com/v3/smtp/email');
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => [
+            'accept: application/json',
+            'api-key: ' . trim($apiKey),
+            'content-type: application/json',
+        ],
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr  = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlErr) {
+        return ['success' => false, 'error' => 'Brevo cURL connection error: ' . $curlErr];
+    }
+
+    if ($httpCode >= 200 && $httpCode < 300) {
+        return ['success' => true, 'error' => ''];
+    }
+
+    $resData = json_decode($response, true);
+    $msg = $resData['message'] ?? ($response ?: "HTTP {$httpCode} error from Brevo API");
+    return ['success' => false, 'error' => "Brevo API ({$httpCode}): {$msg}"];
+}
+
+/**
+ * Send an email via Brevo REST API or fallback to SMTP.
  *
  * @param string $toEmail Recipient email
  * @param string $toName Recipient name
@@ -18,6 +86,19 @@ require_once __DIR__ . '/../config.php';
  * @return array ['success' => bool, 'error' => string]
  */
 function send_smtp_mail(string $toEmail, string $toName, string $subject, string $htmlBody, ?string $plainBody = null): array {
+    // Check if Brevo API Key is configured
+    $apiKey = defined('BREVO_API_KEY') ? BREVO_API_KEY : getenv('BREVO_API_KEY');
+    if (empty($apiKey)) {
+        $smtpPass = defined('SMTP_PASS') ? SMTP_PASS : getenv('SMTP_PASS');
+        if (!empty($smtpPass) && str_starts_with($smtpPass, 'xkeysib-')) {
+            $apiKey = $smtpPass;
+        }
+    }
+
+    if (!empty($apiKey)) {
+        return send_brevo_api_mail($apiKey, $toEmail, $toName, $subject, $htmlBody, $plainBody);
+    }
+
     $host   = defined('SMTP_HOST') ? SMTP_HOST : '';
     $port   = defined('SMTP_PORT') ? SMTP_PORT : 587;
     $user   = defined('SMTP_USER') ? SMTP_USER : '';
@@ -29,7 +110,7 @@ function send_smtp_mail(string $toEmail, string $toName, string $subject, string
     if (empty($host) || empty($user) || empty($pass)) {
         return [
             'success' => false,
-            'error' => 'SMTP is not configured yet. Please enter your SMTP Host, Username, and Password in config.php.'
+            'error' => 'Email is not configured. Please set BREVO_API_KEY or SMTP credentials.'
         ];
     }
 

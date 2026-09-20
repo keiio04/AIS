@@ -29,13 +29,13 @@ if (file_exists(__DIR__ . '/config.local.php')) {
 }
 
 // ============================================================
-// SMTP Email Configuration (for OTP & Password Resets)
-// Configure your SMTP credentials here or via environment variables
+// Brevo REST API & SMTP Email Configuration
 // ============================================================
+define('BREVO_API_KEY', getenv('BREVO_API_KEY') ?: '');
 define('SMTP_HOST', getenv('SMTP_HOST') ?: 'smtp-relay.brevo.com');
-define('SMTP_PORT', getenv('SMTP_PORT') ? (int)getenv('SMTP_PORT') : 465);  // 465=ssl (recommended), 587=starttls (may be blocked on cloud)
+define('SMTP_PORT', getenv('SMTP_PORT') ? (int)getenv('SMTP_PORT') : 587);
 define('SMTP_USER', getenv('SMTP_USER') ?: '');
 define('SMTP_PASS', getenv('SMTP_PASS') ?: '');
-define('SMTP_SECURE', getenv('SMTP_SECURE') ?: 'ssl'); // 'ssl' (465) or 'tls' (587)
+define('SMTP_SECURE', getenv('SMTP_SECURE') ?: 'tls');
 define('SMTP_FROM_EMAIL', getenv('SMTP_FROM_EMAIL') ?: '');
 define('SMTP_FROM_NAME', getenv('SMTP_FROM_NAME') ?: 'TALA-AIS Security');
