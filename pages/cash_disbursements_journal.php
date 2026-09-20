@@ -598,7 +598,7 @@ function isVatAccount(id) {
 
 // Mirrors the backend VAT rules exactly so what you see here is what gets saved.
 function computeVatPreview() {
-    const out = { applies: false, base: 0, vat: 0, offsetRow: null, offsetOld: 0 };
+    const out = { applies: false, gross: 0, base: 0, vat: 0 };
 
     if (!companyIsTaxRegistered) return out;
 
@@ -609,6 +609,15 @@ function computeVatPreview() {
     const actionEl = document.getElementById('formAction');
     if (actionEl && actionEl.value !== 'add_entry') return out;
 
+    let hasUserVat = false;
+    document.querySelectorAll('#lines-container tr').forEach(tr => {
+        const idEl = tr.querySelector('.account-id-input');
+        if (idEl && idEl.value && isVatAccount(idEl.value)) {
+            hasUserVat = true;
+        }
+    });
+    if (hasUserVat) return out;
+
     document.querySelectorAll('#lines-container tr').forEach(tr => {
         const idEl = tr.querySelector('.account-id-input');
         if (!idEl || !idEl.value) return;
@@ -618,27 +627,44 @@ function computeVatPreview() {
         if (!acc) return;
 
         const dr = parseNumber(tr.querySelector('.dr-input').value);
-        const cr = parseNumber(tr.querySelector('.cr-input').value);
         const nameLower = (acc.name || '').toLowerCase();
 
-        if (vatMode === 'output') {
-            if (acc.category === 'Revenue' && cr > 0) out.base += cr;
-            // first non-VAT debit line absorbs the VAT (AR / Cash)
-            if (dr > 0 && !out.offsetRow) { out.offsetRow = tr; out.offsetOld = dr; }
-        } else {
-            if ((acc.category === 'Expenses' || acc.category === 'Assets') && dr > 0
-                && nameLower.indexOf('cash') === -1
-                && nameLower.indexOf('bank') === -1
-                && nameLower.indexOf('receivable') === -1) {
-                out.base += dr;
-            }
-            // first non-VAT credit line absorbs the VAT (AP / Cash)
-            if (cr > 0 && !out.offsetRow) { out.offsetRow = tr; out.offsetOld = cr; }
+        const isVatExempt = (
+            nameLower.indexOf('cash') !== -1 ||
+            nameLower.indexOf('bank') !== -1 ||
+            nameLower.indexOf('receivable') !== -1 ||
+            nameLower.indexOf('salar') !== -1 ||
+            nameLower.indexOf('wage') !== -1 ||
+            nameLower.indexOf('payroll') !== -1 ||
+            nameLower.indexOf('labor') !== -1 ||
+            nameLower.indexOf('sss') !== -1 ||
+            nameLower.indexOf('philhealth') !== -1 ||
+            nameLower.indexOf('pag-ibig') !== -1 ||
+            nameLower.indexOf('pagibig') !== -1 ||
+            nameLower.indexOf('benefit') !== -1 ||
+            nameLower.indexOf('bonus') !== -1 ||
+            nameLower.indexOf('allowance') !== -1 ||
+            nameLower.indexOf('depreciation') !== -1 ||
+            nameLower.indexOf('amortization') !== -1 ||
+            nameLower.indexOf('bad debt') !== -1 ||
+            nameLower.indexOf('doubtful') !== -1 ||
+            nameLower.indexOf('tax') !== -1 ||
+            nameLower.indexOf('license') !== -1 ||
+            nameLower.indexOf('interest') !== -1 ||
+            nameLower.indexOf('bank charge') !== -1 ||
+            nameLower.indexOf('penalty') !== -1
+        );
+
+        if ((acc.category === 'Expenses' || acc.category === 'Assets') && dr > 0 && !isVatExempt) {
+            out.gross += dr;
         }
     });
 
-    out.vat = Math.round(out.base * VAT_RATE * 100) / 100;
-    out.applies = out.vat > 0;
+    if (out.gross > 0) {
+        out.base = Math.round((out.gross / 1.12) * 100) / 100;
+        out.vat = Math.round((out.gross - out.base) * 100) / 100;
+        out.applies = out.vat > 0;
+    }
     return out;
 }
 
@@ -655,19 +681,7 @@ function renderVatPreview() {
     document.getElementById('vat-base').innerText = vatPeso(r.base);
     document.getElementById('vat-amount').innerText = vatPeso(r.vat);
     document.getElementById('vat-account-name').innerText = vatAcc ? (vatAcc.code + ' - ' + vatAcc.name) : '';
-    document.getElementById('vat-grand-total').innerText = vatPeso(r.base + r.vat);
-
-    const note = document.getElementById('vat-offset-note');
-    if (r.offsetRow) {
-        const offAcc = accounts.find(a => String(a.id) === String(r.offsetRow.querySelector('.account-id-input').value));
-        const side = (vatMode === 'output') ? 'debit' : 'credit';
-        note.innerText = (offAcc ? offAcc.name : 'The offsetting account')
-            + ' will be ' + side + 'ed ' + vatPeso(r.offsetOld + r.vat)
-            + ' (' + vatPeso(r.offsetOld) + ' + ' + vatPeso(r.vat) + ' VAT) so the entry stays balanced.';
-    } else {
-        note.innerText = 'Add the offsetting ' + (vatMode === 'output' ? 'debit' : 'credit')
-            + ' line to see how the VAT will be applied.';
-    }
+    document.getElementById('vat-grand-total').innerText = vatPeso(r.gross);
 
     box.style.display = 'block';
 }
