@@ -162,7 +162,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Purchases Journal: VAT-registered companies generate INPUT VAT on Expense/Asset debits.
                 // Output VAT does NOT apply here (no sales in a Purchases Journal).
-                if ($action === 'add_entry' && $is_taxable && $inputVatId) { // VAT is only auto-added on new entries; on edit the posted lines already contain VAT
+                // If user already included an Input VAT line manually, skip auto-VAT to prevent double Input VAT.
+                $has_user_input_vat = false;
+                if ($inputVatId) {
+                    foreach ($final_lines as $line) {
+                        if ($line['account_id'] == $inputVatId) {
+                            $has_user_input_vat = true;
+                            break;
+                        }
+                    }
+                }
+
+                if ($action === 'add_entry' && $is_taxable && $inputVatId && !$has_user_input_vat) { // VAT is only auto-added on new entries if not manually entered
                     $added_input_vat = 0;
 
                     foreach ($final_lines as $line) {

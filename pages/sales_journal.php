@@ -160,7 +160,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Sales Journal: VAT-registered companies generate OUTPUT VAT on Revenue credits.
                 // Input VAT does NOT apply here (no purchases in a Sales Journal).
-                if ($action === 'add_entry' && $is_taxable && $outputVatId) { // VAT is only auto-added on new entries; on edit the posted lines already contain VAT
+                // If user already included an Output VAT line manually, skip auto-VAT to prevent double Output VAT.
+                $has_user_output_vat = false;
+                if ($outputVatId) {
+                    foreach ($final_lines as $line) {
+                        if ($line['account_id'] == $outputVatId) {
+                            $has_user_output_vat = true;
+                            break;
+                        }
+                    }
+                }
+
+                if ($action === 'add_entry' && $is_taxable && $outputVatId && !$has_user_output_vat) { // VAT is only auto-added on new entries if not manually entered
                     $added_output_vat = 0;
 
                     foreach ($final_lines as $line) {
