@@ -6,32 +6,26 @@ require_once '../includes/header.php';
 
 $db = get_db();
 
-// Fetch logs
+// Fetch ONLY authentication events (Login / Google Login / Logout).
+// Everything else (journal entries, user edits, company deletes, etc.)
+// is intentionally hidden from this page.
 $query = "
-    SELECT l.id, l.action, l.module, l.description, l.created_at, u.name as user_name, u.role as user_role
+    SELECT l.id, l.action, l.description, l.created_at, u.name as user_name, u.role as user_role
     FROM activity_logs l
     JOIN users u ON l.user_id = u.id
+    WHERE l.module = 'Authentication'
     ORDER BY l.created_at DESC
     LIMIT 500
 ";
 $res = $db->query($query);
 $logs = $res->fetch_all(MYSQLI_ASSOC);
-
-// Distinct modules for the filter dropdown
-$modules = [];
-foreach ($logs as $log) {
-    if (!empty($log['module']) && !in_array($log['module'], $modules)) {
-        $modules[] = $log['module'];
-    }
-}
-sort($modules);
 ?>
 
 
 <div class="page-header">
     <div class="page-header-text">
-        <h1 class="page-title">Activity Logs</h1>
-        <p class="page-subtitle">View system audit trails and user activities. Showing the most recent 500 entries.</p>
+        <h1 class="page-title">Login Activity</h1>
+        <p class="page-subtitle">Sign-in records of all users. Showing the most recent 500 entries.</p>
     </div>
     <div>
         <a href="users.php" class="btn btn-secondary">
@@ -43,14 +37,8 @@ sort($modules);
 <div class="card" style="padding: 1rem; margin-bottom: 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
     <div style="position: relative; flex: 1; min-width: 220px;">
         <i data-lucide="search" style="width:15px;height:15px; position:absolute; left:10px; top:50%; transform:translateY(-50%); color: var(--text-muted);"></i>
-        <input type="text" id="logSearch" class="form-control" style="padding-left: 32px;" placeholder="Search by user, action, or description..." onkeyup="filterLogs()">
+        <input type="text" id="logSearch" class="form-control" style="padding-left: 32px;" placeholder="Search by user name..." onkeyup="filterLogs()">
     </div>
-    <select id="moduleFilter" class="form-control" style="max-width: 200px;" onchange="filterLogs()">
-        <option value="">All Modules</option>
-        <?php foreach ($modules as $m): ?>
-        <option value="<?= htmlspecialchars($m) ?>"><?= htmlspecialchars($m) ?></option>
-        <?php endforeach; ?>
-    </select>
     <select id="roleFilterLog" class="form-control" style="max-width: 160px;" onchange="filterLogs()">
         <option value="">All Roles</option>
         <option value="Admin">Admin</option>
@@ -64,18 +52,16 @@ sort($modules);
         <table class="table">
             <thead>
                 <tr>
-                    <th style="width: 180px;">Timestamp</th>
-                    <th style="width: 200px;">User</th>
-                    <th style="width: 120px;">Role</th>
-                    <th style="width: 150px;">Module</th>
-                    <th style="width: 150px;">Action</th>
-                    <th>Description</th>
+                    <th style="width: 200px;">Timestamp</th>
+                    <th style="width: 240px;">User</th>
+                    <th style="width: 130px;">Role</th>
+                    <th style="width: 160px;">Event</th>
+                    <th>Details</th>
                 </tr>
             </thead>
             <tbody id="logTableBody">
                 <?php foreach ($logs as $log): ?>
-                <tr data-search="<?= htmlspecialchars(strtolower($log['user_name'] . ' ' . $log['action'] . ' ' . ($log['description'] ?? ''))) ?>"
-                    data-module="<?= htmlspecialchars($log['module'] ?? '') ?>"
+                <tr data-search="<?= htmlspecialchars(strtolower($log['user_name'] . ' ' . $log['action'])) ?>"
                     data-role="<?= htmlspecialchars($log['user_role'] ?? '') ?>">
                     <td style="color: var(--text-muted); font-size: 0.8125rem;">
                         <?= date('M j, Y h:i A', strtotime($log['created_at'])) ?>
@@ -89,34 +75,31 @@ sort($modules);
                         </div>
                     </td>
                     <td><span class="badge badge-neutral"><?= htmlspecialchars($log['user_role'] ?? 'Unknown') ?></span></td>
-                    <td><?= htmlspecialchars($log['module'] ?? '-') ?></td>
                     <td><span class="badge badge-info"><?= htmlspecialchars($log['action']) ?></span></td>
                     <td class="text-sm"><?= htmlspecialchars($log['description'] ?? '-') ?></td>
                 </tr>
                 <?php endforeach; ?>
                 <?php if(count($logs) === 0): ?>
                 <tr>
-                    <td colspan="6" class="text-center text-muted" style="padding: 2rem;">No activity logs found.</td>
+                    <td colspan="5" class="text-center text-muted" style="padding: 2rem;">No login activity recorded yet.</td>
                 </tr>
                 <?php endif; ?>
             </tbody>
         </table>
-        <div id="noResultsRowLog" class="text-center text-muted hidden" style="padding: 2rem;">No logs match your search.</div>
+        <div id="noResultsRowLog" class="text-center text-muted hidden" style="padding: 2rem;">No logins match your search.</div>
     </div>
 </div>
 
 <script>
 function filterLogs() {
     const q = document.getElementById('logSearch').value.toLowerCase();
-    const mod = document.getElementById('moduleFilter').value;
     const role = document.getElementById('roleFilterLog').value;
     const rows = document.querySelectorAll('#logTableBody tr[data-search]');
     let visibleCount = 0;
     rows.forEach(row => {
         const matchesSearch = row.getAttribute('data-search').includes(q);
-        const matchesModule = !mod || row.getAttribute('data-module') === mod;
         const matchesRole = !role || row.getAttribute('data-role') === role;
-        const show = matchesSearch && matchesModule && matchesRole;
+        const show = matchesSearch && matchesRole;
         row.style.display = show ? '' : 'none';
         if (show) visibleCount++;
     });
