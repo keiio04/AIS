@@ -22,3 +22,21 @@ $default_base = $is_php_server || $is_railway ? '/' : '/AIS_PHP/';
 define('BASE_URL', getenv('APP_BASE_URL') ?: $default_base);
 define('APP_NAME', 'TALA-AIS');
 define('GOOGLE_CLIENT_ID', getenv('GOOGLE_CLIENT_ID') ?: '');
+
+// Load local environment config if present (ignored by git)
+if (file_exists(__DIR__ . '/config.local.php')) {
+    require_once __DIR__ . '/config.local.php';
+}
+
+// ============================================================
+// SMTP Email Configuration (for OTP & Password Resets)
+// Configure your SMTP credentials here or via environment variables
+// ============================================================
+define('SMTP_HOST', getenv('SMTP_HOST') ?: 'smtp-relay.brevo.com');
+define('SMTP_PORT', getenv('SMTP_PORT') ? (int)getenv('SMTP_PORT') : 587);
+define('SMTP_USER', getenv('SMTP_USER') ?: '');
+define('SMTP_PASS', getenv('SMTP_PASS') ?: '');
+define('SMTP_SECURE', getenv('SMTP_SECURE') ?: 'tls'); // 'tls' (587) or 'ssl' (465)
+define('SMTP_FROM_EMAIL', getenv('SMTP_FROM_EMAIL') ?: '');
+define('SMTP_FROM_NAME', getenv('SMTP_FROM_NAME') ?: 'TALA-AIS Security');
+

@@ -169,6 +169,17 @@ CREATE TABLE IF NOT EXISTS `instructor_students` (
     FOREIGN KEY (`student_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Password Resets OTP table
+CREATE TABLE IF NOT EXISTS `password_resets` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `email` VARCHAR(150) NOT NULL,
+    `otp` VARCHAR(10) NOT NULL,
+    `expires_at` DATETIME NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_email_otp (`email`, `otp`)
+) ENGINE=InnoDB;
+
+
 -- Default admin user (password: password)
 INSERT INTO `users` (`name`, `email`, `password`, `role`)
 SELECT 'Administrator', 'admin@ais.com',

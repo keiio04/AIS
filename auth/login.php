@@ -12,6 +12,9 @@ if (!empty($_SESSION['user_id'])) {
 
 $error   = '';
 $success = '';
+if (isset($_GET['msg']) && $_GET['msg'] === 'pw_reset_success') {
+    $success = 'Your password has been reset successfully! You can now log in with your new password.';
+}
 $mode    = $_GET['mode'] ?? 'login';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -875,7 +878,7 @@ select.auth-input option {
             <input type="checkbox" name="remember" id="remember">
             Remember me
           </label>
-          <a href="#" class="forgot-link">Forgot password?</a>
+          <a href="forgot_password.php" class="forgot-link">Forgot password?</a>
         </div>
 
         <button type="submit" id="btn-signin" class="auth-submit">Sign In →</button>

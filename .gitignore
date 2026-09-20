@@ -1,0 +1,11 @@
+# Local environment overrides
+config.local.php
+.env
+.env.local
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
