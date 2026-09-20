@@ -228,6 +228,33 @@ function get_db(): mysqli {
                 INDEX idx_email_otp (`email`, `otp`)
             ) ENGINE=InnoDB",
 
+            "CREATE TABLE IF NOT EXISTS `system_notices` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `sender_id` INT NULL,
+                `title` VARCHAR(150) NOT NULL,
+                `message` TEXT NOT NULL,
+                `severity` VARCHAR(20) NOT NULL DEFAULT 'info',
+                `audience` VARCHAR(20) NOT NULL DEFAULT 'all',
+                `recipient_count` INT NOT NULL DEFAULT 0,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+            "CREATE TABLE IF NOT EXISTS `notifications` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `user_id` INT NOT NULL,
+                `notice_id` INT NULL,
+                `type` VARCHAR(30) NOT NULL DEFAULT 'system',
+                `severity` VARCHAR(20) NOT NULL DEFAULT 'info',
+                `title` VARCHAR(150) NOT NULL,
+                `message` TEXT NULL,
+                `link` VARCHAR(255) NULL,
+                `is_read` TINYINT(1) NOT NULL DEFAULT 0,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_user_unread (`user_id`, `is_read`, `created_at`),
+                INDEX idx_notice (`notice_id`),
+                FOREIGN KEY (`notice_id`) REFERENCES `system_notices`(`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
             "INSERT INTO `users` (`name`, `email`, `password`, `role`)
             SELECT 'Administrator', 'admin@ais.com',
                 '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Admin'
