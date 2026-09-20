@@ -21,3 +21,4 @@ $default_base = $is_php_server || $is_railway ? '/' : '/AIS_PHP/';
 
 define('BASE_URL', getenv('APP_BASE_URL') ?: $default_base);
 define('APP_NAME', 'TALA-AIS');
+define('GOOGLE_CLIENT_ID', getenv('GOOGLE_CLIENT_ID') ?: '');

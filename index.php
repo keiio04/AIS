@@ -21,7 +21,7 @@ $registerUrl = $isLoggedIn
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TALA-AIS – Smart Financial Solution For Modern Accounting</title>
+<title>TALA-AIS – Accounting Simulation System</title>
 <meta name="description" content="TALA-AIS: Smart, automated accounting information system for Laguna State Polytechnic University. Setup accounts, record specialized journals, and generate instant financial statements.">
 
 <!-- Google Fonts -->
@@ -275,9 +275,14 @@ body {
 }
 
 .btn-pill-dark:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(96, 165, 250, 0.5);
+  color: #ffffff;
   transform: translateY(-2px);
+}
+
+.hero-signin-mobile {
+  display: none !important;
 }
 
 .btn-pill-sm {
@@ -1007,6 +1012,9 @@ body {
     font-size: 0.9rem;
     justify-content: center;
   }
+  .hero-signin-mobile {
+    display: inline-flex !important;
+  }
 
   /* COMPACT & ORGANIZED MOBILE 3D GUIDE CARDS */
   .cards-section {
@@ -1133,7 +1141,7 @@ body {
     <!-- Big Headline with Gradient & Refined Typography -->
     <h1 class="hero-heading">
       <span class="hero-title-main">Learn Accounting</span><br>
-      <span class="hero-title-highlight">Through Simlation</span> <span class="title-chip gem">🌍</span>
+      <span class="hero-title-highlight">Through Simulation</span> <span class="title-chip gem">🌍</span>
     </h1>
 
     <!-- Subtitle -->
@@ -1146,7 +1154,7 @@ body {
       <a href="<?= $registerUrl ?>" class="btn-pill btn-pill-blue btn-pill-lg">
         <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i> Create Account
       </a>
-      <a href="<?= $targetUrl ?>" class="btn-pill btn-pill-dark btn-pill-lg">
+      <a href="<?= $targetUrl ?>" class="btn-pill btn-pill-dark btn-pill-lg hero-signin-mobile">
         <i data-lucide="log-in" style="width: 18px; height: 18px;"></i> Sign In
       </a>
     </div>
