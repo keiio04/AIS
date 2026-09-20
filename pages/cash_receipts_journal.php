@@ -447,6 +447,31 @@ require_once '../includes/header.php';
                     </table>
                 </div>
 
+                <!-- ===== LIVE VAT PREVIEW ===== -->
+                <div id="vat-preview" style="display:none; margin-bottom:1rem; border:1px solid var(--border-color); border-radius:10px; padding:0.85rem 1rem; background: var(--bg-secondary);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.6rem;">
+                        <span style="font-size:0.72rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color: var(--text-muted);">
+                            VAT Preview
+                        </span>
+                        <span style="font-size:0.72rem; color: var(--text-muted);">auto-added on save</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.875rem; padding:0.18rem 0;">
+                        <span style="color: var(--text-muted);">Vatable Sales (net)</span>
+                        <span id="vat-base" style="font-variant-numeric: tabular-nums;">&#8369;0.00</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.875rem; padding:0.18rem 0;">
+                        <span style="color: var(--text-muted);">Output VAT (12%) &rarr; <span id="vat-account-name" style="font-weight:600; color: var(--text-primary);"></span></span>
+                        <span id="vat-amount" style="font-variant-numeric: tabular-nums; font-weight:600;">&#8369;0.00</span>
+                    </div>
+                    <div style="border-top:1px dashed var(--border-color); margin:0.5rem 0 0.4rem;"></div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.9rem; font-weight:700; padding:0.15rem 0;">
+                        <span>Total Cash Received</span>
+                        <span id="vat-grand-total" style="font-variant-numeric: tabular-nums;">&#8369;0.00</span>
+                    </div>
+                    <div id="vat-offset-note" style="font-size:0.76rem; color: var(--text-muted); margin-top:0.45rem; line-height:1.4;"></div>
+                </div>
+                <!-- ===== END LIVE VAT PREVIEW ===== -->
+
                 <div id="balance-warning" style="color: var(--danger-color); font-size: 0.875rem; margin-bottom: 1rem; text-align: right; display: none;">
                     Debits and Credits must balance. Difference: &#8369;<span id="diff-amount">0.00</span>
                 </div>
@@ -492,6 +517,98 @@ const suppliersList = <?= json_encode($suppliersList ?? []) ?>;
 
 const globalInputVatId = <?= $inputVatId ?: 'null' ?>;
 const globalOutputVatId = <?= $outputVatId ?: 'null' ?>;
+/* ===== LIVE VAT PREVIEW ===== */
+const companyIsTaxRegistered = <?= $companyIsTaxRegistered ? 'true' : 'false' ?>;
+const vatMode = 'output';   // 'output' = VAT on Revenue credits | 'input' = VAT on Expense/Asset debits
+const VAT_RATE = 0.12;
+
+function vatPeso(n) {
+    return '\u20b1' + (n || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function isVatAccount(id) {
+    return (globalInputVatId !== null && String(id) === String(globalInputVatId))
+        || (globalOutputVatId !== null && String(id) === String(globalOutputVatId));
+}
+
+// Mirrors the backend VAT rules exactly so what you see here is what gets saved.
+function computeVatPreview() {
+    const out = { applies: false, base: 0, vat: 0, offsetRow: null, offsetOld: 0 };
+
+    if (!companyIsTaxRegistered) return out;
+
+    const vatAccId = (vatMode === 'output') ? globalOutputVatId : globalInputVatId;
+    if (!vatAccId) return out;
+
+    // Backend only auto-adds VAT on NEW entries; on edit the lines already contain it.
+    const actionEl = document.getElementById('formAction');
+    if (actionEl && actionEl.value !== 'add_entry') return out;
+
+    document.querySelectorAll('#lines-container tr').forEach(tr => {
+        const idEl = tr.querySelector('.account-id-input');
+        if (!idEl || !idEl.value) return;
+        if (isVatAccount(idEl.value)) return;
+
+        const acc = accounts.find(a => String(a.id) === String(idEl.value));
+        if (!acc) return;
+
+        const dr = parseNumber(tr.querySelector('.dr-input').value);
+        const cr = parseNumber(tr.querySelector('.cr-input').value);
+        const nameLower = (acc.name || '').toLowerCase();
+
+        if (vatMode === 'output') {
+            if (acc.category === 'Revenue' && cr > 0) out.base += cr;
+            // first non-VAT debit line absorbs the VAT (AR / Cash)
+            if (dr > 0 && !out.offsetRow) { out.offsetRow = tr; out.offsetOld = dr; }
+        } else {
+            if ((acc.category === 'Expenses' || acc.category === 'Assets') && dr > 0
+                && nameLower.indexOf('cash') === -1
+                && nameLower.indexOf('bank') === -1
+                && nameLower.indexOf('receivable') === -1) {
+                out.base += dr;
+            }
+            // first non-VAT credit line absorbs the VAT (AP / Cash)
+            if (cr > 0 && !out.offsetRow) { out.offsetRow = tr; out.offsetOld = cr; }
+        }
+    });
+
+    out.vat = Math.round(out.base * VAT_RATE * 100) / 100;
+    out.applies = out.vat > 0;
+    return out;
+}
+
+function renderVatPreview() {
+    const box = document.getElementById('vat-preview');
+    if (!box) return;
+
+    const r = computeVatPreview();
+    if (!r.applies) { box.style.display = 'none'; return; }
+
+    const vatAccId = (vatMode === 'output') ? globalOutputVatId : globalInputVatId;
+    const vatAcc = accounts.find(a => String(a.id) === String(vatAccId));
+
+    document.getElementById('vat-base').innerText = vatPeso(r.base);
+    document.getElementById('vat-amount').innerText = vatPeso(r.vat);
+    document.getElementById('vat-account-name').innerText = vatAcc ? (vatAcc.code + ' - ' + vatAcc.name) : '';
+    document.getElementById('vat-grand-total').innerText = vatPeso(r.base + r.vat);
+
+    const note = document.getElementById('vat-offset-note');
+    if (r.offsetRow) {
+        const offAcc = accounts.find(a => String(a.id) === String(r.offsetRow.querySelector('.account-id-input').value));
+        const side = (vatMode === 'output') ? 'debit' : 'credit';
+        note.innerText = (offAcc ? offAcc.name : 'The offsetting account')
+            + ' will be ' + side + 'ed ' + vatPeso(r.offsetOld + r.vat)
+            + ' (' + vatPeso(r.offsetOld) + ' + ' + vatPeso(r.vat) + ' VAT) so the entry stays balanced.';
+    } else {
+        note.innerText = 'Add the offsetting ' + (vatMode === 'output' ? 'debit' : 'credit')
+            + ' line to see how the VAT will be applied.';
+    }
+
+    box.style.display = 'block';
+}
+/* ===== END LIVE VAT PREVIEW ===== */
+
+
 
 let lineCount = 0;
 
@@ -740,6 +857,8 @@ function calcTotals() {
     document.getElementById('total-dr').innerText = '\u20b1' + drTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
     document.getElementById('total-cr').innerText = '\u20b1' + crTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
 
+    renderVatPreview();
+
     const balWarn = document.getElementById('balance-warning');
     const saveBtn = document.getElementById('save-btn');
     const isBalanced = (drTotal > 0 && Math.abs(drTotal - crTotal) < 0.01);
@@ -759,6 +878,7 @@ function calcTotals() {
 
 
 function checkValidity() {
+    renderVatPreview();
     let drTotal = 0;
     let crTotal = 0;
     let allAccountsSelected = true;
