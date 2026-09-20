@@ -176,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if ($action === 'add_entry' && $is_taxable && $inputVatId && !$has_user_input_vat) { // VAT is only auto-added on new entries if not manually entered
                     $added_input_vat = 0;
 
-                    foreach ($final_lines as $line) {
+                    foreach ($final_lines as &$line) {
                         $cat = '';
                         $name_lower = '';
                         foreach ($accountsList as $a) {
@@ -186,7 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                 break;
                             }
                         }
-                        // Input VAT: Expense/Asset debited (exclude Cash, Bank, Receivable accounts)
+                        // Input VAT: Expense/Asset debited is VAT-inclusive → split into Net Expense/Asset and Input VAT (12%)
                         if (($cat === 'Expenses' || $cat === 'Assets')
                             && $line['debit'] > 0
                             && $line['account_id'] != $inputVatId
@@ -194,23 +194,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             && strpos($name_lower, 'cash') === false
                             && strpos($name_lower, 'bank') === false
                             && strpos($name_lower, 'receivable') === false) {
-                            $added_input_vat += $line['debit'] * 0.12;
+                            $gross = $line['debit'];
+                            $net = round($gross / 1.12, 2);
+                            $vat = round($gross - $net, 2);
+                            $line['debit'] = $net;
+                            $added_input_vat += $vat;
                         }
                     }
+                    unset($line);
 
                     if ($added_input_vat > 0) {
                         // Debit Input VAT
                         $final_lines[] = ['account_id' => $inputVatId, 'debit' => $added_input_vat, 'credit' => 0];
-                        // Inflate the AP/Payable (or first credit line) to keep entry balanced
-                        foreach ($final_lines as &$line) {
-                            if ($line['credit'] > 0
-                                && $line['account_id'] != $inputVatId
-                                && $line['account_id'] != $outputVatId) {
-                                $line['credit'] += $added_input_vat;
-                                break;
-                            }
-                        }
-                        unset($line);
                     }
                 }
                 

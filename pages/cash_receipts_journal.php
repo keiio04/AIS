@@ -149,32 +149,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if ($action === 'add_entry' && $is_taxable && $outputVatId && !$has_user_output_vat) { // VAT is only auto-added on new entries if not manually entered
                     $added_output_vat = 0;
 
-                    foreach ($final_lines as $line) {
+                    foreach ($final_lines as &$line) {
                         $cat = '';
                         foreach ($accountsList as $a) {
                             if ($a['id'] == $line['account_id']) { $cat = $a['category']; break; }
                         }
-                        // Output VAT: Revenue credited → compute 12% Output VAT
+                        // Output VAT: Revenue credited is VAT-inclusive → split into Net Revenue and Output VAT (12%)
                         if ($cat === 'Revenue' && $line['credit'] > 0
                             && $line['account_id'] != $inputVatId
                             && $line['account_id'] != $outputVatId) {
-                            $added_output_vat += $line['credit'] * 0.12;
+                            $gross = $line['credit'];
+                            $net = round($gross / 1.12, 2);
+                            $vat = round($gross - $net, 2);
+                            $line['credit'] = $net;
+                            $added_output_vat += $vat;
                         }
                     }
+                    unset($line);
 
                     if ($added_output_vat > 0) {
                         // Credit Output VAT
                         $final_lines[] = ['account_id' => $outputVatId, 'debit' => 0, 'credit' => $added_output_vat];
-                        // Inflate Cash debit (first debit line) to keep entry balanced
-                        foreach ($final_lines as &$line) {
-                            if ($line['debit'] > 0
-                                && $line['account_id'] != $inputVatId
-                                && $line['account_id'] != $outputVatId) {
-                                $line['debit'] += $added_output_vat;
-                                break;
-                            }
-                        }
-                        unset($line);
                     }
                 }
                 
