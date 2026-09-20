@@ -7,6 +7,7 @@ require_once '../includes/account_seeds.php';
 $db      = get_db();
 try { $db->query("ALTER TABLE companies ADD COLUMN tax_registered TINYINT(1) NOT NULL DEFAULT 0 AFTER business_type"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE companies ADD COLUMN tax_type ENUM('VAT','Percentage Tax') DEFAULT NULL AFTER tax_registered"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE companies MODIFY COLUMN tax_type ENUM('VAT','Percentage Tax') DEFAULT NULL"); } catch (Exception $e) {}
 $userId  = $_SESSION['user_id'];
 $message = '';
 $msgType = 'success';
