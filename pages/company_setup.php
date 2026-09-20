@@ -32,7 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ADD COMPANY
     if ($action === 'add') {
         $name  = trim($_POST['name']          ?? '');
-        $btype = $_POST['business_type']      ?? 'Service';
+        // Business Type field removed from the create form; all new companies use the default chart of accounts.
+        $btype = 'Service';
         $tax_registered = ($_POST['tax_registered'] ?? 'no') === 'yes' ? 1 : 0;
         $tax_type = null;
         if ($tax_registered) {
@@ -400,14 +401,6 @@ require_once '../includes/header.php';
           <input type="text" name="name" class="form-input" required>
         </div>
         <div class="form-group">
-          <label class="form-label">Business Type <span class="required">*</span></label>
-          <select name="business_type" class="form-input" id="btypeSelect" onchange="updateBtypeHint(this.value)">
-            <option value="Service">Service Business (e.g. Consulting, Repair)</option>
-            <option value="Merchandising">Merchandising Business (Buy and Sell)</option>
-            <option value="Manufacturing">Manufacturing Business (Raw Materials → Products)</option>
-          </select>
-        </div>
-        <div class="form-group">
           <label class="form-label">Tax Registered?</label>
           <div style="display: flex; gap: 1.5rem; margin-top: 0.35rem;">
             <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: 500;">
@@ -605,14 +598,6 @@ function toggleFiscal(selectEl, targetId) {
     }
 }
 
-function updateBtypeHint(val) {
-  const hints = {
-    'Service':       'Service businesses: consulting firms, repair shops, salons. Accounts: Service Revenue, Professional Fees.',
-    'Merchandising': 'Buy-and-sell businesses. Accounts: Merchandise Inventory, Purchases, Sales, COGS.',
-    'Manufacturing': 'Converts raw materials to finished products. Accounts: Raw Materials, WIP, Finished Goods, Factory Overhead.',
-  };
-  document.getElementById('btypeHint').textContent = hints[val] || '';
-}
 </script>
 
 <?php require_once '../includes/footer.php'; ?>
