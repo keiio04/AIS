@@ -20,7 +20,7 @@ $registerUrl = $isLoggedIn
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>TALA-AIS – Accounting Simulation System</title>
 <meta name="description" content="TALA-AIS: Smart, automated accounting information system for Laguna State Polytechnic University. Setup accounts, record specialized journals, and generate instant financial statements.">
 
@@ -35,12 +35,13 @@ $registerUrl = $isLoggedIn
 <style>
 /* ============================================================
    DESIGN TOKENS & RESET — DARK ROYAL / ELECTRIC BLUE THEME
-   (Matching Reference Design)
+   (Optimized for iOS, iPadOS, macOS, Android & Windows)
    ============================================================ */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 :root {
@@ -65,10 +66,12 @@ $registerUrl = $isLoggedIn
 
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background-color: var(--bg-deep);
   background-image: 
     radial-gradient(circle at 50% 0%, rgba(30, 58, 138, 0.45) 0%, transparent 60%),
@@ -78,8 +81,11 @@ body {
   color: var(--text-white);
   line-height: 1.6;
   min-height: 100vh;
+  min-height: -webkit-fill-available;
   overflow-x: hidden;
   position: relative;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Ambient Radial Glow Overlays */
@@ -89,6 +95,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   width: 900px;
+  max-width: 100vw;
   height: 500px;
   background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.45) 0%, rgba(6, 10, 18, 0) 70%);
   pointer-events: none;
@@ -131,7 +138,7 @@ body {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 1.5rem;
+  padding: 0 max(1.5rem, env(safe-area-inset-right)) 0 max(1.5rem, env(safe-area-inset-left));
   position: relative;
   z-index: 2;
 }
@@ -152,6 +159,7 @@ body {
   align-items: center;
   gap: 0.85rem;
   text-decoration: none;
+  touch-action: manipulation;
 }
 
 .brand-icon {
@@ -166,6 +174,8 @@ body {
   color: #ffffff;
   flex-shrink: 0;
   animation: starFloat 3.5s ease-in-out infinite, starGlow 2.5s ease-in-out infinite alternate;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 .brand-icon svg {
@@ -194,7 +204,7 @@ body {
 }
 
 .brand-name {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Outfit', -apple-system, sans-serif;
   font-size: 1.35rem;
   font-weight: 800;
   color: #ffffff;
@@ -223,6 +233,7 @@ body {
   font-weight: 600;
   text-decoration: none;
   transition: color 0.2s;
+  touch-action: manipulation;
 }
 
 .nav-link:hover {
@@ -251,7 +262,10 @@ body {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   border: none;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  touch-action: manipulation;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .btn-pill-blue {
@@ -260,29 +274,25 @@ body {
   box-shadow: 0 4px 20px rgba(0, 112, 243, 0.45);
 }
 
-.btn-pill-blue:hover {
+.btn-pill-blue:hover, .btn-pill-blue:active {
   background: linear-gradient(135deg, #1a82ff, #0060e6);
   box-shadow: 0 8px 30px rgba(0, 112, 243, 0.7);
   transform: translateY(-2px);
 }
 
 .btn-pill-dark {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
 
-.btn-pill-dark:hover {
+.btn-pill-dark:hover, .btn-pill-dark:active {
   background: rgba(30, 41, 59, 0.95);
   border-color: rgba(96, 165, 250, 0.5);
   color: #ffffff;
   transform: translateY(-2px);
-}
-
-.hero-signin-mobile {
-  display: none !important;
 }
 
 .btn-pill-sm {
@@ -334,6 +344,7 @@ body {
   border-radius: 9999px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .badge-thumb-icon {
@@ -350,7 +361,7 @@ body {
 
 /* Big Hero Heading - Modern High-End Typography */
 .hero-heading {
-  font-family: 'Plus Jakarta Sans', 'Outfit', sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Outfit', -apple-system, sans-serif;
   font-size: clamp(2.35rem, 5.2vw, 4.15rem);
   font-weight: 800;
   line-height: 1.16;
@@ -375,7 +386,7 @@ body {
   filter: drop-shadow(0 4px 24px rgba(37, 99, 235, 0.7));
 }
 
-/* Embedded Circular Chips in Title (Matching Reference) */
+/* Embedded Circular Chips in Title */
 .title-chip {
   display: inline-flex;
   align-items: center;
@@ -410,7 +421,7 @@ body {
 }
 
 .hero-subtext {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', -apple-system, sans-serif;
   font-size: clamp(0.95rem, 1.8vw, 1.08rem);
   font-weight: 400;
   color: #cbd5e1;
@@ -465,6 +476,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 .feature-card:hover {
@@ -484,10 +497,11 @@ body {
   margin-bottom: 0.85rem;
   transform: scale(0.85);
   transform-origin: center center;
+  -webkit-transform-origin: center center;
 }
 
 /* ───────────────────────────────────────────
-   3D Pure-CSS Illustrations (Matching Reference)
+   3D Pure-CSS Illustrations (Hardware Accelerated)
    ─────────────────────────────────────────── */
 
 /* 1. CREDIT CARD & FLOATING COINS (Step 01 - Trusted Setup) */
@@ -496,6 +510,9 @@ body {
   width: 240px;
   height: 160px;
   perspective: 800px;
+  -webkit-perspective: 800px;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
 }
 
 .bank-card-3d {
@@ -508,13 +525,17 @@ body {
   border-radius: 16px;
   padding: 1rem;
   transform: rotateX(25deg) rotateY(-18deg) rotateZ(6deg);
+  -webkit-transform: rotateX(25deg) rotateY(-18deg) rotateZ(6deg);
   box-shadow: -15px 25px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(77, 126, 212, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.4);
   transition: transform 0.4s ease;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .feature-card:hover .bank-card-3d {
   transform: rotateX(15deg) rotateY(-10deg) rotateZ(3deg) translateY(-8px);
+  -webkit-transform: rotateX(15deg) rotateY(-10deg) rotateZ(3deg) translateY(-8px);
 }
 
 .chip-smart {
@@ -542,12 +563,15 @@ body {
   font-weight: 800;
   font-size: 1.2rem;
   transition: transform 0.4s ease;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .coin-top {
   top: -15px;
   left: 20px;
   transform: rotateX(25deg) rotateY(-15deg);
+  -webkit-transform: rotateX(25deg) rotateY(-15deg);
   animation: coinFloat 3s ease-in-out infinite;
 }
 
@@ -559,6 +583,7 @@ body {
   background: radial-gradient(circle at 35% 35%, #86efac 0%, #22c55e 60%, #15803d 100%);
   border-color: #4ade80;
   transform: rotateX(35deg) rotateY(-15deg);
+  -webkit-transform: rotateX(35deg) rotateY(-15deg);
 }
 
 @keyframes coinFloat {
@@ -572,6 +597,9 @@ body {
   width: 240px;
   height: 170px;
   perspective: 800px;
+  -webkit-perspective: 800px;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
 }
 
 .vault-body {
@@ -596,6 +624,7 @@ body {
   border-radius: 16px 16px 8px 8px;
   border: 3px solid #ffffff;
   transform: rotateX(-40deg);
+  -webkit-transform: rotateX(-40deg);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
 }
 
@@ -609,6 +638,7 @@ body {
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.6);
   transform: rotate(-15deg) rotateY(10deg);
+  -webkit-transform: rotate(-15deg) rotateY(10deg);
   box-shadow: 0 10px 25px rgba(37, 99, 235, 0.4);
   padding: 0.65rem;
   transition: transform 0.4s ease;
@@ -616,6 +646,7 @@ body {
 
 .feature-card:hover .vault-card-emerging {
   transform: rotate(-12deg) translateY(-14px) scale(1.05);
+  -webkit-transform: rotate(-12deg) translateY(-14px) scale(1.05);
 }
 
 .floating-green-coin {
@@ -639,6 +670,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  perspective: 800px;
+  -webkit-perspective: 800px;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
 }
 
 .ledger-book-3d {
@@ -649,6 +684,7 @@ body {
   border: 2px solid rgba(255, 255, 255, 0.3);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 25px rgba(37, 99, 235, 0.35);
   transform: rotateX(20deg) rotateY(-10deg);
+  -webkit-transform: rotateX(20deg) rotateY(-10deg);
   padding: 1rem;
   display: flex;
   flex-direction: column;
@@ -681,6 +717,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  perspective: 800px;
+  -webkit-perspective: 800px;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
 }
 
 .statement-doc-sheet {
@@ -691,6 +731,7 @@ body {
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
   padding: 0.75rem 1rem;
   transform: rotateX(15deg) rotateY(10deg);
+  -webkit-transform: rotateX(15deg) rotateY(10deg);
   color: #0f172a;
   text-align: left;
 }
@@ -713,7 +754,7 @@ body {
 
 /* Card Content Typography */
 .feature-card-title {
-  font-family: 'Plus Jakarta Sans', 'Outfit', sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Outfit', -apple-system, sans-serif;
   font-size: 1.28rem;
   font-weight: 700;
   color: #ffffff;
@@ -735,33 +776,6 @@ body {
   letter-spacing: 0.08em;
   color: #60a5fa;
   margin-bottom: 0.25rem;
-}
-
-/* Carousel Control Tabs (Allows viewing Step 1/2 or Step 3/4) */
-.steps-nav-tabs {
-  display: flex;
-  justify-content: center;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
-.step-tab-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #cbd5e1;
-  padding: 0.5rem 1.25rem;
-  border-radius: 99px;
-  font-size: 0.825rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.step-tab-btn.active, .step-tab-btn:hover {
-  background: #2563eb;
-  color: #ffffff;
-  border-color: #3b82f6;
-  box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
 }
 
 /* ============================================================
@@ -787,7 +801,7 @@ body {
 }
 
 .section-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Outfit', -apple-system, sans-serif;
   font-size: clamp(2rem, 4vw, 2.75rem);
   font-weight: 800;
   color: #ffffff;
@@ -796,7 +810,7 @@ body {
 
 .features-grid-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1.25rem;
 }
 
@@ -806,6 +820,8 @@ body {
   border-radius: 20px;
   padding: 1.75rem 1.5rem;
   transition: all 0.2s ease;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .feature-box:hover {
@@ -856,10 +872,12 @@ body {
   position: relative;
   overflow: hidden;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(37, 99, 235, 0.3);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .cta-box h2 {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Outfit', -apple-system, sans-serif;
   font-size: clamp(2rem, 4.5vw, 3rem);
   font-weight: 800;
   color: #ffffff;
@@ -886,6 +904,7 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 0.85rem;
   color: #64748b;
+  padding-bottom: max(2.5rem, env(safe-area-inset-bottom));
 }
 
 .footer-links {
@@ -905,21 +924,58 @@ body {
 }
 
 /* ============================================================
-   RESPONSIVE DESIGN (Flawless Mobile, Tablet & Desktop)
+   RESPONSIVE DESIGN (iPad, Tablets, iOS & Mobile)
    ============================================================ */
-@media (max-width: 992px) {
-  .cards-grid {
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
+
+/* ─── IPAD & TABLET (768px - 1024px, iPad Mini, iPad Air, iPad Pro) ─── */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .container {
+    padding: 0 1.5rem;
   }
-  .features-grid-row {
-    grid-template-columns: repeat(2, 1fr);
+  .navbar {
+    padding: 1.25rem 0;
   }
   .nav-links {
-    display: none;
+    gap: 1.25rem;
+  }
+  .nav-link {
+    font-size: 0.85rem;
+  }
+  .hero {
+    padding: 3.5rem 0 2.5rem;
+  }
+  .hero-heading {
+    font-size: 2.85rem;
+    line-height: 1.18;
+  }
+  .cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+    max-width: 100%;
+  }
+  .card-visual-stage {
+    height: 140px;
+    transform: scale(0.78);
+  }
+  .feature-card {
+    padding: 1.25rem 1.1rem 1.4rem;
+  }
+  .feature-card-title {
+    font-size: 1.15rem;
+  }
+  .feature-card-desc {
+    font-size: 0.82rem;
+  }
+  .features-grid-row {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+  .cta-box {
+    padding: 3rem 1.5rem;
   }
 }
 
+/* ─── MOBILE & IPHONES / SMALL SCREENS (<= 640px) ─── */
 @media (max-width: 640px) {
   .container {
     padding: 0 1rem;
@@ -928,6 +984,9 @@ body {
   /* Compact Clean Mobile Navbar */
   .navbar {
     padding: 0.85rem 0;
+  }
+  .nav-links {
+    display: none;
   }
   .brand {
     gap: 0.6rem;
@@ -1013,13 +1072,10 @@ body {
   }
   .hero-actions .btn-pill {
     flex: 1;
-    min-width: 140px;
+    min-width: 135px;
     padding: 0.75rem 1rem;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     justify-content: center;
-  }
-  .hero-signin-mobile {
-    display: inline-flex !important;
   }
 
   /* COMPACT & ORGANIZED MOBILE 3D GUIDE CARDS */
@@ -1039,9 +1095,9 @@ body {
     border-radius: 16px;
   }
   .card-visual-stage {
-    height: 85px;
+    height: 90px;
     margin-bottom: 0.2rem;
-    transform: scale(0.52);
+    transform: scale(0.55);
     transform-origin: center center;
   }
   .card-step-num {
@@ -1160,7 +1216,7 @@ body {
       <a href="<?= $registerUrl ?>" class="btn-pill btn-pill-blue btn-pill-lg">
         <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i> Create Account
       </a>
-      <a href="<?= $targetUrl ?>" class="btn-pill btn-pill-dark btn-pill-lg hero-signin-mobile">
+      <a href="<?= $targetUrl ?>" class="btn-pill btn-pill-dark btn-pill-lg">
         <i data-lucide="log-in" style="width: 18px; height: 18px;"></i> Sign In
       </a>
     </div>
