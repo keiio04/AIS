@@ -684,11 +684,27 @@ select.auth-input option {
   100% { transform: scale(1); opacity: 1; }
 }
 
-/* ─── Password strength ─── */
-.strength-wrap  { margin-top: 0.4rem; display: flex; align-items: center; gap: 0.5rem; }
-.strength-bar   { flex: 1; height: 5px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; overflow: hidden; }
-.strength-fill  { height: 100%; border-radius: 4px; transition: width .3s, background .3s; }
-.strength-label { font-size: 0.73rem; font-weight: 600; color: #94a3b8; min-width: 40px; }
+/* ─── Password strength criteria text ─── */
+.pw-criteria-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1.1rem;
+  margin-top: 0.55rem;
+  padding-left: 0.15rem;
+}
+
+.pw-criterion {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 500;
+  transition: color 0.25s ease, font-weight 0.25s ease;
+  user-select: none;
+}
+
+.pw-criterion.valid {
+  color: #10b981;
+  font-weight: 600;
+}
 
 /* ─── Responsive ─── */
 @media (max-width: 900px) {
@@ -932,9 +948,11 @@ select.auth-input option {
               <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
-          <div class="strength-wrap">
-            <div class="strength-bar"><div class="strength-fill" id="sf" style="width:0%"></div></div>
-            <span class="strength-label" id="sl"></span>
+          <div class="pw-criteria-wrap" id="reg-pw-criteria">
+            <span class="pw-criterion" id="reg-crit-len">6 letters</span>
+            <span class="pw-criterion" id="reg-crit-cap">Capital</span>
+            <span class="pw-criterion" id="reg-crit-num">numbers</span>
+            <span class="pw-criterion" id="reg-crit-sym">special</span>
           </div>
         </div>
 
@@ -1145,18 +1163,25 @@ function togglePw(id, btn) {
 }
 
 function strengthCheck(pw) {
-  let sc = 0;
-  if (pw.length >= 6)           sc++;
-  if (pw.length >= 10)          sc++;
-  if (/[A-Z]/.test(pw))        sc++;
-  if (/[0-9]/.test(pw))        sc++;
-  if (/[^a-zA-Z0-9]/.test(pw)) sc++;
-  const f = document.getElementById('sf');
-  const l = document.getElementById('sl');
-  f.style.width = Math.round((sc / 5) * 100) + '%';
-  if (sc <= 1)      { f.style.background = '#ef4444'; l.textContent = 'Weak';   l.style.color = '#ef4444'; }
-  else if (sc <= 3) { f.style.background = '#f59e0b'; l.textContent = 'Fair';   l.style.color = '#f59e0b'; }
-  else              { f.style.background = '#10b981'; l.textContent = 'Strong'; l.style.color = '#10b981'; }
+  const hasLen = pw.length >= 6;
+  const hasCap = /[A-Z]/.test(pw);
+  const hasNum = /[0-9]/.test(pw);
+  const hasSym = /[^a-zA-Z0-9]/.test(pw);
+
+  setRegCrit('reg-crit-len', hasLen);
+  setRegCrit('reg-crit-cap', hasCap);
+  setRegCrit('reg-crit-num', hasNum);
+  setRegCrit('reg-crit-sym', hasSym);
+}
+
+function setRegCrit(id, valid) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (valid) {
+    el.classList.add('valid');
+  } else {
+    el.classList.remove('valid');
+  }
 }
 </script>
 </body>

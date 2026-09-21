@@ -649,28 +649,26 @@ body {
 
 .pw-toggle:hover { color: #93c5fd; }
 
-/* Password Strength Meter */
-.strength-bar {
-  height: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 9999px;
-  overflow: hidden;
-  margin-top: 0.5rem;
-}
-
-.strength-fill {
-  height: 100%;
-  width: 0%;
-  transition: all 0.3s ease;
-  border-radius: 9999px;
-}
-
-.strength-info {
+/* Password Strength Criteria Text */
+.pw-criteria-wrap {
   display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-top: 0.35rem;
+  flex-wrap: wrap;
+  gap: 0.45rem 1.1rem;
+  margin-top: 0.55rem;
+  padding-left: 0.15rem;
+}
+
+.pw-criterion {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 500;
+  transition: color 0.25s ease, font-weight 0.25s ease;
+  user-select: none;
+}
+
+.pw-criterion.valid {
+  color: #10b981;
+  font-weight: 600;
 }
 
 /* Submit Button */
@@ -904,12 +902,11 @@ body {
             <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
         </div>
-        <div class="strength-bar">
-          <div class="strength-fill" id="strength-fill"></div>
-        </div>
-        <div class="strength-info">
-          <span>Password strength</span>
-          <span id="strength-text" style="font-weight: 600;">—</span>
+        <div class="pw-criteria-wrap" id="pw-criteria">
+          <span class="pw-criterion" id="crit-len">6 letters</span>
+          <span class="pw-criterion" id="crit-cap">Capital</span>
+          <span class="pw-criterion" id="crit-num">numbers</span>
+          <span class="pw-criterion" id="crit-sym">special</span>
         </div>
       </div>
 
@@ -953,31 +950,24 @@ function togglePasswordVisibility(fieldId, btn) {
 }
 
 function checkStrength(pw) {
-  let score = 0;
-  if (pw.length >= 6)           score++;
-  if (pw.length >= 10)          score++;
-  if (/[A-Z]/.test(pw))        score++;
-  if (/[0-9]/.test(pw))        score++;
-  if (/[^a-zA-Z0-9]/.test(pw)) score++;
+  const hasLen = pw.length >= 6;
+  const hasCap = /[A-Z]/.test(pw);
+  const hasNum = /[0-9]/.test(pw);
+  const hasSym = /[^a-zA-Z0-9]/.test(pw);
 
-  const fill = document.getElementById('strength-fill');
-  const text = document.getElementById('strength-text');
-  if (!fill || !text) return;
+  setCrit('crit-len', hasLen);
+  setCrit('crit-cap', hasCap);
+  setCrit('crit-num', hasNum);
+  setCrit('crit-sym', hasSym);
+}
 
-  fill.style.width = Math.round((score / 5) * 100) + '%';
-
-  if (score <= 1) {
-    fill.style.background = '#ef4444';
-    text.textContent = 'Weak';
-    text.style.color = '#ef4444';
-  } else if (score <= 3) {
-    fill.style.background = '#f59e0b';
-    text.textContent = 'Fair';
-    text.style.color = '#f59e0b';
+function setCrit(id, valid) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (valid) {
+    el.classList.add('valid');
   } else {
-    fill.style.background = '#10b981';
-    text.textContent = 'Strong';
-    text.style.color = '#10b981';
+    el.classList.remove('valid');
   }
 }
 
