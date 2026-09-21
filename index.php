@@ -393,14 +393,20 @@ body {
 }
 
 .title-chip.gem {
-  background: radial-gradient(circle at 35% 35%, #60a5fa 0%, #2563eb 60%, #1e3a8a 100%);
-  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.7), inset 0 -3px 6px rgba(0, 0, 0, 0.4);
-  animation-delay: 1.75s;
+  background: radial-gradient(circle at 35% 35%, #38bdf8 0%, #2563eb 55%, #1d4ed8 100%);
+  box-shadow: 0 8px 26px rgba(0, 112, 243, 0.75), inset 0 2px 5px rgba(255, 255, 255, 0.85), inset 0 -3px 6px rgba(0, 0, 0, 0.4);
+  animation: starChipGlow 3.5s ease-in-out infinite;
 }
 
-@keyframes chipFloat {
-  0%, 100% { transform: translateY(-4px) rotate(0deg); }
-  50% { transform: translateY(-9px) rotate(5deg); }
+@keyframes starChipGlow {
+  0%, 100% {
+    transform: translateY(-4px) scale(1) rotate(0deg);
+    box-shadow: 0 8px 24px rgba(0, 112, 243, 0.65), inset 0 2px 5px rgba(255, 255, 255, 0.85);
+  }
+  50% {
+    transform: translateY(-9px) scale(1.06) rotate(4deg);
+    box-shadow: 0 14px 32px rgba(56, 189, 248, 0.85), 0 0 20px rgba(59, 130, 246, 0.6), inset 0 2px 5px rgba(255, 255, 255, 0.85);
+  }
 }
 
 .hero-subtext {
@@ -1141,7 +1147,7 @@ body {
     <!-- Big Headline with Gradient & Refined Typography -->
     <h1 class="hero-heading">
       <span class="hero-title-main">Learn Accounting</span><br>
-      <span class="hero-title-highlight">Through Simulation</span> <span class="title-chip gem">🌍</span>
+      <span class="hero-title-highlight">Through Simulation</span>
     </h1>
 
     <!-- Subtitle -->
