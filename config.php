@@ -21,7 +21,7 @@ $default_base = $is_php_server || $is_railway ? '/' : '/AIS_PHP/';
 
 define('BASE_URL', getenv('APP_BASE_URL') ?: $default_base);
 define('APP_NAME', 'TALA-AIS');
-define('GOOGLE_CLIENT_ID', getenv('GOOGLE_CLIENT_ID') ?: '');
+define('GOOGLE_CLIENT_ID', getenv('GOOGLE_CLIENT_ID') ?: '120548778464-ubkm83rg43upp89pksnspr1ccf3lfr1k.apps.googleusercontent.com');
 
 // Load local environment config if present (ignored by git)
 if (file_exists(__DIR__ . '/config.local.php')) {

@@ -975,7 +975,15 @@ select.auth-input option {
 
 </div><!-- /page-wrap -->
 
-<!-- Google Quick Login Modal -->
+<!-- Hidden Google Auth Form -->
+<form id="google-auth-form" method="POST" style="display:none;">
+  <input type="hidden" name="action" value="google_login">
+  <input type="hidden" name="credential" id="google-credential">
+  <input type="hidden" name="google_email" id="google-email-input">
+  <input type="hidden" name="google_name" id="google-name-input">
+</form>
+
+<!-- Google Quick Login Modal (Fallback) -->
 <div class="g-modal-backdrop" id="google-modal" onclick="closeGoogleModal(event)">
   <div class="g-modal-card" onclick="event.stopPropagation()">
     <div style="width: 48px; height: 48px; background: #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
@@ -1001,21 +1009,54 @@ select.auth-input option {
   </div>
 </div>
 
-<?php if (defined('GOOGLE_CLIENT_ID') && GOOGLE_CLIENT_ID): ?>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<?php endif; ?>
 
 <script>
-const GOOGLE_CLIENT_ID = "<?= defined('GOOGLE_CLIENT_ID') ? GOOGLE_CLIENT_ID : '' ?>";
+const GOOGLE_CLIENT_ID = "<?= defined('GOOGLE_CLIENT_ID') ? GOOGLE_CLIENT_ID : '120548778464-ubkm83rg43upp89pksnspr1ccf3lfr1k.apps.googleusercontent.com' ?>";
 
-window.onload = function() {
-  if (GOOGLE_CLIENT_ID && typeof google !== 'undefined' && google.accounts) {
+let googleTokenClient = null;
+
+function initGoogleAuth() {
+  if (typeof google !== 'undefined' && google.accounts) {
+    // 1. Initialize Google One Tap / Credentials
     google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
-      callback: handleGoogleCredentialResponse
+      callback: handleGoogleCredentialResponse,
+      auto_select: false
     });
+
+    // 2. Initialize Google OAuth2 Token Client for full popup login & password verification
+    if (google.accounts.oauth2) {
+      googleTokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: 'email profile openid',
+        callback: async (tokenResponse) => {
+          if (tokenResponse && tokenResponse.access_token) {
+            try {
+              const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+              });
+              const profile = await res.json();
+              if (profile && profile.email) {
+                document.getElementById('google-email-input').value = profile.email;
+                document.getElementById('google-name-input').value = profile.name || profile.given_name || profile.email.split('@')[0];
+                document.getElementById('google-auth-form').submit();
+                return;
+              }
+            } catch (err) {
+              console.error('Google profile fetch error:', err);
+            }
+          }
+        }
+      });
+    }
   }
-};
+}
+
+window.addEventListener('load', () => {
+  // Give external GSI script 150ms to load if async
+  setTimeout(initGoogleAuth, 150);
+});
 
 function handleGoogleCredentialResponse(response) {
   if (response && response.credential) {
@@ -1025,7 +1066,14 @@ function handleGoogleCredentialResponse(response) {
 }
 
 function handleGoogleSignIn() {
-  if (GOOGLE_CLIENT_ID && typeof google !== 'undefined' && google.accounts) {
+  if (!googleTokenClient && typeof google !== 'undefined' && google.accounts) {
+    initGoogleAuth();
+  }
+
+  // If OAuth2 Token Client is ready, launch official Google popup window
+  if (googleTokenClient) {
+    googleTokenClient.requestAccessToken({ prompt: 'select_account' });
+  } else if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
     google.accounts.id.prompt((notification) => {
       if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
         openGoogleModal();
