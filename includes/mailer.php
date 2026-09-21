@@ -87,7 +87,7 @@ function send_brevo_api_mail(string $apiKey, string $toEmail, string $toName, st
  */
 function send_smtp_mail(string $toEmail, string $toName, string $subject, string $htmlBody, ?string $plainBody = null): array {
     // Check if Brevo API Key is configured
-    $apiKey = defined('BREVO_API_KEY') ? BREVO_API_KEY : getenv('BREVO_API_KEY');
+    $apiKey = (defined('BREVO_API_KEY') && BREVO_API_KEY) ? BREVO_API_KEY : (getenv('BREVO_API_KEY') ?: getenv('BREVO_APT_KEY'));
     if (empty($apiKey)) {
         $smtpPass = defined('SMTP_PASS') ? SMTP_PASS : getenv('SMTP_PASS');
         if (!empty($smtpPass) && str_starts_with($smtpPass, 'xkeysib-')) {

@@ -249,7 +249,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 body {
-  background-color: var(--bg-deep);
+  background-color: #060a12;
   color: #f8fafc;
   font-family: var(--font-body);
   min-height: 100vh;
@@ -261,28 +261,67 @@ body {
   padding: 1.5rem;
 }
 
+/* Hero Background Layer matching login page */
+.hero-bg-layer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(180deg, rgba(6, 10, 18, 0.55) 0%, rgba(7, 11, 20, 0.45) 45%, rgba(11, 19, 41, 0.75) 85%, #060a12 100%),
+    radial-gradient(circle at 50% 40%, rgba(0, 112, 243, 0.3) 0%, rgba(6, 10, 18, 0.55) 75%),
+    url('<?= BASE_URL ?>assets/images/hero-accounting-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.72;
+}
+
+/* Subtle Grid Matrix Pattern */
+.bg-grid-overlay {
+  position: fixed;
+  inset: 0;
+  background-image: 
+    linear-gradient(to right, rgba(59, 130, 246, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(59, 130, 246, 0.08) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: radial-gradient(circle at center, black 40%, transparent 85%);
+  -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 85%);
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* Background Glowing Elements */
 .ambient-glow-top {
   position: fixed;
-  top: -120px;
+  top: -140px;
   left: 50%;
   transform: translateX(-50%);
-  width: 900px;
-  height: 500px;
-  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.45) 0%, rgba(6, 10, 18, 0) 70%);
+  width: 950px;
+  height: 520px;
+  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.5) 0%, rgba(0, 210, 255, 0.18) 40%, rgba(6, 10, 18, 0) 70%);
   pointer-events: none;
-  z-index: 0;
+  z-index: 1;
+  animation: pulseGlow 7s ease-in-out infinite alternate;
 }
 
 .ambient-glow-bottom {
   position: fixed;
-  bottom: 0;
+  bottom: -60px;
   left: 0;
   right: 0;
-  height: 400px;
-  background: radial-gradient(ellipse at 50% 100%, rgba(37, 99, 235, 0.35) 0%, transparent 70%);
+  height: 450px;
+  background: radial-gradient(ellipse at 50% 100%, rgba(37, 99, 235, 0.4) 0%, rgba(121, 40, 202, 0.18) 45%, transparent 70%);
   pointer-events: none;
-  z-index: 0;
+  z-index: 1;
+}
+
+@keyframes pulseGlow {
+  0% { opacity: 0.8; transform: translateX(-50%) scale(1); }
+  100% { opacity: 1; transform: translateX(-50%) scale(1.05); }
 }
 
 /* Container */
@@ -298,37 +337,85 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
+  gap: 0.85rem;
   margin-bottom: 2rem;
   text-decoration: none;
+  transition: transform 0.2s ease;
 }
 
-.auth-brand img {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  box-shadow: 0 0 15px rgba(0, 112, 243, 0.5);
+.auth-brand:hover {
+  transform: translateY(-2px);
 }
 
-.auth-brand-text {
+.brand-badge-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 50%, #1d4ed8 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 0 25px rgba(0, 112, 243, 0.55);
+  animation: starFloat 4s ease-in-out infinite;
+}
+
+@keyframes starFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.auth-brand-text-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-brand-name {
   font-family: var(--font-heading);
-  font-size: 1.45rem;
+  font-size: 1.55rem;
   font-weight: 800;
-  letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #ffffff 0%, #93c5fd 100%);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  background: linear-gradient(135deg, #ffffff 40%, #93c5fd 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
+.auth-brand-name .brand-sub {
+  color: #38bdf8;
+  -webkit-text-fill-color: #38bdf8;
+}
+
+.brand-tagline {
+  font-size: 0.72rem;
+  color: #60a5fa;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 /* Auth Card */
 .auth-card {
-  background: var(--bg-card);
-  padding: 2.25rem 2rem;
+  background: rgba(13, 22, 45, 0.82);
+  padding: 2.25rem 2.25rem 2rem;
   border-radius: 24px;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 35px rgba(37, 99, 235, 0.18);
-  border: 1px solid var(--border-card);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 30px 70px -15px rgba(0, 0, 0, 0.75), 0 0 40px rgba(37, 99, 235, 0.18);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  border-top: 1px solid rgba(147, 197, 253, 0.4);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 15%;
+  right: 15%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.8), transparent);
 }
 
 /* Steps Indicator */
@@ -336,19 +423,28 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 2rem;
+  margin-bottom: 2.25rem;
   position: relative;
 }
 
-.step-indicator::before {
-  content: '';
+.step-indicator-track {
   position: absolute;
-  top: 15px;
-  left: 30px;
-  right: 30px;
+  top: 16px;
+  left: 32px;
+  right: 32px;
   height: 2px;
   background: rgba(255, 255, 255, 0.1);
   z-index: 0;
+}
+
+.step-indicator-fill {
+  position: absolute;
+  top: 16px;
+  left: 32px;
+  height: 2px;
+  background: linear-gradient(90deg, #10b981, #0070f3);
+  z-index: 0;
+  transition: width 0.4s ease;
 }
 
 .step-item {
@@ -357,22 +453,22 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .step-circle {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: #0f172a;
-  border: 2px solid #334155;
-  color: #94a3b8;
+  background: #090e1a;
+  border: 2px solid #23334d;
+  color: #64748b;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.85rem;
   font-weight: 700;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .step-label {
@@ -380,18 +476,20 @@ body {
   color: #64748b;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  transition: color 0.3s ease;
 }
 
 .step-item.active .step-circle {
   background: #0070f3;
   border-color: #60a5fa;
   color: #ffffff;
-  box-shadow: 0 0 15px rgba(0, 112, 243, 0.6);
+  box-shadow: 0 0 20px rgba(0, 112, 243, 0.75);
+  transform: scale(1.08);
 }
 
 .step-item.active .step-label {
-  color: #60a5fa;
+  color: #93c5fd;
   font-weight: 700;
 }
 
@@ -399,6 +497,7 @@ body {
   background: #10b981;
   border-color: #34d399;
   color: #ffffff;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
 }
 
 .step-item.completed .step-label {
@@ -648,14 +747,23 @@ body {
 </head>
 <body>
 
+<div class="hero-bg-layer"></div>
+<div class="bg-grid-overlay"></div>
 <div class="ambient-glow-top"></div>
 <div class="ambient-glow-bottom"></div>
 
 <div class="auth-wrap">
   <!-- Brand Logo -->
   <a href="<?= BASE_URL ?>auth/login.php" class="auth-brand">
-    <img src="<?= BASE_URL ?>assets/images/logo.png" alt="TALA-AIS Logo" onerror="this.style.display='none'">
-    <span class="auth-brand-text">TALA-AIS</span>
+    <div class="brand-badge-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2L14.4 8.6L21.5 9.2L16 13.8L17.7 20.8L12 17.2L6.3 20.8L8 13.8L2.5 9.2L9.6 8.6L12 2Z"/>
+      </svg>
+    </div>
+    <div class="auth-brand-text-wrap">
+      <div class="auth-brand-name">TALA<span class="brand-dash">-</span><span class="brand-sub">AIS</span></div>
+      <div class="brand-tagline">Secure Authentication</div>
+    </div>
   </a>
 
   <!-- Card -->
@@ -663,6 +771,9 @@ body {
     
     <!-- Step Progress Indicator -->
     <div class="step-indicator">
+      <div class="step-indicator-track"></div>
+      <div class="step-indicator-fill" style="width: <?= $step === 1 ? '0%' : ($step === 2 ? '50%' : '100%') ?>;"></div>
+
       <div class="step-item <?= $step === 1 ? 'active' : ($step > 1 ? 'completed' : '') ?>">
         <div class="step-circle"><?= $step > 1 ? '✓' : '1' ?></div>
         <span class="step-label">Email</span>

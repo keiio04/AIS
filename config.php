@@ -31,7 +31,7 @@ if (file_exists(__DIR__ . '/config.local.php')) {
 // ============================================================
 // Brevo REST API & SMTP Email Configuration
 // ============================================================
-define('BREVO_API_KEY', getenv('BREVO_API_KEY') ?: '');
+define('BREVO_API_KEY', getenv('BREVO_API_KEY') ?: (getenv('BREVO_APT_KEY') ?: ''));
 define('SMTP_HOST', getenv('SMTP_HOST') ?: 'smtp-relay.brevo.com');
 define('SMTP_PORT', getenv('SMTP_PORT') ? (int)getenv('SMTP_PORT') : 587);
 define('SMTP_USER', getenv('SMTP_USER') ?: '');
