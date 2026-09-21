@@ -1191,7 +1191,6 @@ body {
     <ul class="nav-links">
       <li><a href="#workflow" class="nav-link">Workflow Guide</a></li>
       <li><a href="#features" class="nav-link">Key Features</a></li>
-      <li><a href="<?= BASE_URL ?>auth/login.php" class="nav-link">Sign In</a></li>
     </ul>
   </header>
 
