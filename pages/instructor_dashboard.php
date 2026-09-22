@@ -178,7 +178,7 @@ require_once '../includes/header.php';
 <?php endif; ?>
 
 <!-- METRIC CARDS -->
-<div class="metric-cards-grid mb-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+<div class="metric-cards-grid mb-4">
     
     <div class="metric-card" style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem;">
         <div class="flex justify-between items-center mb-2">

@@ -314,7 +314,7 @@ h4 { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
 
 .metric-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
 
-.metric-card-header { display: flex; align-items: flex-start; justify-content: space-between; }
+.metric-card-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
 .metric-card-label { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
 .metric-card-icon { 
   width: 40px; height: 40px;
@@ -665,7 +665,7 @@ h4 { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
 
 /* When sidebar is hidden — expand grids to use full available space */
 body.sidebar-hidden #dashboard-widgets {
-  grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)) !important;
+  grid-template-columns: repeat(2, 1fr) !important;
 }
 
 body.sidebar-hidden .metric-cards-grid {
@@ -1039,8 +1039,8 @@ body.sidebar-hidden .metric-cards-grid {
 
   /* Metric cards responsive */
   .metric-cards-grid {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
-    gap: 0.75rem !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.875rem !important;
   }
 
   .metric-card {
@@ -1112,9 +1112,10 @@ body.sidebar-hidden .metric-cards-grid {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 600px) {
   .metric-cards-grid {
     grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
   }
 
   .page-title {
@@ -1369,10 +1370,31 @@ body.sidebar-hidden .metric-cards-grid {
    DASHBOARD WIDGETS — Responsive, Draggable, Resizable
    ============================================================ */
 
+/* Metric cards grid */
+.metric-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1200px) {
+  .metric-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .metric-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+}
+
 /* Widget grid container */
 #dashboard-widgets {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 1.25rem;
   margin-bottom: 1.25rem;
 }
@@ -1508,9 +1530,9 @@ body.sidebar-hidden .metric-cards-grid {
 }
 
 /* ── Responsive breakpoints ─────────────────────────────────── */
-@media (max-width: 860px) {
+@media (max-width: 992px) {
   #dashboard-widgets {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
   }
   
   .widget {

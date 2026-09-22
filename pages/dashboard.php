@@ -350,7 +350,7 @@ $userName = htmlspecialchars($_SESSION['user_name'] ?? 'User');
      ============================================================ -->
 
 <!-- Metric Cards -->
-<div class="metric-cards-grid mb-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+<div class="metric-cards-grid mb-4">
     
     <div class="metric-card" style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem;">
         <div class="flex justify-between items-center mb-2">
@@ -663,7 +663,7 @@ $userName = htmlspecialchars($_SESSION['user_name'] ?? 'User');
      ============================================================ -->
 
 <!-- Metric Cards -->
-<div id="metric-cards-grid" class="metric-cards-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.75rem;">
+<div id="metric-cards-grid" class="metric-cards-grid mb-4">
     <?php
     $periods_map = [
         'this_month' => 'This Month',
@@ -681,11 +681,11 @@ $userName = htmlspecialchars($_SESSION['user_name'] ?? 'User');
     ];
     foreach($metrics as $idx => $m): ?>
     <div class="metric-card" style="padding: 1.25rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); background: white; display: flex; flex-direction: column; gap: 0.75rem; position: relative;">
-        <div class="metric-card-header" style="display: flex; justify-content: space-between; align-items: center;">
-            <span class="metric-card-label" style="text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #64748b; letter-spacing: 0.05em;"><?= $m['label'] ?></span>
+        <div class="metric-card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <span class="metric-card-label" style="text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #64748b; letter-spacing: 0.05em; min-width: 0;"><?= $m['label'] ?></span>
             <?php if ($m['has_period']): ?>
-            <div style="position: relative;">
-                <button onclick="togglePeriodDropdown(<?= $idx ?>)" style="background: none; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #374151; font-weight: 500; padding: 3px 8px; white-space: nowrap;">
+            <div style="position: relative; flex-shrink: 0;">
+                <button onclick="togglePeriodDropdown(<?= $idx ?>)" style="background: none; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #374151; font-weight: 500; padding: 3px 8px; white-space: nowrap;">
                     <?= $m['sub'] ?> <i data-lucide="chevron-down" style="width:11px;height:11px;"></i>
                 </button>
                 <div id="period-dd-<?= $idx ?>" style="display:none; position:absolute; top: calc(100% + 4px); right: 0; z-index: 200; background: white; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); min-width: 150px; overflow: hidden;">
@@ -698,7 +698,7 @@ $userName = htmlspecialchars($_SESSION['user_name'] ?? 'User');
                 </div>
             </div>
             <?php else: ?>
-            <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 500;">As of today</span>
+            <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 500; flex-shrink: 0; white-space: nowrap;">As of today</span>
             <?php endif; ?>
         </div>
         <div class="metric-card-value" style="font-size: 1.75rem; font-weight: 700; color: #1e293b;"><?= fmt($m['val']) ?></div>
@@ -710,7 +710,7 @@ $userName = htmlspecialchars($_SESSION['user_name'] ?? 'User');
 <div id="widgetBackdrop" class="widget-backdrop" onclick="closeAllWidgets()"></div>
 
 <!-- Widgets Container -->
-<div id="dashboard-widgets" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
+<div id="dashboard-widgets">
     <!-- Chart 1 -->
     <div class="card widget" style="padding: 1.5rem; display: flex; flex-direction: column;">
         <div style="margin-bottom: 1rem;">
