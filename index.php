@@ -2409,16 +2409,7 @@ body {
                     <button class="scene-pill-btn" onclick="jumpToVideoScene(5)">6. Reports</button>
                   </div>
 
-                  <div class="flex items-center gap-2">
-                    <!-- Voice Narration Toggle -->
-                    <button id="btnVoiceToggle" onclick="toggleVoiceNarration()" class="btn-pill btn-pill-sm" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 0.72rem;" title="Toggle Voice Narration">
-                      <i data-lucide="volume-2" style="width: 13px; height: 13px;" id="voiceIcon"></i> <span id="voiceLabel">Voice: ON</span>
-                    </button>
-                    <button onclick="restartVideoPlayback()" class="btn-pill btn-pill-dark btn-pill-sm" title="Replay Video">
-                      <i data-lucide="rotate-ccw" style="width: 13px; height: 13px;"></i> Replay
-                    </button>
-                  </div>
-                </div>
+                </div> <!-- end video-bottom-buttons -->
 
               </div> <!-- end tala-video-controls -->
 
@@ -2902,8 +2893,15 @@ body {
       }
 
       if (videoCurrentTime >= videoTotalDuration) {
+        videoCurrentTime = videoTotalDuration;
+        updateVideoUI();
+        pauseVideoPlayback();
         videoCurrentTime = 0;
         videoCurrentScene = 0;
+        lastSpokenScene = -1;
+        const playTitle = document.querySelector('.play-overlay-title');
+        if (playTitle) playTitle.innerText = "Replay System Walkthrough";
+        return;
       }
 
       updateVideoUI();
