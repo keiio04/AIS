@@ -1501,7 +1501,7 @@ body {
 
 .tala-video-stage {
   position: relative;
-  min-height: 330px;
+  min-height: 285px;
   background: #0d1527;
   overflow: hidden;
   display: flex;
@@ -1524,7 +1524,7 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: opacity 0.3s ease, visibility 0.3s ease;
-  padding: 1.25rem;
+  padding: 1rem;
   text-align: center;
 }
 
@@ -1535,35 +1535,35 @@ body {
 }
 
 .play-overlay-btn {
-  width: 56px;
-  height: 56px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   background: linear-gradient(135deg, #0284c7, #2563eb);
   border: 2px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 0 0 25px rgba(56, 189, 248, 0.5), 0 8px 18px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.5), 0 6px 15px rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.6rem;
 }
 
 .video-play-overlay:hover .play-overlay-btn {
   transform: scale(1.1);
-  box-shadow: 0 0 35px rgba(56, 189, 248, 0.8), 0 10px 24px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 0 30px rgba(56, 189, 248, 0.8), 0 8px 20px rgba(0, 0, 0, 0.7);
 }
 
 .play-overlay-title {
   font-family: 'Outfit', sans-serif;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 700;
   color: #ffffff;
   letter-spacing: -0.01em;
 }
 
 .play-overlay-sub {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: #94a3b8;
   margin-top: 2px;
 }
@@ -1574,7 +1574,7 @@ body {
   transform: scale(0.98);
   transition: opacity 0.4s ease, transform 0.4s ease;
   width: 100%;
-  padding: 0.85rem 1.15rem;
+  padding: 0.65rem 0.9rem;
   box-sizing: border-box;
 }
 
@@ -2103,7 +2103,7 @@ body {
     <!-- ============================================================
          DRIBBLE-STYLE HERO DEVICE MOCKUP SHOWCASE
          ============================================================ -->
-    <div class="showcase-frame-wrapper" style="margin-top: 1.75rem; position: relative; max-width: 700px; margin-left: auto; margin-right: auto;">
+    <div class="showcase-frame-wrapper" style="margin-top: 1.25rem; position: relative; max-width: 580px; margin-left: auto; margin-right: auto;">
       
       <!-- Pure Standalone Video Player -->
       <div class="tala-video-player-container">
@@ -2125,7 +2125,7 @@ body {
                 <!-- Video Play Overlay (User Controlled) -->
                 <div class="video-play-overlay" id="videoPlayOverlay" onclick="startVideoPlayback()">
                   <div class="play-overlay-btn">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="#ffffff" stroke="none" style="margin-left: 3px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" stroke="none" style="margin-left: 2px;">
                       <polygon points="5 3 19 12 5 21 5 3"></polygon>
                     </svg>
                   </div>
@@ -2143,29 +2143,29 @@ body {
 
                 <!-- SCENE 1: AUTH / LOGIN -->
                 <div class="video-scene active" id="vScene-0">
-                  <div style="max-width: 360px; margin: 2rem auto; background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1.5rem; text-align: left;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                      <div style="width: 28px; height: 28px; background: #3b82f6; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 0.8rem;">★</div>
+                  <div style="max-width: 320px; margin: 0.5rem auto; background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 1rem; text-align: left;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.6rem;">
+                      <div style="width: 24px; height: 24px; background: #3b82f6; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 0.75rem;">★</div>
                       <div>
-                        <strong style="color: #fff; font-size: 0.95rem;">TALA-AIS Portal</strong>
-                        <div style="font-size: 0.7rem; color: #94a3b8;">Student Sign In</div>
+                        <strong style="color: #fff; font-size: 0.85rem;">TALA-AIS Portal</strong>
+                        <div style="font-size: 0.65rem; color: #94a3b8;">Student Sign In</div>
                       </div>
                     </div>
-                    <div style="margin-bottom: 0.75rem;">
-                      <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 3px;">Student Email</label>
-                      <div id="vInputEmail" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 0.45rem 0.75rem; font-size: 0.8rem; color: #fff; font-family: monospace;">student@lspu.edu.ph</div>
+                    <div style="margin-bottom: 0.5rem;">
+                      <label style="font-size: 0.68rem; color: #94a3b8; display: block; margin-bottom: 2px;">Student Email</label>
+                      <div id="vInputEmail" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; padding: 0.35rem 0.6rem; font-size: 0.75rem; color: #fff; font-family: monospace;">student@lspu.edu.ph</div>
                     </div>
-                    <div style="margin-bottom: 1rem;">
-                      <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 3px;">Password</label>
-                      <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 0.45rem 0.75rem; font-size: 0.8rem; color: #94a3b8; font-family: monospace;">••••••••••••</div>
+                    <div style="margin-bottom: 0.65rem;">
+                      <label style="font-size: 0.68rem; color: #94a3b8; display: block; margin-bottom: 2px;">Password</label>
+                      <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; padding: 0.35rem 0.6rem; font-size: 0.75rem; color: #94a3b8; font-family: monospace;">••••••••••••</div>
                     </div>
-                    <button id="vBtnLogin" style="width: 100%; background: #3b82f6; color: #fff; border: none; padding: 0.6rem; border-radius: 6px; font-weight: 700; font-size: 0.85rem;">Sign In to Workspace →</button>
+                    <button id="vBtnLogin" style="width: 100%; background: #3b82f6; color: #fff; border: none; padding: 0.45rem; border-radius: 5px; font-weight: 700; font-size: 0.78rem;">Sign In to Workspace →</button>
                   </div>
                 </div>
 
                 <!-- SCENE 2: COMPANY SETUP -->
                 <div class="video-scene" id="vScene-1">
-                  <div style="max-width: 520px; margin: 1rem auto; background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1.25rem;">
+                  <div style="max-width: 460px; margin: 0.4rem auto; background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 0.85rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.5rem;">
                       <strong style="color: #fff; font-size: 0.95rem;">Select Practice Entity</strong>
                       <span class="cat-pill cat-rev">Active Course: BSA 2-A</span>
