@@ -111,21 +111,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // --- BACKEND LINE INSERTION (General Journal: No auto-VAT) ---
                 $final_lines = [];
+                $total_debit = 0.0;
+                $total_credit = 0.0;
                 for ($i = 0; $i < count($account_ids); $i++) {
                     $acc_id = (int)$account_ids[$i];
                     $dr = (float)str_replace(',', '', $debits[$i] ?: 0);
                     $cr = (float)str_replace(',', '', $credits[$i] ?: 0);
                     if ($acc_id > 0 && ($dr > 0 || $cr > 0)) {
                         $final_lines[] = ['account_id' => $acc_id, 'debit' => $dr, 'credit' => $cr];
+                        $total_debit += $dr;
+                        $total_credit += $cr;
                     }
                 }
 
+                if (count($final_lines) < 2 || $total_debit <= 0 || abs(round($total_debit, 2) - round($total_credit, 2)) > 0.01) {
+                    throw new Exception("Entry imbalance: Total Debit (₱" . number_format($total_debit, 2) . ") must equal Total Credit (₱" . number_format($total_credit, 2) . ") and be greater than 0.");
+                }
+
                 $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
-                $total_debit = 0;
                 foreach ($final_lines as $line) {
                     $dr = $line['debit'];
                     $cr = $line['credit'];
-                    $total_debit += $dr;
                     $stmtLine->bind_param('iidd', $entry_id, $line['account_id'], $dr, $cr);
                     $stmtLine->execute();
                 }

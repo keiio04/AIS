@@ -128,7 +128,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         ];
         $res = post_student_transaction($db, $company_id, $_SESSION['user_id'], $txData);
         if ($res['success']) {
-            header("Location: journal_entries.php?posted=1&ref=" . urlencode($res['reference_no']) . "&journal=" . urlencode($res['journal_id']));
+            $targetJournalUrl = ($res['journal_id'] === 'PJ') ? 'purchases_journal.php' : 'cash_disbursements_journal.php';
+            header("Location: {$targetJournalUrl}?posted=1&ref=" . urlencode($res['reference_no']));
             exit;
         } else {
             $error = $res['error'];
