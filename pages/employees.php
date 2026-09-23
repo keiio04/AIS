@@ -156,18 +156,6 @@ $stmt->execute();
 $employees = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 ?>
 
-<div class="page-header">
-    <div class="page-header-text">
-        <h1 class="page-title">Employee List</h1>
-        <p class="page-subtitle">Manage employee records and employment details.</p>
-    </div>
-    <div class="flex gap-2">
-        <button class="btn btn-primary" onclick="openModal()">
-            <i data-lucide="plus" style="width:15px;height:15px;"></i> Add Employee
-        </button>
-    </div>
-</div>
-
 <?php if (isset($error)): ?>
     <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
         <?= htmlspecialchars($error) ?>
@@ -175,55 +163,66 @@ $employees = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 <?php endif; ?>
 
 <div class="card" style="padding: 0; overflow: hidden;">
-    <div class="flex items-center gap-3" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);">
-        <form method="GET" style="position: relative; flex: 1; max-width: 320px; display: flex;">
-            <i data-lucide="search" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); width:14px; height:14px;"></i>
-            <input type="text" name="search" class="form-control" placeholder="Search by name, position, department..." value="<?= htmlspecialchars($search) ?>" style="padding-left: 2.25rem;">
-            <button type="submit" style="display:none;"></button>
-        </form>
-        <span class="text-sm text-muted"><?= count($employees) ?> employees</span>
+    <div class="flex items-center justify-between gap-3 flex-wrap" style="padding: 0.5rem 1rem; border-bottom: 1px solid var(--border-color);">
+        <div class="flex items-center gap-3" style="flex: 1; max-width: 420px;">
+            <form method="GET" style="position: relative; flex: 1; display: flex;">
+                <i data-lucide="search" style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); width:13px; height:13px;"></i>
+                <input type="text" name="search" class="form-control" placeholder="Search by name, position, department..." value="<?= htmlspecialchars($search) ?>" style="padding-left: 2rem; font-size: 0.8125rem; height: 32px;">
+                <button type="submit" style="display:none;"></button>
+            </form>
+            <span class="text-xs text-muted nowrap"><?= count($employees) ?> employees</span>
+        </div>
+        <div class="flex gap-2">
+            <button class="btn btn-primary" onclick="openModal()" style="font-size: 0.8125rem; padding: 0.35rem 0.75rem;">
+                <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Employee
+            </button>
+        </div>
     </div>
 
     <div class="table-container">
-        <table class="table">
+        <table class="table compact-table">
             <thead>
                 <tr>
-                    <th style="min-width: 110px;" class="nowrap">Employee ID</th>
-                    <th style="min-width: 160px;">Employee Name</th>
-                    <th style="min-width: 120px;">Position</th>
-                    <th style="min-width: 120px;">Department</th>
-                    <th style="min-width: 160px;">Email / Phone</th>
-                    <th style="min-width: 110px;" class="nowrap">Date Hired</th>
-                    <th class="text-right nowrap" style="min-width: 110px;">Rate</th>
-                    <th class="text-center nowrap" style="min-width: 80px;">Status</th>
-                    <th class="text-center nowrap" style="min-width: 90px;">Actions</th>
+                    <th style="min-width: 95px;" class="nowrap">Employee ID</th>
+                    <th style="min-width: 140px;">Employee Name</th>
+                    <th style="min-width: 110px;">Position</th>
+                    <th style="min-width: 110px;">Department</th>
+                    <th style="min-width: 140px;">Email / Phone</th>
+                    <th style="min-width: 95px;" class="nowrap">Date Hired</th>
+                    <th class="text-right nowrap" style="min-width: 100px;">Rate</th>
+                    <th class="text-center nowrap" style="min-width: 75px;">Status</th>
+                    <th class="text-center nowrap" style="min-width: 70px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (count($employees) === 0): ?>
-                <tr><td colspan="9" class="text-center text-secondary" style="padding: 2rem;">No employees found.</td></tr>
+                <tr><td colspan="9" class="text-center text-secondary" style="padding: 2rem; font-size: 0.8125rem;">No employees found.</td></tr>
                 <?php else: foreach($employees as $e): ?>
                 <tr style="color: #000;">
-                    <td style="font-family: monospace; font-weight: 600; font-size: 0.8rem; color: var(--primary-color);"><?= htmlspecialchars($e['code'] ?: '—') ?></td>
-                    <td style="font-weight: 600;"><?= htmlspecialchars($e['name']) ?></td>
-                    <td style="font-size: 0.875rem;"><?= htmlspecialchars($e['position'] ?: '—') ?></td>
-                    <td style="font-size: 0.875rem;"><?= htmlspecialchars($e['department'] ?: '—') ?></td>
-                    <td style="font-size: 0.8125rem;">
+                    <td style="font-family: monospace; font-weight: 600; font-size: 0.78rem; color: var(--primary-color);"><?= htmlspecialchars($e['code'] ?: '—') ?></td>
+                    <td style="font-weight: 600; font-size: 0.8125rem;"><?= htmlspecialchars($e['name']) ?></td>
+                    <td style="font-size: 0.8125rem;"><?= htmlspecialchars($e['position'] ?: '—') ?></td>
+                    <td style="font-size: 0.8125rem;"><?= htmlspecialchars($e['department'] ?: '—') ?></td>
+                    <td style="font-size: 0.78rem; line-height: 1.3;">
                         <?= htmlspecialchars($e['email'] ?: '—') ?><br>
-                        <span style="color: var(--text-muted);"><?= htmlspecialchars($e['phone'] ?: '') ?></span>
+                        <span style="color: var(--text-muted); font-size: 0.72rem;"><?= htmlspecialchars($e['phone'] ?: '') ?></span>
                     </td>
                     <td style="font-size: 0.8125rem;"><?= $e['date_hired'] ? date('M d, Y', strtotime($e['date_hired'])) : '—' ?></td>
-                    <td class="text-right" style="font-weight: 700; color: var(--primary-color);">₱<?= number_format($e['rate'], 2) ?><span style="font-weight:400; color: var(--text-muted); font-size:0.75rem;"> / <?= htmlspecialchars($e['pay_frequency'] ?: '—') ?></span></td>
+                    <td class="text-right" style="font-weight: 700; color: var(--primary-color); font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($e['rate'], 2) ?><span style="font-weight:400; color: var(--text-muted); font-size:0.72rem;"> / <?= htmlspecialchars($e['pay_frequency'] ?: '—') ?></span></td>
                     <td class="text-center">
-                        <span class="badge <?= $e['status'] === 'Active' ? 'badge-success' : 'badge-neutral' ?>"><?= htmlspecialchars($e['status']) ?></span>
+                        <span class="badge <?= $e['status'] === 'Active' ? 'badge-success' : 'badge-neutral' ?>" style="font-size: 0.65rem; padding: 2px 7px;"><?= htmlspecialchars($e['status']) ?></span>
                     </td>
-                    <td>
-                        <div class="flex justify-center gap-2">
-                            <button class="icon-btn" onclick='openModal(<?= json_encode($e) ?>)'><i data-lucide="edit-2" style="width:16px;height:16px;"></i></button>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this employee?');">
+                    <td class="nowrap text-center">
+                        <div class="flex items-center justify-center gap-1">
+                            <button class="icon-btn" title="Edit Employee" onclick='openModal(<?= json_encode($e) ?>)' style="padding: 3px 5px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-secondary);">
+                                <i data-lucide="edit-2" style="width:13px;height:13px;"></i>
+                            </button>
+                            <form method="POST" style="display:inline; margin:0;" onsubmit="return confirm('Delete this employee?');">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= $e['id'] ?>">
-                                <button type="submit" class="icon-btn text-danger"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
+                                <button type="submit" class="icon-btn text-danger" title="Delete Employee" style="padding: 3px 5px; border-radius: 4px; border: 1px solid #fee2e2; background: #fef2f2;">
+                                    <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
+                                </button>
                             </form>
                         </div>
                     </td>

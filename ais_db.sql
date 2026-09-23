@@ -1,4 +1,4 @@
--- accounting_db.sql – full schema and seed data for AIS PHP application
+    -- accounting_db.sql – full schema and seed data for AIS PHP application
 -- Updated to use accounting_db database name
 -- Create database (if not exists) and use it
 CREATE DATABASE IF NOT EXISTS `accounting_db` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

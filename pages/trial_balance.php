@@ -78,65 +78,62 @@ $isBalanced = abs($total_debit_balance - $total_credit_balance) < 0.01;
 
 ?>
 
-<div class="page-header">
-    <div class="page-header-text">
-        <h1 class="page-title">Trial Balance</h1>
-    </div>
+<div class="no-print" style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
     <button class="btn btn-secondary" onclick="window.print()">
         <i data-lucide="printer" style="width:15px;height:15px;"></i> Print
     </button>
 </div>
 
-<div class="card" style="padding: 0; margin-bottom: 2rem; overflow: hidden; box-shadow: none; border: 1px solid var(--border-color); background: transparent;">
-    <div style="padding: 2rem; border-bottom: 1px solid var(--border-color); text-align: center;">
-        <h2 style="font-size: 1.5rem; margin-bottom: 0.5rem;"><?= htmlspecialchars($activeCompanyName ?? 'Company') ?></h2>
-        <h3 style="font-size: 1.125rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Trial Balance</h3>
-        <p class="text-muted" style="font-size: 0.875rem;">As of <?= date('F j, Y') ?></p>
+<div id="printable-area" style="width: 100%; margin-bottom: 2rem;">
+    <div style="padding: 1rem 0 1.5rem 0; text-align: center;">
+        <h2 style="font-size: 1.5rem; margin-bottom: 0.35rem; font-weight: 600; color: var(--text-primary);"><?= htmlspecialchars($activeCompanyName ?? 'Company') ?></h2>
+        <h3 style="font-size: 1.05rem; color: var(--text-secondary); margin-bottom: 0.25rem; font-weight: 600;">Trial Balance</h3>
+        <p class="text-muted" style="font-size: 0.85rem; margin: 0;">As of <?= date('F j, Y') ?></p>
     </div>
 
     <?php if ($has_activity): ?>
         <div class="table-container">
-            <table class="table" style="margin: 0;">
+            <table class="table compact-table" style="margin: 0; width: 100%; border: none; border-collapse: collapse;">
                 <thead>
-                    <tr>
-                        <th style="min-width: 130px; width: 22%; padding-left: 1.5rem;" class="nowrap">Account Code</th>
-                        <th style="min-width: 200px; width: 48%;">Account Title</th>
-                        <th class="text-right nowrap" style="min-width: 120px; width: 15%;">Debit</th>
-                        <th class="text-right nowrap" style="min-width: 120px; width: 15%; padding-right: 1.5rem;">Credit</th>
+                    <tr style="border-bottom: 2px solid var(--text-primary); background: var(--bg-tertiary);">
+                        <th style="min-width: 110px; width: 20%; padding-left: 0.5rem; border: none; border-bottom: 1.5px solid var(--border-color);" class="nowrap">Account Code</th>
+                        <th style="min-width: 200px; width: 50%; border: none; border-bottom: 1.5px solid var(--border-color);">Account Title</th>
+                        <th class="text-right nowrap" style="min-width: 110px; width: 15%; border: none; border-bottom: 1.5px solid var(--border-color);">Debit</th>
+                        <th class="text-right nowrap" style="min-width: 110px; width: 15%; padding-right: 0.5rem; border: none; border-bottom: 1.5px solid var(--border-color);">Credit</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach($tb_rows as $row): ?>
                     <tr>
-                        <td style="font-family: monospace; font-weight: 600; padding-left: 2rem;"><?= htmlspecialchars($row['code']) ?></td>
-                        <td style="font-weight: 500;"><?= htmlspecialchars($row['name']) ?></td>
-                        <td class="text-right"><?= $row['debit'] > 0 ? number_format($row['debit'], 2) : '—' ?></td>
-                        <td class="text-right" style="padding-right: 2rem;"><?= $row['credit'] > 0 ? number_format($row['credit'], 2) : '—' ?></td>
+                        <td style="font-family: monospace; font-weight: 600; font-size: 0.78rem; padding-left: 0.5rem; color: var(--primary-color);"><?= htmlspecialchars($row['code']) ?></td>
+                        <td style="font-weight: 500; font-size: 0.8125rem;"><?= htmlspecialchars($row['name']) ?></td>
+                        <td class="text-right" style="font-size: 0.8125rem; font-variant-numeric: tabular-nums;"><?= $row['debit'] > 0 ? number_format($row['debit'], 2) : '—' ?></td>
+                        <td class="text-right" style="padding-right: 0.5rem; font-size: 0.8125rem; font-variant-numeric: tabular-nums;"><?= $row['credit'] > 0 ? number_format($row['credit'], 2) : '—' ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
                 <tfoot>
-                    <tr style="font-weight: 700; background-color: var(--bg-tertiary); border-top: 2px solid var(--border-color);">
-                        <td colspan="2" style="padding-left: 2rem;">Total</td>
-                        <td class="text-right" style="border-bottom: 3px double var(--text-primary);"><?= number_format($total_debit_balance, 2) ?></td>
-                        <td class="text-right" style="padding-right: 2rem; border-bottom: 3px double var(--text-primary);"><?= number_format($total_credit_balance, 2) ?></td>
+                    <tr style="font-weight: 700; border-top: 1.5px solid var(--border-color);">
+                        <td colspan="2" style="padding-left: 0.5rem; font-size: 0.8125rem;">Total</td>
+                        <td class="text-right" style="border-bottom: 3px double var(--text-primary); font-size: 0.85rem; font-variant-numeric: tabular-nums;"><?= number_format($total_debit_balance, 2) ?></td>
+                        <td class="text-right" style="padding-right: 0.5rem; border-bottom: 3px double var(--text-primary); font-size: 0.85rem; font-variant-numeric: tabular-nums;"><?= number_format($total_credit_balance, 2) ?></td>
                     </tr>
                 </tfoot>
             </table>
         </div>
         
         <?php if (!$isBalanced): ?>
-        <div style="padding: 1.5rem; background-color: var(--bg-secondary); border-top: 1px solid var(--border-color); text-align: center;">
-            <div style="color: var(--danger-color); font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; background: #fef2f2; padding: 0.75rem 1.5rem; border-radius: 8px;">
-                <i data-lucide="alert-triangle" style="width:18px;height:18px;"></i>
+        <div style="padding: 1.25rem 0; text-align: center;">
+            <div style="color: var(--danger-color); font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; background: #fef2f2; padding: 0.65rem 1.25rem; border-radius: 8px; font-size: 0.8125rem;">
+                <i data-lucide="alert-triangle" style="width:16px;height:16px;"></i>
                 Warning: The trial balance is out of balance by ₱<?= number_format(abs($total_debit_balance - $total_credit_balance), 2) ?>
             </div>
         </div>
         <?php endif; ?>
         
     <?php else: ?>
-        <div style="text-align: center; padding: 3rem;">
-            <p class="text-muted">No accounts have balances yet.</p>
+        <div style="text-align: center; padding: 3rem 1rem;">
+            <p class="text-muted" style="font-size: 0.8125rem;">No accounts have balances yet.</p>
         </div>
     <?php endif; ?>
 </div>
@@ -145,8 +142,8 @@ $isBalanced = abs($total_debit_balance - $total_credit_balance) < 0.01;
 <style>
 @media print {
     body * { visibility: hidden; }
-    .card, .card * { visibility: visible; }
-    .card { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border: none !important; }
+    #printable-area, #printable-area * { visibility: visible; }
+    #printable-area { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border: none !important; padding: 0 !important; }
     .page-header, .sidebar, .topbar { display: none !important; }
     .main-wrapper { padding: 0 !important; margin: 0 !important; }
 }

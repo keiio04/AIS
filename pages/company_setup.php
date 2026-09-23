@@ -274,16 +274,13 @@ require_once '../includes/header.php';
 <div class="alert alert-<?= $msgType ?>" style="margin-bottom: 1rem;"><?= htmlspecialchars($message) ?></div>
 <?php endif; ?>
 
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Company Setup</h1>
-  </div>
-  <?php if ($totalCompanies > 0): ?>
+<?php if ($totalCompanies > 0): ?>
+<div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
   <button class="btn btn-primary" onclick="openModal('addModal')">
     <i data-lucide="plus" style="width:15px;height:15px;"></i> Add Company
   </button>
-  <?php endif; ?>
 </div>
+<?php endif; ?>
 
 <?php if ($totalCompanies === 0): ?>
 <div style="text-align: center; padding: 3rem 1rem;">

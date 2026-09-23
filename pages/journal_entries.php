@@ -188,7 +188,7 @@ if ($search !== '') {
     }
 }
 
-// Fetch existing journal entries (including resolved entity name)
+// Fetch existing journal entries (all journals for this company)
 $query = "
     SELECT e.*,
            COALESCE(c.name, s.name) AS entity_name,
@@ -198,7 +198,7 @@ $query = "
     FROM journal_entries e
     LEFT JOIN customers c ON e.entity_id = c.id AND e.entity_type = 'customer'
     LEFT JOIN suppliers s ON e.entity_id = s.id AND e.entity_type = 'supplier'
-    WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'GJ' $searchSql
+    WHERE e.company_id = ? AND e.deleted_at IS NULL $searchSql
     ORDER BY e.date DESC, e.id DESC
 ";
 $stmt = $db->prepare($query);
@@ -206,17 +206,34 @@ $stmt->bind_param('i' . $searchTypes, $company_id, ...$searchParams);
 $stmt->execute();
 $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
+$postedRef = trim($_GET['ref'] ?? '');
+$postedJournal = trim($_GET['journal'] ?? '');
+$journalLabels = [
+    'CRJ' => 'Cash Receipts Journal',
+    'SJ'  => 'Sales Journal',
+    'CDJ' => 'Cash Disbursements Journal',
+    'PJ'  => 'Purchases Journal',
+    'GJ'  => 'General Journal',
+];
+$postedJournalLabel = $journalLabels[$postedJournal] ?? ($postedJournal ?: 'Special Journal');
+
 require_once '../includes/header.php';
 ?>
 
-<div class="page-header">
-    <div class="page-header-text">
-        <h1 class="page-title">General</h1>
+<?php if (isset($_GET['posted']) && $postedRef !== ''): ?>
+    <div style="background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; padding: 1rem 1.25rem; border-radius: 8px; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <i data-lucide="check-circle" style="width: 22px; height: 22px; color: #059669; flex-shrink: 0;"></i>
+            <div>
+                <div style="font-weight: 700; font-size: 0.95rem;">Transaction Successfully Saved & Journal Entry Generated!</div>
+                <div style="font-size: 0.825rem; color: #047857; margin-top: 2px;">
+                    Journal: <strong><?= htmlspecialchars($postedJournalLabel) ?> (<?= htmlspecialchars($postedJournal) ?>)</strong> | Reference No: <strong style="font-family: monospace; font-size: 0.9rem;"><?= htmlspecialchars($postedRef) ?></strong>
+                </div>
+            </div>
+        </div>
+        <span class="badge badge-success" style="font-size: 0.75rem; padding: 4px 10px;">Auto-Generated</span>
     </div>
-    <button class="btn btn-primary" onclick="openModal()">
-        <i data-lucide="plus" style="width:15px;height:15px;"></i> New Entry
-    </button>
-</div>
+<?php endif; ?>
 
 <?php if (isset($error)): ?>
     <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
@@ -231,9 +248,9 @@ require_once '../includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="card" style="padding: 0; overflow: hidden;">
+<div class="card" style="padding: 0; overflow: hidden; border: none; box-shadow: none;">
     <div class="table-container">
-        <table class="table">
+        <table class="table journal-table">
             <thead>
                 <tr>
                     <th style="min-width: 105px; white-space: nowrap;">Date</th>
@@ -252,44 +269,58 @@ require_once '../includes/header.php';
                     $stmtLine->bind_param('i', $tx['id']);
                     $stmtLine->execute();
                     $lines = $stmtLine->get_result()->fetch_all(MYSQLI_ASSOC);
-                    $totalDebit = 0;
-                    $totalCredit = 0;
+                    $lineCount = count($lines);
+                    $isHighlighted = ($postedRef !== '' && $tx['reference_no'] === $postedRef);
                 ?>
                 <?php foreach($lines as $index => $line): 
-                    $totalDebit += $line['debit'];
-                    $totalCredit += $line['credit'];
+                    $isFirst = ($index === 0);
+                    $isLast = ($index === $lineCount - 1);
+                    $rowClasses = [];
+                    if ($isFirst) $rowClasses[] = 'entry-row-first';
+                    if ($isLast)  $rowClasses[] = 'entry-row-last';
+                    if ($isHighlighted) $rowClasses[] = 'is-highlighted';
+                    $rowClassStr = implode(' ', $rowClasses);
                 ?>
-                <tr>
-                    <td>
-                        <?= $index === 0 ? '<strong>' . date('M d, Y', strtotime($tx['date'])) . '</strong>' : '' ?>
+                <tr class="<?= $rowClassStr ?>">
+                    <td style="white-space: nowrap;">
+                        <?= $isFirst ? '<strong>' . date('M d, Y', strtotime($tx['date'])) . '</strong>' : '' ?>
                     </td>
-                    <td style="padding-left: <?= $line['credit'] > 0 ? '2.5rem' : '1rem' ?>; font-weight: 500;">
+                    <td style="padding-left: <?= $line['credit'] > 0 ? '1.75rem' : '0.75rem' ?>; font-weight: <?= $line['credit'] > 0 ? '400' : '600' ?>;">
                         <?= htmlspecialchars($line['name']) ?>
                     </td>
-                    <td style="color: #475569 !important; font-size: 0.85rem; opacity: 1;">
-                        <?php if ($index === 0 && !empty($tx['entity_name'])): ?>
+                    <td style="color: #475569 !important; font-size: 0.8125rem;">
+                        <?php if ($isFirst && !empty($tx['entity_name'])): ?>
                             <?= htmlspecialchars($tx['entity_name']) ?>
                             <?php if (!empty($tx['entity_code'])): ?>
                                 <br><span style="font-family: monospace; font-size: 0.7rem; font-weight: 600; color: #64748b;">[<?= htmlspecialchars($tx['entity_code']) ?>]</span>
                             <?php endif; ?>
                         <?php endif; ?>
                     </td>
-                    <td style="color: #334155 !important; font-size: 0.85rem; white-space: normal; word-break: break-word; opacity: 1;">
-                        <?= $index === 0 ? nl2br(htmlspecialchars($tx['description'] ?? '')) : '' ?>
+                    <td style="color: #334155 !important; font-size: 0.8125rem; white-space: normal; word-break: break-word;">
+                        <?= $isFirst ? nl2br(htmlspecialchars($tx['description'] ?? '')) : '' ?>
                     </td>
-                    <td style="font-family: monospace; font-size: 0.85rem;">
-                        <?php if ($index === 0): ?>
-                            <span style="background: #e2e8f0; color: #475569; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span>
-                            
-                            <?= $tx['reference_no'] ? '<strong>'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
+                    <td style="font-family: monospace; font-size: 0.8125rem; white-space: nowrap;">
+                        <?php if ($isFirst): ?>
+                            <?php
+                            $badgeStyles = [
+                                'CRJ' => 'background: #dcfce7; color: #15803d;',
+                                'SJ'  => 'background: #dbeafe; color: #1d4ed8;',
+                                'CDJ' => 'background: #fef3c7; color: #b45309;',
+                                'PJ'  => 'background: #f3e8ff; color: #7e22ce;',
+                                'GJ'  => 'background: #e2e8f0; color: #475569;',
+                            ];
+                            $jStyle = $badgeStyles[$tx['journal_id']] ?? 'background: #e2e8f0; color: #475569;';
+                            ?>
+                            <span style="<?= $jStyle ?> padding: 1px 5px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span>
+                            <?= $tx['reference_no'] ? ' <strong style="color: #0f172a; font-size: 0.78rem;">'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
                         <?php endif; ?>
                         <span style="color: var(--primary-color)"><?= htmlspecialchars($line['code']) ?></span>
                     </td>
-                    <td class="text-right"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
-                    <td class="text-right"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
-                    <td class="text-center" style="vertical-align: middle;">
-                        <?php if ($index === 0): ?>
-                        <div class="flex gap-1" style="justify-content: center;">
+                    <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
+                    <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
+                    <td class="text-center" style="vertical-align: top;">
+                        <?php if ($isFirst): ?>
+                        <div class="flex gap-1" style="justify-content: center; padding-top: 2px;">
                             <button type="button" style="background: none; border: none; cursor: pointer; color: var(--primary-color);" title="Edit Entry" onclick='openEditModal(<?= json_encode([
                                 "id" => $tx['id'],
                                 "date" => $tx['date'],
@@ -306,13 +337,13 @@ require_once '../includes/header.php';
                                     ];
                                 }, $lines)
                             ]) ?>)'>
-                                <i data-lucide="edit-2" style="width:15px;height:15px;"></i>
+                                <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
                             </button>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Move this entry to Trash Bin?');">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= $tx['id'] ?>">
                                 <button type="submit" style="background: none; border: none; cursor: pointer; color: #ef4444;" title="Move to Trash">
-                                    <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+                                    <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
                                 </button>
                             </form>
                         </div>
@@ -320,13 +351,6 @@ require_once '../includes/header.php';
                     </td>
                 </tr>
                 <?php endforeach; ?>
-                <tr style="background-color: #f8fafc;">
-                    <td colspan="5" class="text-right" style="font-weight: 600; padding-right: 1rem;">Total</td>
-                    <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalDebit, 2) ?></td>
-                    <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalCredit, 2) ?></td>
-                    <td></td>
-                </tr>
-                <tr><td colspan="8" style="border-bottom: 2px solid var(--border-color); padding: 0;"></td></tr>
                 <?php endforeach; ?>
                 <?php if(count($transactions) === 0): ?>
                 <tr>
@@ -341,7 +365,10 @@ require_once '../includes/header.php';
 <div id="entryModal" class="modal-overlay hidden">
     <div class="modal" style="width: 1100px; max-width: 95vw;">
         <div class="modal-header">
-            <h2 id="modalTitle">New Journal Entry</h2>
+            <div>
+                <h2 id="modalTitle">New General Journal Entry</h2>
+                <p style="font-size:0.78rem; color:var(--text-muted); margin:2px 0 0;">For manual adjusting, accrual, deferral, and general entries. Sales, Purchases, Receipts, and Disbursements have dedicated journals with automated entry forms.</p>
+            </div>
             <button class="icon-btn" onclick="closeModal()"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
         </div>
         <div class="modal-body">
@@ -373,7 +400,7 @@ require_once '../includes/header.php';
                     <textarea name="description" id="entryDescription" class="form-control" rows="2" style="resize: vertical;"></textarea>
                 </div>
 
-                <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
+                <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem; border: none; box-shadow: none;">
                     <table class="table" style="margin: 0;">
                         <thead>
                             <tr>

@@ -2,6 +2,7 @@
 require_once '../config.php';
 require_once '../db.php';
 require_once '../includes/auth.php';
+require_once '../includes/transaction_poster.php';
 
 $db = get_db();
 
@@ -79,7 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $phone = trim($_POST['phone'] ?? '');
         $address = trim($_POST['address'] ?? '');
         $tin = trim($_POST['tin'] ?? '');
-        $terms = $_POST['terms'] ?? 'COD';
+        $terms = $_POST['terms'] ?? 'Cash';
+        $terms = in_array($terms, ['Cash', 'Credit']) ? $terms : 'Cash';
         $opening_balance = $_POST['opening_balance'] !== '' ? (float)$_POST['opening_balance'] : 0;
         $status = ($_POST['status'] ?? 'Active') === 'Inactive' ? 'Inactive' : 'Active';
         $notes = trim($_POST['notes'] ?? '');
@@ -112,6 +114,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 
+    if ($action === 'record_transaction') {
+        $txData = [
+            'entity_type'       => 'customer',
+            'entity_id'         => (int)($_POST['customer_id'] ?? 0),
+            'date'              => $_POST['date'] ?? date('Y-m-d'),
+            'terms'             => $_POST['terms'] ?? 'Cash',
+            'amount'            => (float)($_POST['amount'] ?? 0),
+            'is_vatable'        => !empty($_POST['is_vatable']),
+            'is_vat_inclusive'  => !empty($_POST['is_vat_inclusive']),
+            'target_account_id' => !empty($_POST['revenue_account_id']) ? (int)$_POST['revenue_account_id'] : null,
+            'description'       => trim($_POST['description'] ?? '')
+        ];
+        $res = post_student_transaction($db, $company_id, $_SESSION['user_id'], $txData);
+        if ($res['success']) {
+            header("Location: journal_entries.php?posted=1&ref=" . urlencode($res['reference_no']) . "&journal=" . urlencode($res['journal_id']));
+            exit;
+        } else {
+            $error = $res['error'];
+        }
+    }
+
     if ($action === 'delete') {
         $id = (int)$_POST['id'];
 
@@ -135,13 +158,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
+// Fetch company's tax registration status
+$stmtCo = $db->prepare("SELECT tax_registered FROM companies WHERE id = ?");
+$stmtCo->bind_param('i', $company_id);
+$stmtCo->execute();
+$companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_registered'] ?? false);
+
+// Fetch revenue accounts for customer transactions
+$stmtRev = $db->prepare("SELECT id, code, name FROM accounts WHERE company_id = ? AND category = 'Revenue' ORDER BY code ASC");
+$stmtRev->bind_param('i', $company_id);
+$stmtRev->execute();
+$revenueAccounts = $stmtRev->get_result()->fetch_all(MYSQLI_ASSOC);
+
+$stdAccts = get_company_standard_accounts($db, $company_id);
+$defaultRevenueId = $stdAccts['service_revenue']['id'] ?? ($revenueAccounts[0]['id'] ?? 0);
+
 require_once '../includes/header.php';
 
 // Search Filter
 $search = $_GET['search'] ?? '';
-$query = "SELECT c.*, 
+$query = "SELECT c.*,
+    /* AR Balance = Opening Balance + net debit movement on AR account linked to this customer */
     (
-        c.opening_balance + 
+        c.opening_balance +
         COALESCE((
             SELECT SUM(l.debit - l.credit)
             FROM journal_entry_lines l
@@ -151,7 +190,29 @@ $query = "SELECT c.*,
               AND e.deleted_at IS NULL
               AND a.name LIKE '%receivable%'
         ), 0)
-    ) as current_balance
+    ) AS current_balance,
+    /* Total Revenue = sum of credits on Revenue accounts from SJ/CRJ entries for this customer */
+    COALESCE((
+        SELECT SUM(l.credit)
+        FROM journal_entry_lines l
+        JOIN journal_entries e ON l.journal_entry_id = e.id
+        JOIN accounts a ON l.account_id = a.id
+        WHERE e.entity_id = c.id AND e.entity_type = 'customer'
+          AND e.deleted_at IS NULL
+          AND e.journal_id IN ('SJ', 'CRJ')
+          AND a.category = 'Revenue'
+    ), 0) AS total_revenue,
+    /* Total Output VAT = sum of credits on Output VAT accounts from SJ/CRJ entries for this customer */
+    COALESCE((
+        SELECT SUM(l.credit)
+        FROM journal_entry_lines l
+        JOIN journal_entries e ON l.journal_entry_id = e.id
+        JOIN accounts a ON l.account_id = a.id
+        WHERE e.entity_id = c.id AND e.entity_type = 'customer'
+          AND e.deleted_at IS NULL
+          AND e.journal_id IN ('SJ', 'CRJ')
+          AND a.name LIKE '%output vat%'
+    ), 0) AS total_output_vat
 FROM customers c WHERE c.company_id = ?";
 $params = [$company_id];
 $types = "i";
@@ -170,72 +231,84 @@ $stmt->execute();
 $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 ?>
 
-<div class="page-header">
-    <div class="page-header-text">
-        <h1 class="page-title">Customer List</h1>
-        <p class="page-subtitle">Manage customer contact details and account terms.</p>
-    </div>
-    <div class="flex gap-2">
-        <button class="btn btn-primary" onclick="openModal()">
-            <i data-lucide="plus" style="width:15px;height:15px;"></i> Add Customer
-        </button>
-    </div>
-</div>
-
 <?php if (isset($error)): ?>
     <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
         <?= htmlspecialchars($error) ?>
     </div>
 <?php endif; ?>
 
-<div class="card" style="padding: 0; overflow: hidden;">
-    <div class="flex items-center gap-3" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color);">
-        <form method="GET" style="position: relative; flex: 1; max-width: 320px; display: flex;">
-            <i data-lucide="search" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); width:14px; height:14px;"></i>
-            <input type="text" name="search" class="form-control" placeholder="Search by name, contact, email, phone..." value="<?= htmlspecialchars($search) ?>" style="padding-left: 2.25rem;">
-            <button type="submit" style="display:none;"></button>
-        </form>
-        <span class="text-sm text-muted"><?= count($customers) ?> customers</span>
+<div class="card" style="padding: 0; overflow: hidden; border: none; box-shadow: none;">
+    <div class="flex items-center justify-between gap-3 flex-wrap" style="padding: 0.5rem 1rem; border-bottom: 1px solid var(--border-color);">
+        <div class="flex items-center gap-3" style="flex: 1; max-width: 420px;">
+            <form method="GET" style="position: relative; flex: 1; display: flex;">
+                <i data-lucide="search" style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); width:13px; height:13px;"></i>
+                <input type="text" name="search" class="form-control" placeholder="Search by name, contact, email, phone..." value="<?= htmlspecialchars($search) ?>" style="padding-left: 2rem; font-size: 0.8125rem; height: 32px;">
+                <button type="submit" style="display:none;"></button>
+            </form>
+            <span class="text-xs text-muted nowrap"><?= count($customers) ?> customers</span>
+        </div>
+        <div class="flex gap-2">
+            <button class="btn btn-success" onclick="openTxModal()" style="background: #16a34a; border-color: #16a34a; color: white; font-size: 0.8125rem; padding: 0.35rem 0.75rem;">
+                <i data-lucide="receipt" style="width:14px;height:14px;"></i> Record Transaction
+            </button>
+            <button class="btn btn-primary" onclick="openModal()" style="font-size: 0.8125rem; padding: 0.35rem 0.75rem;">
+                <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Customer
+            </button>
+        </div>
     </div>
 
     <div class="table-container">
-        <table class="table">
+        <table class="table compact-table">
             <thead>
                 <tr>
-                    <th style="min-width: 110px;" class="nowrap">Customer ID</th>
-                    <th style="min-width: 160px;">Customer Name</th>
-                    <th style="min-width: 130px;">Contact Person</th>
-                    <th style="min-width: 160px;">Email / Phone</th>
-                    <th style="min-width: 90px;" class="nowrap">Terms</th>
-                    <th class="text-right nowrap" style="min-width: 130px;">Current Balance</th>
-                    <th class="text-center nowrap" style="min-width: 80px;">Status</th>
-                    <th class="text-center nowrap" style="min-width: 90px;">Actions</th>
+                    <th style="min-width: 95px;" class="nowrap">Customer ID</th>
+                    <th style="min-width: 140px;">Customer Name</th>
+                    <th style="min-width: 110px;">Contact Person</th>
+                    <th style="min-width: 140px;">Email / Phone</th>
+                    <th style="min-width: 80px;" class="nowrap">Terms</th>
+                    <th class="text-right nowrap" style="min-width: 110px;">Total Revenue</th>
+                    <th class="text-right nowrap" style="min-width: 100px;">Output VAT</th>
+                    <th class="text-right nowrap" style="min-width: 110px;">AR Balance</th>
+                    <th class="text-center nowrap" style="min-width: 75px;">Status</th>
+                    <th class="text-center nowrap" style="min-width: 70px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (count($customers) === 0): ?>
-                <tr><td colspan="8" class="text-center text-secondary" style="padding: 2rem;">No customers found.</td></tr>
+                <tr><td colspan="10" class="text-center text-secondary" style="padding: 2rem; font-size: 0.8125rem;">No customers found.</td></tr>
                 <?php else: foreach($customers as $c): ?>
                 <tr style="color: #000;">
-                    <td style="font-family: monospace; font-weight: 600; font-size: 0.8rem; color: var(--primary-color);"><?= htmlspecialchars($c['code'] ?: '—') ?></td>
-                    <td style="font-weight: 600;"><?= htmlspecialchars($c['name']) ?></td>
-                    <td style="font-size: 0.875rem;"><?= htmlspecialchars($c['contact_person'] ?: '—') ?></td>
-                    <td style="font-size: 0.8125rem;">
+                    <td style="font-family: monospace; font-weight: 600; font-size: 0.78rem; color: var(--primary-color);"><?= htmlspecialchars($c['code'] ?: '—') ?></td>
+                    <td style="font-weight: 600; font-size: 0.8125rem;"><?= htmlspecialchars($c['name']) ?></td>
+                    <td style="font-size: 0.8125rem; color: var(--text-secondary);"><?= htmlspecialchars($c['contact_person'] ?: '—') ?></td>
+                    <td style="font-size: 0.78rem; line-height: 1.3;">
                         <?= htmlspecialchars($c['email'] ?: '—') ?><br>
-                        <span style="color: var(--text-muted);"><?= htmlspecialchars($c['phone'] ?: '') ?></span>
+                        <span style="color: var(--text-muted); font-size: 0.72rem;"><?= htmlspecialchars($c['phone'] ?: '') ?></span>
                     </td>
                     <td style="font-size: 0.8125rem;"><?= htmlspecialchars($c['terms'] ?: '—') ?></td>
-                    <td class="text-right" style="font-weight: 700; color: var(--primary-color);">₱<?= number_format($c['current_balance'], 2) ?></td>
-                    <td class="text-center">
-                        <span class="badge <?= $c['status'] === 'Active' ? 'badge-success' : 'badge-neutral' ?>"><?= htmlspecialchars($c['status']) ?></span>
+                    <td class="text-right" style="font-weight: 600; color: #16a34a; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($c['total_revenue'], 2) ?></td>
+                    <td class="text-right" style="font-weight: 600; color: #d97706; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($c['total_output_vat'], 2) ?></td>
+                    <td class="text-right" style="font-weight: 700; color: var(--primary-color); font-size: 0.8125rem; font-variant-numeric: tabular-nums;">
+                        <?php
+                            $bal = $c['current_balance'];
+                            $balColor = $bal > 0 ? 'var(--primary-color)' : ($bal < 0 ? '#dc2626' : 'var(--text-muted)');
+                        ?>
+                        <span style="color: <?= $balColor ?>;">₱<?= number_format($bal, 2) ?></span>
                     </td>
-                    <td>
-                        <div class="flex justify-center gap-2">
-                            <button class="icon-btn" onclick='openModal(<?= json_encode($c) ?>)'><i data-lucide="edit-2" style="width:16px;height:16px;"></i></button>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this customer? This will not affect past transactions, which reference customers by name only.');">
+                    <td class="text-center">
+                        <span class="badge <?= $c['status'] === 'Active' ? 'badge-success' : 'badge-neutral' ?>" style="font-size: 0.65rem; padding: 2px 7px;"><?= htmlspecialchars($c['status']) ?></span>
+                    </td>
+                    <td class="nowrap text-center">
+                        <div class="flex items-center justify-center gap-1">
+                            <button class="icon-btn" title="Edit Customer" onclick='openModal(<?= json_encode($c) ?>)' style="padding: 3px 5px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-secondary);">
+                                <i data-lucide="edit-2" style="width:13px;height:13px;"></i>
+                            </button>
+                            <form method="POST" style="display:inline; margin:0;" onsubmit="return confirm('Delete this customer? This will not affect past transactions, which reference customers by name only.');">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= $c['id'] ?>">
-                                <button type="submit" class="icon-btn text-danger"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
+                                <button type="submit" class="icon-btn text-danger" title="Delete Customer" style="padding: 3px 5px; border-radius: 4px; border: 1px solid #fee2e2; background: #fef2f2;">
+                                    <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
+                                </button>
                             </form>
                         </div>
                     </td>
@@ -301,36 +374,158 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     <input type="text" name="address" id="custAddress" class="form-control">
                 </div>
 
-                <div class="flex gap-4">
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">TIN</label>
-                        <input type="text" name="tin" id="custTin" class="form-control">
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Payment Terms</label>
-                        <select name="terms" id="custTerms" class="form-control">
-                            <option value="COD">COD</option>
-                            <option value="Net 15">Net 15</option>
-                            <option value="Net 30">Net 30</option>
-                            <option value="Net 60">Net 60</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Opening Balance (AR)</label>
-                        <input type="number" step="0.01" name="opening_balance" id="custBal" class="form-control" value="0">
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Notes</label>
-                    <textarea name="notes" id="custNotes" class="form-control" rows="2"></textarea>
+                <div class="form-group" style="max-width: 260px;">
+                    <label class="form-label">Payment Terms</label>
+                    <select name="terms" id="custTerms" class="form-control">
+                        <option value="Cash">Cash</option>
+                        <option value="Credit">Credit</option>
+                    </select>
                 </div>
             </form>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
             <button type="submit" form="cust-form" class="btn btn-primary">Save Customer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Record Customer Transaction Modal -->
+<div id="txModal" class="modal-overlay hidden">
+    <div class="modal" style="width: 580px; max-width: 95vw;">
+        <div class="modal-header" style="padding: 0.65rem 1rem;">
+            <div>
+                <h2 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;" id="txModalTitle">
+                    <i data-lucide="receipt" style="width: 16px; height: 16px; color: #16a34a;"></i>
+                    Record Customer Transaction
+                </h2>
+            </div>
+            <button class="icon-btn" onclick="closeTxModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+        </div>
+        <div class="modal-body" style="padding: 0.75rem 1rem;">
+            <form id="tx-form" method="POST">
+                <input type="hidden" name="action" value="record_transaction">
+
+                <!-- Terms toggle -->
+                <div style="margin-bottom: 0.5rem;">
+                    <label class="form-label" style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.25rem;">Payment Terms <span class="required">*</span></label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" id="txTermsCashBtn" class="btn btn-primary" onclick="setTxTerms('Cash')" style="flex: 1; padding: 0.35rem 0.6rem; font-size: 0.78rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
+                            <i data-lucide="banknote" style="width:14px;height:14px;"></i> Cash
+                        </button>
+                        <button type="button" id="txTermsCreditBtn" class="btn btn-secondary" onclick="setTxTerms('Credit')" style="flex: 1; padding: 0.35rem 0.6rem; font-size: 0.78rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
+                            <i data-lucide="credit-card" style="width:14px;height:14px;"></i> Credit
+                        </button>
+                    </div>
+                    <input type="hidden" name="terms" id="txTerms" value="Cash">
+                </div>
+
+                <div class="flex gap-3" style="margin-bottom: 0.5rem;">
+                    <div class="form-group" style="flex: 2; margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Customer <span class="required">*</span></label>
+                        <!-- Searchable customer combo -->
+                        <div style="position: relative;">
+                            <input type="text" id="txCustomerSearch" class="form-control" placeholder="Type to search customer..." autocomplete="off"
+                                style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;"
+                                oninput="filterCustomerList()" onfocus="showCustomerList()">
+                            <input type="hidden" name="customer_id" id="txCustomerId" required>
+                            <div id="txCustomerDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--border-color); border-top:none; border-radius:0 0 6px 6px; max-height:180px; overflow-y:auto; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                                <?php foreach($customers as $cust): ?>
+                                <div class="cust-opt" data-id="<?= $cust['id'] ?>" data-terms="<?= htmlspecialchars($cust['terms'] ?? 'Cash') ?>"
+                                    data-label="<?= htmlspecialchars(($cust['code'] ? '[' . $cust['code'] . '] ' : '') . $cust['name']) ?>"
+                                    style="padding:5px 8px; cursor:pointer; font-size:0.78rem;"
+                                    onmousedown="selectCustomer(this)">
+                                    <?= htmlspecialchars(($cust['code'] ? '[' . $cust['code'] . '] ' : '') . $cust['name']) ?>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Date <span class="required">*</span></label>
+                        <input type="date" name="date" id="txDate" class="form-control" value="<?= date('Y-m-d') ?>" required onchange="updateTxPreview()" style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;">
+                    </div>
+                </div>
+
+                <div class="flex gap-3" style="margin-bottom: 0.5rem;">
+                    <div class="form-group" style="flex: 2; margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Service / Revenue Account <span class="required">*</span></label>
+                        <select name="revenue_account_id" id="txRevenueAccountId" class="form-control" required onchange="updateTxPreview()" style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;">
+                            <?php foreach ($revenueAccounts as $rev): ?>
+                            <option value="<?= $rev['id'] ?>" data-name="<?= htmlspecialchars($rev['name']) ?>" <?= $rev['id'] == $defaultRevenueId ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($rev['code'] . ' - ' . $rev['name']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                            <?php if (empty($revenueAccounts)): ?>
+                            <option value="0" data-name="Service Revenue">Service Revenue (Default)</option>
+                            <?php endif; ?>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Amount (₱) <span class="required">*</span></label>
+                        <input type="number" step="0.01" min="0.01" name="amount" id="txAmount" class="form-control" placeholder="0.00" required oninput="updateTxPreview()" style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;">
+                    </div>
+                </div>
+
+                <!-- Tax / VAT Settings -->
+                <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.45rem 0.75rem; margin-bottom: 0.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
+                        <div>
+                            <span style="font-weight: 600; font-size: 0.75rem; color: var(--text-primary);">Tax Status:</span>
+                            <span style="font-size: 0.7rem; color: var(--text-muted); margin-left: 0.2rem;">(Company: <?= $companyIsTaxRegistered ? 'VAT Registered' : 'Non-VAT' ?>)</span>
+                        </div>
+                        <div style="display: flex; gap: 0.75rem; align-items: center;">
+                            <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer; font-size: 0.75rem; font-weight: 500;">
+                                <input type="radio" name="is_vatable" id="txVatableYes" value="1" <?= $companyIsTaxRegistered ? 'checked' : '' ?> onchange="updateTxPreview()">
+                                VATable (12%)
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer; font-size: 0.75rem; font-weight: 500;">
+                                <input type="radio" name="is_vatable" id="txVatableNo" value="0" <?= !$companyIsTaxRegistered ? 'checked' : '' ?> onchange="updateTxPreview()">
+                                Non-VAT (0%)
+                            </label>
+                        </div>
+                    </div>
+                    <div id="txVatInclusiveGroup" style="margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px dashed var(--border-color); display: flex; align-items: center; gap: 0.4rem;">
+                        <input type="checkbox" name="is_vat_inclusive" id="txVatInclusive" value="1" onchange="updateTxPreview()">
+                        <label for="txVatInclusive" style="font-size: 0.72rem; color: var(--text-secondary); cursor: pointer;">Amount entered is VAT-inclusive (gross)</label>
+                    </div>
+                </div>
+
+                <!-- Live Accounting Entry Preview -->
+                <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem 0.75rem;">
+                    <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.35rem;">
+                        <div id="txRoutingBadge" style="font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: #dbeafe; color: #1d4ed8;">
+                            Cash Receipts Journal (CRJ)
+                        </div>
+                    </div>
+
+                    <table style="width: 100%; font-size: 0.78rem; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid #cbd5e1; color: #64748b; font-size: 0.7rem;">
+                                <th style="text-align: left; padding: 3px 5px;">Account Title</th>
+                                <th style="text-align: right; padding: 3px 5px; width: 100px;">Debit (₱)</th>
+                                <th style="text-align: right; padding: 3px 5px; width: 100px;">Credit (₱)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="txPreviewLines">
+                            <!-- Populated dynamically by JS -->
+                        </tbody>
+                        <tfoot>
+                            <tr style="border-top: 1.5px solid #94a3b8; font-weight: 700;">
+                                <td style="text-align: right; padding: 4px 5px; color: #334155; font-size: 0.75rem;">Total:</td>
+                                <td id="txPreviewTotalDr" style="text-align: right; padding: 4px 5px; color: #0f172a; font-size: 0.78rem;">₱0.00</td>
+                                <td id="txPreviewTotalCr" style="text-align: right; padding: 4px 5px; color: #0f172a; font-size: 0.78rem;">₱0.00</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer" style="padding: 0.55rem 1rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeTxModal()" style="font-size: 0.78rem; padding: 0.3rem 0.75rem;">Cancel</button>
+            <button type="submit" form="tx-form" class="btn btn-success" style="background: #16a34a; border-color: #16a34a; color: white; font-size: 0.78rem; padding: 0.3rem 0.75rem; display: flex; align-items: center; gap: 0.35rem;">
+                <i data-lucide="check" style="width:14px;height:14px;"></i> Save Transaction
+            </button>
         </div>
     </div>
 </div>
@@ -354,7 +549,7 @@ function openModal(c = null) {
         document.getElementById('custPhone').value = c.phone || '';
         document.getElementById('custAddress').value = c.address || '';
         document.getElementById('custTin').value = c.tin || '';
-        document.getElementById('custTerms').value = c.terms || 'COD';
+        document.getElementById('custTerms').value = c.terms && ['Cash','Credit'].includes(c.terms) ? c.terms : 'Cash';
         document.getElementById('custBal').value = c.opening_balance;
         document.getElementById('custNotes').value = c.notes || '';
     } else {
@@ -366,7 +561,7 @@ function openModal(c = null) {
         document.getElementById('cust-form').reset();
         document.getElementById('custBal').value = '0';
         document.getElementById('custStatus').value = 'Active';
-        document.getElementById('custTerms').value = 'COD';
+        document.getElementById('custTerms').value = 'Cash';
     }
 }
 function closeModal() {
@@ -377,6 +572,193 @@ function closeModal() {
 document.getElementById('custModal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
 });
+
+// Transaction Modal Handlers
+function openTxModal(c = null) {
+    const modal = document.getElementById('txModal');
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+
+    // Reset search combo
+    document.getElementById('txCustomerSearch').value = '';
+    document.getElementById('txCustomerId').value = '';
+    hideCustomerList();
+
+    if (c) {
+        const label = (c.code ? '[' + c.code + '] ' : '') + c.name;
+        document.getElementById('txCustomerSearch').value = label;
+        document.getElementById('txCustomerId').value = c.id;
+        if (c.terms && ['Cash', 'Credit'].includes(c.terms)) {
+            setTxTerms(c.terms);
+        } else {
+            setTxTerms('Cash');
+        }
+    } else {
+        setTxTerms('Cash');
+    }
+    updateTxPreview();
+    if (window.lucide) lucide.createIcons();
+}
+
+function closeTxModal() {
+    const modal = document.getElementById('txModal');
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+}
+
+document.getElementById('txModal').addEventListener('click', function(e) {
+    if (e.target === this) closeTxModal();
+});
+
+function setTxTerms(terms) {
+    document.getElementById('txTerms').value = terms;
+    const cashBtn = document.getElementById('txTermsCashBtn');
+    const creditBtn = document.getElementById('txTermsCreditBtn');
+
+    if (terms === 'Cash') {
+        cashBtn.className = 'btn btn-primary';
+        creditBtn.className = 'btn btn-secondary';
+    } else {
+        cashBtn.className = 'btn btn-secondary';
+        creditBtn.className = 'btn btn-primary';
+    }
+    updateTxPreview();
+}
+
+// Searchable customer combo functions
+function showCustomerList() {
+    filterCustomerList();
+    document.getElementById('txCustomerDropdown').style.display = 'block';
+}
+function hideCustomerList() {
+    setTimeout(() => { document.getElementById('txCustomerDropdown').style.display = 'none'; }, 150);
+}
+function filterCustomerList() {
+    const q = document.getElementById('txCustomerSearch').value.toLowerCase();
+    const opts = document.querySelectorAll('#txCustomerDropdown .cust-opt');
+    let any = false;
+    opts.forEach(opt => {
+        const match = opt.dataset.label.toLowerCase().includes(q);
+        opt.style.display = match ? 'block' : 'none';
+        if (match) any = true;
+    });
+    document.getElementById('txCustomerDropdown').style.display = any ? 'block' : 'none';
+    document.getElementById('txCustomerId').value = '';
+}
+function selectCustomer(el) {
+    document.getElementById('txCustomerSearch').value = el.dataset.label;
+    document.getElementById('txCustomerId').value = el.dataset.id;
+    document.getElementById('txCustomerDropdown').style.display = 'none';
+    if (el.dataset.terms && ['Cash', 'Credit'].includes(el.dataset.terms)) {
+        setTxTerms(el.dataset.terms);
+    }
+    updateTxPreview();
+}
+document.getElementById('txCustomerSearch').addEventListener('blur', hideCustomerList);
+document.addEventListener('mouseover', function(e) {
+    if (e.target.classList.contains('cust-opt')) e.target.style.background = '#f1f5f9';
+});
+document.addEventListener('mouseout', function(e) {
+    if (e.target.classList.contains('cust-opt')) e.target.style.background = '';
+});
+
+function updateTxPreview() {
+    const terms = document.getElementById('txTerms').value || 'Cash';
+    const amountVal = parseFloat(document.getElementById('txAmount').value) || 0;
+    const isVatable = document.getElementById('txVatableYes').checked;
+    const isInclusive = document.getElementById('txVatInclusive').checked;
+
+    // Toggle inclusive group visibility
+    const inclusiveGroup = document.getElementById('txVatInclusiveGroup');
+    if (inclusiveGroup) {
+        inclusiveGroup.style.display = isVatable ? 'flex' : 'none';
+    }
+
+    // Auto Journal Routing:
+    // Customer + Cash   => Cash Receipts Journal (CRJ)
+    // Customer + Credit => Sales Journal (SJ)
+    const badge = document.getElementById('txRoutingBadge');
+    if (terms === 'Cash') {
+        badge.innerText = 'Cash Receipts Journal (CRJ)';
+        badge.style.background = '#dcfce7';
+        badge.style.color = '#15803d';
+    } else {
+        badge.innerText = 'Sales Journal (SJ)';
+        badge.style.background = '#dbeafe';
+        badge.style.color = '#1d4ed8';
+    }
+
+    // Calculations
+    let net = 0;
+    let vat = 0;
+    let total = 0;
+
+    if (isVatable) {
+        if (isInclusive) {
+            net = Math.round((amountVal / 1.12) * 100) / 100;
+            vat = Math.round((amountVal - net) * 100) / 100;
+            total = amountVal;
+        } else {
+            net = Math.round(amountVal * 100) / 100;
+            vat = Math.round((net * 0.12) * 100) / 100;
+            total = Math.round((net + vat) * 100) / 100;
+        }
+    } else {
+        net = Math.round(amountVal * 100) / 100;
+        vat = 0;
+        total = net;
+    }
+
+    // Revenue Account Title
+    const revSelect = document.getElementById('txRevenueAccountId');
+    let revName = 'Service Revenue';
+    if (revSelect && revSelect.options.length > 0 && revSelect.selectedIndex >= 0) {
+        revName = revSelect.options[revSelect.selectedIndex].text.replace(/^[0-9-]+\s*-\s*/, '') || 'Service Revenue';
+    }
+
+    const linesBody = document.getElementById('txPreviewLines');
+    let html = '';
+
+    // Customer Accounting:
+    // Cash:
+    // Debit Cash
+    // Credit Service Revenue
+    // Credit Output VAT if VATable
+    // Credit:
+    // Debit Accounts Receivable
+    // Credit Service Revenue
+    // Credit Output VAT if VATable
+    const debitAccountName = (terms === 'Cash') ? 'Cash on Hand' : 'Accounts Receivable';
+
+    // Debit Line
+    html += `<tr>
+        <td style="padding: 3px 5px; font-weight: 600; color: #1e293b; font-size: 0.78rem;">${debitAccountName}</td>
+        <td style="text-align: right; padding: 3px 5px; font-weight: 600; color: #0f172a; font-size: 0.78rem;">₱${total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+        <td style="text-align: right; padding: 3px 5px; color: #94a3b8; font-size: 0.78rem;">—</td>
+    </tr>`;
+
+    // Credit Revenue Line
+    html += `<tr>
+        <td style="padding: 3px 5px; padding-left: 1.25rem; color: #475569; font-size: 0.78rem;">${revName}</td>
+        <td style="text-align: right; padding: 3px 5px; color: #94a3b8; font-size: 0.78rem;">—</td>
+        <td style="text-align: right; padding: 3px 5px; color: #0f172a; font-size: 0.78rem;">₱${net.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+    </tr>`;
+
+    // Credit Output VAT Line (if VATable)
+    if (isVatable && vat > 0) {
+        html += `<tr>
+            <td style="padding: 3px 5px; padding-left: 1.25rem; color: #d97706; font-weight: 500; font-size: 0.78rem;">Output VAT (12%)</td>
+            <td style="text-align: right; padding: 3px 5px; color: #94a3b8; font-size: 0.78rem;">—</td>
+            <td style="text-align: right; padding: 3px 5px; color: #d97706; font-weight: 500; font-size: 0.78rem;">₱${vat.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+        </tr>`;
+    }
+
+    linesBody.innerHTML = html;
+
+    const totalCredit = isVatable ? (net + vat) : net;
+    document.getElementById('txPreviewTotalDr').innerText = '₱' + total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('txPreviewTotalCr').innerText = '₱' + totalCredit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
 </script>
 
 <?php require_once '../includes/footer.php'; ?>

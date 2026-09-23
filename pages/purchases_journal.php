@@ -1,7 +1,8 @@
-<?php
+    <?php
 require_once '../config.php';
 require_once '../db.php';
 require_once '../includes/auth.php';
+require_once '../includes/transaction_poster.php';
 
 $db = get_db();
 try { $db->query("CREATE TABLE IF NOT EXISTS customers (id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, code VARCHAR(20) NULL, name VARCHAR(150) NOT NULL, opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0, status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"); } catch (Exception $e) {}
@@ -37,7 +38,7 @@ $stmtCust->execute();
 $customersList = $stmtCust->get_result()->fetch_all(MYSQLI_ASSOC);
 
 // Fetch all suppliers for Name dropdown
-$stmtSupp = $db->prepare("SELECT id, name, 'supplier' as type FROM suppliers WHERE company_id = ? ORDER BY name ASC");
+$stmtSupp = $db->prepare("SELECT id, name, terms, 'supplier' as type FROM suppliers WHERE company_id = ? ORDER BY name ASC");
 $stmtSupp->bind_param('i', $company_id);
 $stmtSupp->execute();
 $suppliersList = $stmtSupp->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -67,89 +68,106 @@ $companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_regis
 
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    if ($_POST['action'] === 'add_entry' || $_POST['action'] === 'edit_entry') {
-        $action = $_POST['action'];
-        $entry_id = ($action === 'edit_entry') ? (int)($_POST['entry_id'] ?? 0) : null;
-        
-    $date = $_POST['date'];
-    $ref_no = ($action === 'add_entry') ? '' : trim($_POST['reference_no'] ?? '');
-    if (empty(trim($ref_no))) {
-        $ref_no = 'PJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
-    }
-    $description = trim($_POST['description'] ?? '');
-    $is_taxable = $companyIsTaxRegistered ? 1 : 0;
-        $particulars = '';
-    $type = 'Operating';
-    $entity_id = $_POST['entity_id'] ?? null;
-    if ($entity_id === '') $entity_id = null;
-    $entity_type = $_POST['entity_type'] ?? null;
-    if ($entity_type === '') $entity_type = null;
-    $vendor_name = null; // Legacy field
 
-    $account_ids = $_POST['account_id'] ?? [];
-    $line_descriptions = $_POST['line_description'] ?? [];
-    $line_vendors = $_POST['line_vendor'] ?? [];
-    $debits = $_POST['debit'] ?? [];
-    $credits = $_POST['credit'] ?? [];
+    // ── AUTO PURCHASE: Cash or Credit expense/asset entry (simplified form) ────
+    if ($_POST['action'] === 'auto_purchase') {
+        $date         = $_POST['date'] ?? date('Y-m-d');
+        $description  = trim($_POST['description'] ?? '');
+        $terms        = (($_POST['terms'] ?? 'Cash') === 'Credit') ? 'Credit' : 'Cash';
+        $amount       = round((float)str_replace(',', '', $_POST['amount'] ?? 0), 2);
+        $exp_acc_id   = (int)($_POST['expense_account_id'] ?? 0);
+        $entity_id    = !empty($_POST['entity_id']) ? (int)$_POST['entity_id'] : null;
+        $entity_type  = !empty($_POST['entity_type']) ? $_POST['entity_type'] : 'supplier';
+        $ref_no       = 'PJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
 
-    // ── Server-side journal type validation ──────────────────────────
-    $valid_acc_ids = array_filter(array_map('intval', $account_ids));
-    if (!empty($valid_acc_ids)) {
-        $in = implode(',', $valid_acc_ids);
-        $cat_res = $db->query("SELECT category, name FROM accounts WHERE id IN ($in) AND company_id = $company_id");
-        $cats = []; $names = [];
-        while ($row = $cat_res->fetch_assoc()) { $cats[] = $row['category']; $names[] = strtolower($row['name']); }
-        $has_cash    = in_array('Assets', $cats) && (bool)preg_grep('/cash|bank/i', $names);
-        $has_rev     = in_array('Revenue', $cats);
-        $has_exp     = in_array('Expenses', $cats);
-        $has_payable = in_array('Liabilities', $cats);
-        // Block if it has Revenue (Sales) or Cash (should be CDJ)
-        if ($has_rev) {
-            $toast_data = ['reason' => 'Credit sales must be recorded in', 'journal' => 'Sales', 'url' => 'sales_journal.php'];
-        } elseif ($has_cash) {
-            $toast_data = ['reason' => 'Cash purchases must be recorded in', 'journal' => 'Cash Disbursements', 'url' => 'cash_disbursements_journal.php'];
-        } elseif (!$has_payable) {
-            $toast_data = ['reason' => 'A Payable or Liability account is required for credit purchases.', 'journal' => 'Purchases', 'url' => null];
-        }
-        if (isset($toast_data)) {
-            $jn = $toast_data['journal'] ?? '';
-            $error = trim($toast_data['reason'] . ($jn ? " $jn." : ''));
-        }
-    }
-    // ────────────────────────────────────────────────────────────────
+        if ($amount <= 0)    { $error = "Amount must be greater than zero."; }
+        if (!$exp_acc_id)    { $error = "Please select an Expense or Asset account."; }
 
-    if (!isset($error)) {
-        if ($action === 'edit_entry') {
-            $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND journal_id = 'PJ'");
-            $check->bind_param('ii', $entry_id, $company_id);
-            $check->execute();
-            if (!$check->get_result()->fetch_assoc()) {
-                $error = "Entry not found.";
+        if (!isset($error)) {
+            $stdAccts  = get_company_standard_accounts($db, $company_id);
+            $input_vat = 0;
+            $total     = $amount;
+            if ($companyIsTaxRegistered && $stdAccts['input_vat']) {
+                $input_vat = round($amount * 0.12, 2);
+                $total     = round($amount + $input_vat, 2);
+            }
+            $credit_acct = ($terms === 'Cash') ? $stdAccts['cash'] : $stdAccts['ap'];
+            if (!$credit_acct) {
+                $error = "Could not find " . ($terms === 'Cash' ? 'Cash on Hand' : 'Accounts Payable') . " account. Please add it to your Chart of Accounts.";
             }
         }
-    }
 
-    if (!isset($error)) {
-    $db->begin_transaction();
-    try {
-        $journal_id = 'PJ';
-        
-        if ($action === 'add_entry') {
-            $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param('isssissssis', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id, $entity_id, $entity_type);
-            $stmt->execute();
-            $entry_id = $stmt->insert_id;
-        } else {
-            $stmt = $db->prepare("UPDATE journal_entries SET reference_no = ?, date = ?, description = ?, is_taxable = ?, entity_id = ?, entity_type = ? WHERE id = ? AND company_id = ?");
-            $stmt->bind_param('sssiisii', $ref_no, $date, $description, $is_taxable, $entity_id, $entity_type, $entry_id, $company_id);
-            $stmt->execute();
+        if (!isset($error)) {
+            $db->begin_transaction();
+            try {
+                $is_taxable  = $companyIsTaxRegistered ? 1 : 0;
+                $journal_id  = 'PJ';
+                $particulars = '';
+                $type        = 'Operating';
+                $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param('isssisssis', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $journal_id, $entity_id, $entity_type);
+                $stmt->execute();
+                $entry_id = $stmt->insert_id;
 
-            $stmtDelLines = $db->prepare("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?");
-            $stmtDelLines->bind_param('i', $entry_id);
-            $stmtDelLines->execute();
+                $zero  = 0.0;
+                $stmtL = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
+                // Dr. Expense / Asset (net amount)
+                $stmtL->bind_param('iidd', $entry_id, $exp_acc_id, $amount, $zero);
+                $stmtL->execute();
+                // Dr. Input VAT (12%)
+                if ($input_vat > 0 && $stdAccts['input_vat']) {
+                    $vat_id = $stdAccts['input_vat']['id'];
+                    $stmtL->bind_param('iidd', $entry_id, $vat_id, $input_vat, $zero);
+                    $stmtL->execute();
+                }
+                // Cr. Cash on Hand or Accounts Payable
+                $stmtL->bind_param('iidd', $entry_id, $credit_acct['id'], $zero, $total);
+                $stmtL->execute();
+
+                $user_id    = $_SESSION['user_id'];
+                $log_action = "Auto-posted Purchase Entry | Ref: {$ref_no} | {$terms} Purchase | Expense: ₱" . number_format($amount, 2) . " | Total: ₱" . number_format($total, 2);
+                $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+                $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
+                $logStmt->execute();
+
+                $db->commit();
+                header("Location: purchases_journal.php?posted=1&ref=" . urlencode($ref_no));
+                exit;
+            } catch (Exception $e) {
+                $db->rollback();
+                $error = "Failed to save entry: " . $e->getMessage();
+            }
         }
 
-        // --- BACKEND VAT LOGIC START (Purchases Journal: Input VAT only) ---
+    // ── EDIT ENTRY (manual multi-line edit of existing PJ entry) ────
+    } elseif ($_POST['action'] === 'edit_entry') {
+        $entry_id    = (int)($_POST['entry_id'] ?? 0);
+        $date        = $_POST['date'];
+        $ref_no      = trim($_POST['reference_no'] ?? '');
+        if (empty($ref_no)) $ref_no = 'PJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
+        $description = trim($_POST['description'] ?? '');
+        $is_taxable  = $companyIsTaxRegistered ? 1 : 0;
+        $particulars = '';
+        $type        = 'Operating';
+        $entity_id   = !empty($_POST['entity_id']) ? (int)$_POST['entity_id'] : null;
+        $entity_type = !empty($_POST['entity_type']) ? $_POST['entity_type'] : null;
+        $account_ids = $_POST['account_id'] ?? [];
+        $debits      = $_POST['debit'] ?? [];
+        $credits     = $_POST['credit'] ?? [];
+
+        $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND journal_id = 'PJ'");
+        $check->bind_param('ii', $entry_id, $company_id);
+        $check->execute();
+        if (!$check->get_result()->fetch_assoc()) { $error = "Entry not found."; }
+
+        if (!isset($error)) {
+            $db->begin_transaction();
+            try {
+                $stmt = $db->prepare("UPDATE journal_entries SET reference_no=?, date=?, description=?, is_taxable=?, entity_id=?, entity_type=? WHERE id=? AND company_id=?");
+                $stmt->bind_param('sssiisii', $ref_no, $date, $description, $is_taxable, $entity_id, $entity_type, $entry_id, $company_id);
+                $stmt->execute();
+                $db->query("DELETE FROM journal_entry_lines WHERE journal_entry_id = $entry_id");
+
                 $final_lines = [];
                 for ($i = 0; $i < count($account_ids); $i++) {
                     $acc_id = (int)$account_ids[$i];
@@ -159,124 +177,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $final_lines[] = ['account_id' => $acc_id, 'debit' => $dr, 'credit' => $cr];
                     }
                 }
-
-                // Purchases Journal: VAT-registered companies generate INPUT VAT on Expense/Asset debits.
-                // Output VAT does NOT apply here (no sales in a Purchases Journal).
-                // If user already included an Input VAT line manually, skip auto-VAT to prevent double Input VAT.
-                $has_user_input_vat = false;
-                if ($inputVatId) {
-                    foreach ($final_lines as $line) {
-                        if ($line['account_id'] == $inputVatId) {
-                            $has_user_input_vat = true;
-                            break;
-                        }
-                    }
-                }
-
-                if ($action === 'add_entry' && $is_taxable && $inputVatId && !$has_user_input_vat) { // VAT is only auto-added on new entries if not manually entered
-                    $added_input_vat = 0;
-
-                    foreach ($final_lines as &$line) {
-                        $cat = '';
-                        $name_lower = '';
-                        foreach ($accountsList as $a) {
-                            if ($a['id'] == $line['account_id']) {
-                                $cat = $a['category'];
-                                $name_lower = strtolower($a['name']);
-                                break;
-                            }
-                        }
-                        // Input VAT: Expense/Asset debited is VAT-inclusive → split into Net Expense/Asset and Input VAT (12%)
-                        // Exclude non-VATable/exempt accounts (Cash, Bank, Receivables, Salaries/Wages, Employee Benefits, SSS/PhilHealth/Pag-IBIG, Depreciation, Taxes, Interest, etc.)
-                        $is_vat_exempt = (
-                            strpos($name_lower, 'cash') !== false ||
-                            strpos($name_lower, 'bank') !== false ||
-                            strpos($name_lower, 'receivable') !== false ||
-                            strpos($name_lower, 'salar') !== false ||
-                            strpos($name_lower, 'wage') !== false ||
-                            strpos($name_lower, 'payroll') !== false ||
-                            strpos($name_lower, 'labor') !== false ||
-                            strpos($name_lower, 'sss') !== false ||
-                            strpos($name_lower, 'philhealth') !== false ||
-                            strpos($name_lower, 'pag-ibig') !== false ||
-                            strpos($name_lower, 'pagibig') !== false ||
-                            strpos($name_lower, 'benefit') !== false ||
-                            strpos($name_lower, 'bonus') !== false ||
-                            strpos($name_lower, 'allowance') !== false ||
-                            strpos($name_lower, 'depreciation') !== false ||
-                            strpos($name_lower, 'amortization') !== false ||
-                            strpos($name_lower, 'bad debt') !== false ||
-                            strpos($name_lower, 'doubtful') !== false ||
-                            strpos($name_lower, 'tax') !== false ||
-                            strpos($name_lower, 'license') !== false ||
-                            strpos($name_lower, 'interest') !== false ||
-                            strpos($name_lower, 'bank charge') !== false ||
-                            strpos($name_lower, 'penalty') !== false
-                        );
-
-                        if (($cat === 'Expenses' || $cat === 'Assets')
-                            && $line['debit'] > 0
-                            && $line['account_id'] != $inputVatId
-                            && $line['account_id'] != $outputVatId
-                            && !$is_vat_exempt) {
-                            $gross = $line['debit'];
-                            $net = round($gross / 1.12, 2);
-                            $vat = round($gross - $net, 2);
-                            $line['debit'] = $net;
-                            $added_input_vat += $vat;
-                        }
-                    }
-                    unset($line);
-
-                    if ($added_input_vat > 0) {
-                        // Debit Input VAT
-                        $final_lines[] = ['account_id' => $inputVatId, 'debit' => $added_input_vat, 'credit' => 0];
-                    }
-                }
-                
                 $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
                 $total_debit = 0;
                 foreach ($final_lines as $line) {
-                    $dr = $line['debit'];
-                    $cr = $line['credit'];
-                    $total_debit += $dr;
+                    $dr = $line['debit']; $cr = $line['credit']; $total_debit += $dr;
                     $stmtLine->bind_param('iidd', $entry_id, $line['account_id'], $dr, $cr);
                     $stmtLine->execute();
                 }
-                // --- BACKEND VAT LOGIC END ---
 
-        // Add to activity log
-        $user_id = $_SESSION['user_id'];
-        $log_action = ($action === 'add_entry')
-            ? "Created Journal Entry | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2)
-            : "Edited Journal Entry #$entry_id | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2);
-        $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+                $user_id    = $_SESSION['user_id'];
+                $log_action = "Edited Purchases Journal Entry #$entry_id | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2);
+                $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+                $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
+                $logStmt->execute();
+
+                $db->commit();
+                header("Location: purchases_journal.php");
+                exit;
+            } catch (Exception $e) {
+                $db->rollback();
+                $error = "Failed to save entry: " . $e->getMessage();
+            }
+        }
+
+    } elseif ($_POST['action'] === 'delete') {
+        $delete_id  = (int)$_POST['id'];
+        $stmtDel    = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?");
+        $stmtDel->bind_param('ii', $delete_id, $company_id);
+        $stmtDel->execute();
+        $user_id    = $_SESSION['user_id'];
+        $log_action = "Moved Purchases Journal Entry #$delete_id to Trash";
+        $logStmt    = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
         $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
         $logStmt->execute();
-
-        $db->commit();
         header("Location: purchases_journal.php");
         exit;
-    } catch (Exception $e) {
-        $db->rollback();
-        $error = "Failed to save entry: " . $e->getMessage();
     }
-    } // end if !isset($error)
-    } elseif ($_POST['action'] === 'delete') {
-    $delete_id = (int)$_POST['id'];
-    $stmtDel = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?");
-    $stmtDel->bind_param('ii', $delete_id, $company_id);
-    $stmtDel->execute();
-    
-    $user_id = $_SESSION['user_id'];
-    $log_action = "Moved Journal Entry #$delete_id to Trash";
-    $stmtLog = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
-    $stmtLog->bind_param('iis', $company_id, $user_id, $log_action);
-    $stmtLog->execute();
-    
-    header("Location: purchases_journal.php");
-    exit;
-}
 }
 
 // ── Search (from the top search bar) ─────────────────────────────
@@ -324,19 +260,16 @@ $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 require_once '../includes/header.php';
 ?>
 
-<div class="page-header">
-    <div class="page-header-text">
-        <h1 class="page-title">Purchases</h1>
-    </div>
-    <button class="btn btn-primary" onclick="openModal()">
-        <i data-lucide="plus" style="width:15px;height:15px;"></i> New Entry
-    </button>
-</div>
-
 <?php if (isset($error)): ?>
-    <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-        <?= htmlspecialchars($error) ?>
-    </div>
+<div class="alert alert-danger" style="margin-bottom: 1rem;">
+    <?= htmlspecialchars($error) ?>
+</div>
+<?php endif; ?>
+<?php if (isset($_GET['posted'])): ?>
+<div class="alert alert-success" style="margin-bottom: 1rem; display:flex; align-items:center; gap:0.6rem;">
+    <i data-lucide="check-circle" style="width:16px;height:16px;"></i>
+    Purchase entry <strong><?= htmlspecialchars($_GET['ref'] ?? '') ?></strong> auto-posted to Purchases Journal successfully.
+</div>
 <?php endif; ?>
 
 <?php if ($search !== ''): ?>
@@ -346,9 +279,9 @@ require_once '../includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="card" style="padding: 0; overflow: hidden;">
+<div class="card" style="padding: 0; overflow: hidden; border: none; box-shadow: none;">
     <div class="table-container">
-        <table class="table">
+        <table class="table journal-table">
             <thead>
                 <tr>
                     <th style="min-width: 105px; white-space: nowrap;">Date</th>
@@ -367,43 +300,46 @@ require_once '../includes/header.php';
                     $stmtLine->bind_param('i', $tx['id']);
                     $stmtLine->execute();
                     $lines = $stmtLine->get_result()->fetch_all(MYSQLI_ASSOC);
-                    $totalDebit = 0;
-                    $totalCredit = 0;
+                    $lineCount = count($lines);
                 ?>
                 <?php foreach($lines as $index => $line): 
-                    $totalDebit += $line['debit'];
-                    $totalCredit += $line['credit'];
+                    $isFirst = ($index === 0);
+                    $isLast = ($index === $lineCount - 1);
+                    $rowClasses = [];
+                    if ($isFirst) $rowClasses[] = 'entry-row-first';
+                    if ($isLast)  $rowClasses[] = 'entry-row-last';
+                    $rowClassStr = implode(' ', $rowClasses);
                 ?>
-                <tr>
-                    <td>
-                        <?= $index === 0 ? '<strong>' . date('M d, Y', strtotime($tx['date'])) . '</strong><br>' : '' ?>
+                <tr class="<?= $rowClassStr ?>">
+                    <td style="white-space: nowrap;">
+                        <?= $isFirst ? '<strong>' . date('M d, Y', strtotime($tx['date'])) . '</strong>' : '' ?>
                     </td>
-                    <td style="padding-left: <?= $line['credit'] > 0 ? '2.5rem' : '1rem' ?>; font-weight: 500;">
+                    <td style="padding-left: <?= $line['credit'] > 0 ? '1.75rem' : '0.75rem' ?>; font-weight: <?= $line['credit'] > 0 ? '400' : '600' ?>;">
                         <?= htmlspecialchars($line['name']) ?>
                     </td>
-                    <td style="color: #475569 !important; font-size: 0.85rem; opacity: 1;">
-                        <?php if ($index === 0 && !empty($tx['entity_name'])): ?>
+                    <td style="color: #475569 !important; font-size: 0.8125rem;">
+                        <?php if ($isFirst && !empty($tx['entity_name'])): ?>
                             <?= htmlspecialchars($tx['entity_name']) ?>
                             <?php if (!empty($tx['entity_code'])): ?>
                                 <br><span style="font-family: monospace; font-size: 0.7rem; font-weight: 600; color: #64748b;">[<?= htmlspecialchars($tx['entity_code']) ?>]</span>
                             <?php endif; ?>
                         <?php endif; ?>
                     </td>
-                    <td style="color: #334155 !important; font-size: 0.85rem; white-space: normal; word-break: break-word; opacity: 1;">
-                        <?= $index === 0 ? nl2br(htmlspecialchars(($tx['description'] ?? '') !== '' ? $tx['description'] : ($line['description'] ?? ''))) : nl2br(htmlspecialchars($line['description'] ?? '')) ?>
+                    <td style="color: #334155 !important; font-size: 0.8125rem; white-space: normal; word-break: break-word;">
+                        <?= $isFirst ? nl2br(htmlspecialchars(($tx['description'] ?? '') !== '' ? $tx['description'] : ($line['description'] ?? ''))) : nl2br(htmlspecialchars($line['description'] ?? '')) ?>
                     </td>
-                    <td style="font-family: monospace; font-size: 0.85rem;">
-                        <?php if ($index === 0): ?>
-                            <span style="background: #e2e8f0; color: #475569; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span><br>
-                            <?= $tx['reference_no'] ? '<strong>'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
+                    <td style="font-family: monospace; font-size: 0.8125rem; white-space: nowrap;">
+                        <?php if ($isFirst): ?>
+                            <span style="background: #f3e8ff; color: #7e22ce; padding: 1px 5px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span>
+                            <?= $tx['reference_no'] ? ' <strong style="color: #0f172a; font-size: 0.78rem;">'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
                         <?php endif; ?>
                         <span style="color: var(--primary-color)"><?= htmlspecialchars($line['code']) ?></span>
                     </td>
-                    <td class="text-right"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
-                    <td class="text-right"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
-                    <td class="text-center" style="vertical-align: middle;">
-                        <?php if ($index === 0): ?>
-                        <div class="flex gap-1" style="justify-content: center;">
+                    <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
+                    <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
+                    <td class="text-center" style="vertical-align: top;">
+                        <?php if ($isFirst): ?>
+                        <div class="flex gap-1" style="justify-content: center; padding-top: 2px;">
                             <button type="button" style="background: none; border: none; cursor: pointer; color: var(--primary-color);" title="Edit Entry" onclick='openEditModal(<?= json_encode([
                                 "id" => $tx['id'],
                                 "date" => $tx['date'],
@@ -420,13 +356,13 @@ require_once '../includes/header.php';
                                     ];
                                 }, $lines)
                             ]) ?>)'>
-                                <i data-lucide="edit-2" style="width:15px;height:15px;"></i>
+                                <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
                             </button>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Move this entry to Trash Bin?');">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= $tx['id'] ?>">
                                 <button type="submit" style="background: none; border: none; cursor: pointer; color: #ef4444;" title="Move to Trash">
-                                    <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+                                    <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
                                 </button>
                             </form>
                         </div>
@@ -434,13 +370,6 @@ require_once '../includes/header.php';
                     </td>
                 </tr>
                 <?php endforeach; ?>
-                <tr style="background-color: #f8fafc;">
-                    <td colspan="5" class="text-right" style="font-weight: 600; padding-right: 1rem;">Total</td>
-                    <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalDebit, 2) ?></td>
-                    <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalCredit, 2) ?></td>
-                    <td></td>
-                </tr>
-                <tr><td colspan="8" style="border-bottom: 2px solid var(--border-color); padding: 0;"></td></tr>
                 <?php endforeach; ?>
                 <?php if(count($transactions) === 0): ?>
                 <tr>
@@ -452,104 +381,170 @@ require_once '../includes/header.php';
     </div>
 </div>
 
-<!-- Modal -->
+<!-- Modal: dual-mode (simplified auto_purchase for new entries, manual edit for existing) -->
 <div id="entryModal" class="modal-overlay hidden">
-    <div class="modal" style="width: 1100px; max-width: 95vw;">
+    <div class="modal" id="entryModalInner" style="width: 740px; max-width: 96vw;">
         <div class="modal-header">
-            <h2 id="modalTitle">New Journal Entry</h2>
+            <div>
+                <h2 id="modalTitle">New Purchase / Expense Entry</h2>
+                <p id="modalSubtitle" style="font-size:0.78rem; color:var(--text-muted); margin:2px 0 0; line-height:1.4;">System automatically generates the balanced accounting entry and posts to Purchases Journal.</p>
+            </div>
             <button class="icon-btn" onclick="closeModal()"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
         </div>
         <div class="modal-body">
-            <form id="entry-form" method="POST">
-                <input type="hidden" name="action" id="formAction" value="add_entry">
-                <input type="hidden" name="entry_id" id="entryId" value="">
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                    <div class="form-group">
-                        <label class="form-label">Date</label>
-                        <input type="date" name="date" id="entryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
+            <!-- ===== AUTO FORM (new entries) ===== -->
+            <div id="pj-auto-section">
+                <form id="auto-entry-form" method="POST">
+                    <input type="hidden" name="action" value="auto_purchase">
+
+                    <!-- Terms toggle -->
+                    <div style="margin-bottom:1.25rem;">
+                        <label class="form-label" style="margin-bottom:0.5rem;">Terms</label>
+                        <div style="display:flex; gap:0.5rem;">
+                            <button type="button" id="termsCashBtn" class="btn btn-primary" onclick="setTerms('Cash')" style="flex:1; font-size:0.875rem;">
+                                <i data-lucide="banknote" style="width:14px;height:14px;"></i>&nbsp; Cash Purchase
+                            </button>
+                            <button type="button" id="termsCreditBtn" class="btn btn-secondary" onclick="setTerms('Credit')" style="flex:1; font-size:0.875rem;">
+                                <i data-lucide="credit-card" style="width:14px;height:14px;"></i>&nbsp; Credit Purchase
+                            </button>
+                        </div>
+                        <input type="hidden" name="terms" id="termsInput" value="Cash">
                     </div>
-                    <input type="hidden" name="reference_no" id="entryRefNo" value="">
-                    <!-- Header-level Name (Customer/Vendor) — optional -->
-                    <div class="form-group" style="position: relative;">
-                        <label class="form-label">Name <span style="font-weight:400; color: var(--text-muted); font-size:0.78rem;">(Customer / Vendor — optional)</span></label>
-                        <input type="text" id="entitySearchInput" class="form-control" placeholder="Search customer or vendor..." autocomplete="off"
-                               oninput="onEntitySearchInput()"
-                               onfocus="onEntitySearchInput()"
-                               onkeydown="onEntitySearchKeydown(event)"
-                               onblur="onEntitySearchBlur()">
-                        <input type="hidden" name="entity_id" id="entityIdInput" value="">
-                        <input type="hidden" name="entity_type" id="entityTypeInput" value="">
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Date</label>
+                            <input type="date" name="date" id="autoEntryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                        </div>
+                        <div class="form-group" style="position:relative;">
+                            <label class="form-label">Supplier <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem;">(optional)</span></label>
+                            <input type="text" id="autoEntitySearch" class="form-control" placeholder="Search supplier..." autocomplete="off"
+                                   oninput="onAutoEntitySearch()" onfocus="onAutoEntitySearch()"
+                                   onkeydown="onAutoEntityKeydown(event)" onblur="onAutoEntityBlur()">
+                            <input type="hidden" name="entity_id" id="autoEntityId" value="">
+                            <input type="hidden" name="entity_type" id="autoEntityType" value="supplier">
+                            <div id="auto-entity-dd" style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:9999;background:var(--bg-primary,#fff);border:1px solid var(--border-color);border-radius:6px;max-height:180px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.14);"></div>
+                        </div>
                     </div>
-                </div>
 
-                <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label class="form-label">Description</label>
-                    <textarea name="description" id="entryDescription" class="form-control" rows="2" style="resize: vertical;"></textarea>
-                </div>
+                    <div style="display:grid; grid-template-columns:2fr 1fr; gap:1rem; margin-bottom:1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Expense / Asset Account</label>
+                            <select name="expense_account_id" id="expenseAccountId" class="form-control" required onchange="computePreview()">
+                                <option value="">-- Select Expense/Asset Account --</option>
+                                <?php foreach ($accountsList as $acc): if ($acc['category'] !== 'Expenses' && $acc['category'] !== 'Assets') continue; ?>
+                                <option value="<?= $acc['id'] ?>"><?= htmlspecialchars($acc['code'] . ' - ' . $acc['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Purchase Amount (&#8369;)</label>
+                            <input type="number" name="amount" id="autoAmount" class="form-control" placeholder="0.00" step="0.01" min="0.01" required oninput="computePreview()">
+                        </div>
+                    </div>
 
-                <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
-                    <table class="table" style="margin: 0;">
-                        <thead>
-                            <tr>
-                                <th style="width: 55%;">Account</th>
-                                <th style="width: 20%;" class="text-right">Debit</th>
-                                <th style="width: 20%;" class="text-right">Credit</th>
-                                <th style="width: 5%;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="lines-container"></tbody>
-                        <tfoot>
-                            <tr>
-                                <td>
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="addLine()">
-                                        <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Line
-                                    </button>
-                                </td>
-                                <td class="text-right" style="font-weight: 600;" id="total-dr">&#8369;0.00</td>
-                                <td class="text-right" style="font-weight: 600;" id="total-cr">&#8369;0.00</td>
+                    <div class="form-group" style="margin-bottom:1rem;">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" id="autoDescription" class="form-control" rows="2" style="resize:vertical;"></textarea>
+                    </div>
+
+                    <!-- Auto-Generated Entry Preview -->
+                    <div style="border:1px solid var(--border-color);border-radius:10px;padding:1rem;background:var(--bg-secondary);">
+                        <div style="font-size:0.71rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#d97706;margin-bottom:0.7rem;display:flex;align-items:center;gap:0.4rem;">
+                            <i data-lucide="zap" style="width:13px;height:13px;"></i>
+                            Auto-Generated Journal Entry &mdash; Posts to Purchases Journal (PJ)
+                        </div>
+                        <table style="width:100%;font-size:0.875rem;border-collapse:collapse;">
+                            <thead><tr style="border-bottom:1px solid var(--border-color);">
+                                <th style="text-align:left;padding:0.3rem 0.5rem;font-size:0.72rem;font-weight:700;color:var(--text-muted);">Account</th>
+                                <th style="text-align:right;padding:0.3rem 0.5rem;font-size:0.72rem;font-weight:700;color:var(--text-muted);min-width:110px;">Debit</th>
+                                <th style="text-align:right;padding:0.3rem 0.5rem;font-size:0.72rem;font-weight:700;color:var(--text-muted);min-width:110px;">Credit</th>
+                            </tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td style="padding:0.4rem 0.5rem;font-weight:500;" id="prev-exp-name">Expense / Asset Account</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;color:#22c55e;font-variant-numeric:tabular-nums;" id="prev-exp-amt">&#8369;0.00</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                                </tr>
+                                <tr id="prev-vat-row" style="display:none;">
+                                    <td style="padding:0.4rem 0.5rem;font-weight:500;">Input VAT (12%)</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;color:#22c55e;font-variant-numeric:tabular-nums;" id="prev-vat-amt">&#8369;0.00</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:0.4rem 0.5rem;padding-left:2rem;color:var(--text-secondary);" id="prev-credit-name">Cash on Hand</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:600;color:#60a5fa;font-variant-numeric:tabular-nums;" id="prev-credit-amt">&#8369;0.00</td>
+                                </tr>
+                            </tbody>
+                            <tfoot><tr style="border-top:2px solid var(--border-color);">
+                                <td style="padding:0.4rem 0.5rem;font-weight:700;font-size:0.8rem;">Total</td>
+                                <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;" id="prev-total-dr">&#8369;0.00</td>
+                                <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;" id="prev-total-cr">&#8369;0.00</td>
+                            </tr></tfoot>
+                        </table>
+                        <div id="prev-vat-info" style="display:none;margin-top:0.55rem;font-size:0.8rem;color:var(--text-muted);padding:0.4rem 0.5rem;background:rgba(251,191,36,0.08);border-radius:6px;border:1px solid rgba(251,191,36,0.2);">
+                            Expense &#8369;<span id="prev-vat-base">0.00</span> + Input VAT 12% &#8369;<span id="prev-vat-computed">0.00</span> = Total &#8369;<span id="prev-vat-full">0.00</span>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- ===== MANUAL / EDIT FORM (editing existing entries) ===== -->
+            <div id="pj-edit-section" style="display:none;">
+                <form id="entry-form" method="POST">
+                    <input type="hidden" name="action" id="formAction" value="edit_entry">
+                    <input type="hidden" name="entry_id" id="entryId" value="">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Date</label>
+                            <input type="date" name="date" id="entryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                        </div>
+                        <input type="hidden" name="reference_no" id="entryRefNo" value="">
+                        <div class="form-group" style="position:relative;">
+                            <label class="form-label">Name <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem;">(Supplier / Customer)</span></label>
+                            <input type="text" id="entitySearchInput" class="form-control" placeholder="Search supplier or customer..." autocomplete="off"
+                                   oninput="onEntitySearchInput()" onfocus="onEntitySearchInput()"
+                                   onkeydown="onEntitySearchKeydown(event)" onblur="onEntitySearchBlur()">
+                            <input type="hidden" name="entity_id" id="entityIdInput" value="">
+                            <input type="hidden" name="entity_type" id="entityTypeInput" value="">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:1.5rem;">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" id="entryDescription" class="form-control" rows="2" style="resize:vertical;"></textarea>
+                    </div>
+                    <div class="card" style="margin-bottom:1.5rem;background-color:var(--bg-secondary);padding:1rem;border:none;box-shadow:none;">
+                        <table class="table" style="margin:0;">
+                            <thead><tr>
+                                <th style="width:55%;">Account</th>
+                                <th style="width:20%;" class="text-right">Debit</th>
+                                <th style="width:20%;" class="text-right">Credit</th>
+                                <th style="width:5%;"></th>
+                            </tr></thead>
+                            <tbody id="lines-container"></tbody>
+                            <tfoot><tr>
+                                <td><button type="button" class="btn btn-secondary" style="padding:0.25rem 0.5rem;font-size:0.8rem;" onclick="addLine()"><i data-lucide="plus" style="width:14px;height:14px;"></i> Add Line</button></td>
+                                <td class="text-right" style="font-weight:600;" id="total-dr">&#8369;0.00</td>
+                                <td class="text-right" style="font-weight:600;" id="total-cr">&#8369;0.00</td>
                                 <td></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-
-                <!-- ===== LIVE VAT PREVIEW ===== -->
-                <div id="vat-preview" style="display:none; margin-bottom:1rem; border:1px solid var(--border-color); border-radius:10px; padding:0.85rem 1rem; background: var(--bg-secondary);">
-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.6rem;">
-                        <span style="font-size:0.72rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color: var(--text-muted);">
-                            VAT Preview
-                        </span>
-                        <span style="font-size:0.72rem; color: var(--text-muted);">auto-added on save</span>
+                            </tr></tfoot>
+                        </table>
                     </div>
-                    <div style="display:flex; justify-content:space-between; font-size:0.875rem; padding:0.18rem 0;">
-                        <span style="color: var(--text-muted);">Vatable Purchases (net)</span>
-                        <span id="vat-base" style="font-variant-numeric: tabular-nums;">&#8369;0.00</span>
+                    <div id="balance-warning" style="color:var(--danger-color);font-size:0.875rem;margin-bottom:1rem;text-align:right;display:none;">
+                        Debits and Credits must balance. Difference: &#8369;<span id="diff-amount">0.00</span>
                     </div>
-                    <div style="display:flex; justify-content:space-between; font-size:0.875rem; padding:0.18rem 0;">
-                        <span style="color: var(--text-muted);">Input VAT (12%) &rarr; <span id="vat-account-name" style="font-weight:600; color: var(--text-primary);"></span></span>
-                        <span id="vat-amount" style="font-variant-numeric: tabular-nums; font-weight:600;">&#8369;0.00</span>
-                    </div>
-                    <div style="border-top:1px dashed var(--border-color); margin:0.5rem 0 0.4rem;"></div>
-                    <div style="display:flex; justify-content:space-between; font-size:0.9rem; font-weight:700; padding:0.15rem 0;">
-                        <span>Total Payable</span>
-                        <span id="vat-grand-total" style="font-variant-numeric: tabular-nums;">&#8369;0.00</span>
-                    </div>
-                    <div id="vat-offset-note" style="font-size:0.76rem; color: var(--text-muted); margin-top:0.45rem; line-height:1.4;"></div>
-                </div>
-                <!-- ===== END LIVE VAT PREVIEW ===== -->
+                </form>
+            </div>
 
-                <div id="balance-warning" style="color: var(--danger-color); font-size: 0.875rem; margin-bottom: 1rem; text-align: right; display: none;">
-                    Debits and Credits must balance. Difference: &#8369;<span id="diff-amount">0.00</span>
-                </div>
-
-
-
-            </form>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button type="submit" form="entry-form" id="save-btn" class="btn btn-primary" disabled>Save Entry</button>
+            <button type="submit" form="auto-entry-form" id="auto-save-btn" class="btn btn-primary">
+                <i data-lucide="send" style="width:14px;height:14px;"></i>&nbsp; Post to Purchases Journal
+            </button>
+            <button type="submit" form="entry-form" id="save-btn" class="btn btn-primary" style="display:none;" disabled>Save Entry</button>
         </div>
     </div>
 </div>
@@ -584,112 +579,6 @@ const suppliersList = <?= json_encode($suppliersList ?? []) ?>;
 
 const globalInputVatId = <?= $inputVatId ?: 'null' ?>;
 const globalOutputVatId = <?= $outputVatId ?: 'null' ?>;
-/* ===== LIVE VAT PREVIEW ===== */
-const companyIsTaxRegistered = <?= $companyIsTaxRegistered ? 'true' : 'false' ?>;
-const vatMode = 'input';   // 'output' = VAT on Revenue credits | 'input' = VAT on Expense/Asset debits
-const VAT_RATE = 0.12;
-
-function vatPeso(n) {
-    return '\u20b1' + (n || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-}
-
-function isVatAccount(id) {
-    return (globalInputVatId !== null && String(id) === String(globalInputVatId))
-        || (globalOutputVatId !== null && String(id) === String(globalOutputVatId));
-}
-
-// Mirrors the backend VAT rules exactly so what you see here is what gets saved.
-function computeVatPreview() {
-    const out = { applies: false, gross: 0, base: 0, vat: 0 };
-
-    if (!companyIsTaxRegistered) return out;
-
-    const vatAccId = (vatMode === 'output') ? globalOutputVatId : globalInputVatId;
-    if (!vatAccId) return out;
-
-    // Backend only auto-adds VAT on NEW entries; on edit the lines already contain it.
-    const actionEl = document.getElementById('formAction');
-    if (actionEl && actionEl.value !== 'add_entry') return out;
-
-    let hasUserVat = false;
-    document.querySelectorAll('#lines-container tr').forEach(tr => {
-        const idEl = tr.querySelector('.account-id-input');
-        if (idEl && idEl.value && isVatAccount(idEl.value)) {
-            hasUserVat = true;
-        }
-    });
-    if (hasUserVat) return out;
-
-    document.querySelectorAll('#lines-container tr').forEach(tr => {
-        const idEl = tr.querySelector('.account-id-input');
-        if (!idEl || !idEl.value) return;
-        if (isVatAccount(idEl.value)) return;
-
-        const acc = accounts.find(a => String(a.id) === String(idEl.value));
-        if (!acc) return;
-
-        const dr = parseNumber(tr.querySelector('.dr-input').value);
-        const nameLower = (acc.name || '').toLowerCase();
-
-        const isVatExempt = (
-            nameLower.indexOf('cash') !== -1 ||
-            nameLower.indexOf('bank') !== -1 ||
-            nameLower.indexOf('receivable') !== -1 ||
-            nameLower.indexOf('salar') !== -1 ||
-            nameLower.indexOf('wage') !== -1 ||
-            nameLower.indexOf('payroll') !== -1 ||
-            nameLower.indexOf('labor') !== -1 ||
-            nameLower.indexOf('sss') !== -1 ||
-            nameLower.indexOf('philhealth') !== -1 ||
-            nameLower.indexOf('pag-ibig') !== -1 ||
-            nameLower.indexOf('pagibig') !== -1 ||
-            nameLower.indexOf('benefit') !== -1 ||
-            nameLower.indexOf('bonus') !== -1 ||
-            nameLower.indexOf('allowance') !== -1 ||
-            nameLower.indexOf('depreciation') !== -1 ||
-            nameLower.indexOf('amortization') !== -1 ||
-            nameLower.indexOf('bad debt') !== -1 ||
-            nameLower.indexOf('doubtful') !== -1 ||
-            nameLower.indexOf('tax') !== -1 ||
-            nameLower.indexOf('license') !== -1 ||
-            nameLower.indexOf('interest') !== -1 ||
-            nameLower.indexOf('bank charge') !== -1 ||
-            nameLower.indexOf('penalty') !== -1
-        );
-
-        if ((acc.category === 'Expenses' || acc.category === 'Assets') && dr > 0 && !isVatExempt) {
-            out.gross += dr;
-        }
-    });
-
-    if (out.gross > 0) {
-        out.base = Math.round((out.gross / 1.12) * 100) / 100;
-        out.vat = Math.round((out.gross - out.base) * 100) / 100;
-        out.applies = out.vat > 0;
-    }
-    return out;
-}
-
-function renderVatPreview() {
-    const box = document.getElementById('vat-preview');
-    if (!box) return;
-
-    const r = computeVatPreview();
-    if (!r.applies) { box.style.display = 'none'; return; }
-
-    const vatAccId = (vatMode === 'output') ? globalOutputVatId : globalInputVatId;
-    const vatAcc = accounts.find(a => String(a.id) === String(vatAccId));
-
-    document.getElementById('vat-base').innerText = vatPeso(r.base);
-    document.getElementById('vat-amount').innerText = vatPeso(r.vat);
-    document.getElementById('vat-account-name').innerText = vatAcc ? (vatAcc.code + ' - ' + vatAcc.name) : '';
-    document.getElementById('vat-grand-total').innerText = vatPeso(r.gross);
-
-    box.style.display = 'block';
-}
-/* ===== END LIVE VAT PREVIEW ===== */
-
-
 
 let lineCount = 0;
 
@@ -938,8 +827,6 @@ function calcTotals() {
     document.getElementById('total-dr').innerText = '\u20b1' + drTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
     document.getElementById('total-cr').innerText = '\u20b1' + crTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
 
-    renderVatPreview();
-
     const balWarn = document.getElementById('balance-warning');
     const saveBtn = document.getElementById('save-btn');
     const isBalanced = (drTotal > 0 && Math.abs(drTotal - crTotal) < 0.01);
@@ -959,7 +846,6 @@ function calcTotals() {
 
 
 function checkValidity() {
-    renderVatPreview();
     let drTotal = 0;
     let crTotal = 0;
     let allAccountsSelected = true;
@@ -1116,36 +1002,48 @@ async function saveQuickAdd() {
     btn.disabled = false; btn.innerText = 'Save';
 }
 
+// ── Dual-mode modal: Auto (new) vs Manual (edit) ─────────────────
+function _showAutoMode() {
+    document.getElementById('pj-auto-section').style.display = '';
+    document.getElementById('pj-edit-section').style.display = 'none';
+    document.getElementById('auto-save-btn').style.display = '';
+    document.getElementById('save-btn').style.display = 'none';
+    document.getElementById('entryModalInner').style.width = '740px';
+}
+function _showEditMode() {
+    document.getElementById('pj-auto-section').style.display = 'none';
+    document.getElementById('pj-edit-section').style.display = '';
+    document.getElementById('auto-save-btn').style.display = 'none';
+    document.getElementById('save-btn').style.display = '';
+    document.getElementById('entryModalInner').style.width = '1100px';
+}
+
 function openModal() {
+    _showAutoMode();
+    document.getElementById('modalTitle').innerText = 'New Purchase / Expense Entry';
+    document.getElementById('modalSubtitle').style.display = '';
+    document.getElementById('auto-entry-form').reset();
+    document.getElementById('autoEntryDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('autoEntitySearch').value = '';
+    document.getElementById('autoEntityId').value = '';
+    document.getElementById('autoEntityType').value = 'supplier';
+    setTerms('Cash');
+    computePreview();
     const modal = document.getElementById('entryModal');
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
-    document.getElementById('modalTitle').innerText = 'New Journal Entry';
-    document.getElementById('formAction').value = 'add_entry';
-    document.getElementById('entryId').value = '';
-    document.getElementById('entryRefNo').value = '';
-    document.getElementById('entryDescription').value = '';
-    document.getElementById('entitySearchInput').value = '';
-    document.getElementById('entityIdInput').value = '';
-    document.getElementById('entityTypeInput').value = '';
-    document.getElementById('lines-container').innerHTML = '';
-    lineCount = 0;
-    addLine();
-    addLine();
-    calcTotals();
+    lucide.createIcons();
 }
 
 function openEditModal(tx) {
-    const modal = document.getElementById('entryModal');
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
+    _showEditMode();
     document.getElementById('modalTitle').innerText = 'Edit Journal Entry';
+    document.getElementById('modalSubtitle').style.display = 'none';
     document.getElementById('formAction').value = 'edit_entry';
     document.getElementById('entryId').value = tx.id;
     document.getElementById('entryDate').value = tx.date;
     document.getElementById('entryRefNo').value = tx.reference_no;
     document.getElementById('entryDescription').value = tx.description || '';
-    // Pre-fill entity
     document.getElementById('entitySearchInput').value = tx.entity_name || '';
     document.getElementById('entityIdInput').value = tx.entity_id || '';
     document.getElementById('entityTypeInput').value = tx.entity_type || '';
@@ -1153,6 +1051,10 @@ function openEditModal(tx) {
     lineCount = 0;
     tx.lines.forEach(line => addLine(line));
     calcTotals();
+    const modal = document.getElementById('entryModal');
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    lucide.createIcons();
 }
 
 function closeModal() {
@@ -1161,36 +1063,110 @@ function closeModal() {
     modal.style.display = 'none';
 }
 
-// Close on overlay click
 document.getElementById('entryModal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
 });
 
-// ── Journal Type Detection & Toast ─────────────────────────────────
-function _isCash(acc)    { return acc.category === 'Assets' && /cash|bank/i.test(acc.name); }
-function _isPayable(acc) { return acc.category === 'Liabilities'; }
-
-function _getLines() {
-    const lines = [];
-    document.querySelectorAll('#lines-container tr').forEach(tr => {
-        const accId = tr.querySelector('.account-id-input')?.value;
-        const dr = parseFloat(tr.querySelector('.dr-input')?.value) || 0;
-        const cr = parseFloat(tr.querySelector('.cr-input')?.value) || 0;
-        if (accId) {
-            const acc = accounts.find(a => String(a.id) === String(accId));
-            if (acc) lines.push({ acc, dr, cr });
-        }
-    });
-    return lines;
+// ── Terms toggle ───────────────────────────────────────────────
+function setTerms(terms) {
+    document.getElementById('termsInput').value = terms;
+    const cashBtn   = document.getElementById('termsCashBtn');
+    const creditBtn = document.getElementById('termsCreditBtn');
+    if (terms === 'Cash') {
+        cashBtn.className = 'btn btn-primary';
+        creditBtn.className = 'btn btn-secondary';
+    } else {
+        cashBtn.className = 'btn btn-secondary';
+        creditBtn.className = 'btn btn-primary';
+    }
+    computePreview();
 }
 
-function _detectMismatch(lines) {
-    if (!lines.length) return null;
-    const hasCash  = lines.some(l => _isCash(l.acc));
-    const hasPay   = lines.some(l => _isPayable(l.acc));
-    const hasExp   = lines.some(l => _isExpense(l.acc));
-    const hasRev   = lines.some(l => _isRevenue(l.acc));
-    const hasRec   = lines.some(l => _isReceivable(l.acc));
+// ── Live auto-entry preview ─────────────────────────────────────
+const PJ_IS_TAX = <?= $companyIsTaxRegistered ? 'true' : 'false' ?>;
+
+function fmtPeso(n) {
+    return '\u20b1' + parseFloat(n || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function computePreview() {
+    const terms  = document.getElementById('termsInput').value;
+    const amount = parseFloat(document.getElementById('autoAmount').value) || 0;
+    const expSel = document.getElementById('expenseAccountId');
+    const expName = expSel.selectedIndex > 0
+        ? expSel.options[expSel.selectedIndex].text.replace(/^\S+-\S+\s*-\s*/, '')
+        : 'Expense / Asset Account';
+
+    const vat   = (PJ_IS_TAX && amount > 0) ? Math.round(amount * 0.12 * 100) / 100 : 0;
+    const total = Math.round((amount + vat) * 100) / 100;
+
+    document.getElementById('prev-exp-name').innerText  = expName;
+    document.getElementById('prev-exp-amt').innerText   = amount > 0 ? fmtPeso(amount) : '\u20b10.00';
+    document.getElementById('prev-credit-name').innerText = terms === 'Cash' ? 'Cash on Hand' : 'Accounts Payable';
+    document.getElementById('prev-credit-amt').innerText  = total > 0 ? fmtPeso(total) : '\u20b10.00';
+
+    if (vat > 0) {
+        document.getElementById('prev-vat-row').style.display  = '';
+        document.getElementById('prev-vat-amt').innerText      = fmtPeso(vat);
+        document.getElementById('prev-vat-info').style.display = '';
+        document.getElementById('prev-vat-base').innerText     = amount.toFixed(2);
+        document.getElementById('prev-vat-computed').innerText = vat.toFixed(2);
+        document.getElementById('prev-vat-full').innerText     = total.toFixed(2);
+    } else {
+        document.getElementById('prev-vat-row').style.display  = 'none';
+        document.getElementById('prev-vat-info').style.display = 'none';
+    }
+
+    document.getElementById('prev-total-dr').innerText = total > 0 ? fmtPeso(total) : '\u20b10.00';
+    document.getElementById('prev-total-cr').innerText = total > 0 ? fmtPeso(total) : '\u20b10.00';
+}
+
+// ── Simple supplier search for auto form ───────────────────────
+function onAutoEntitySearch() {
+    const q  = (document.getElementById('autoEntitySearch').value || '').trim().toLowerCase();
+    const dd = document.getElementById('auto-entity-dd');
+    const hits = suppliersList.filter(s => !q || s.name.toLowerCase().includes(q)).slice(0, 25);
+    if (!hits.length) { dd.style.display = 'none'; return; }
+    dd.innerHTML = hits.map(s => {
+        const t = s.terms || 'Cash';
+        const badgeStyle = t === 'Credit'
+            ? 'background:#eff6ff;color:#3b82f6;'
+            : 'background:#f0fdf4;color:#16a34a;';
+        return `<div style="padding:0.45rem 0.75rem;cursor:pointer;font-size:0.85rem;border-bottom:1px solid var(--border-color,#e2e8f0);display:flex;justify-content:space-between;align-items:center;"
+              onmousedown="selectAutoEntity(${s.id},'supplier',${JSON.stringify(s.name)},${JSON.stringify(t)})">
+              <span>${s.name}</span>
+              <span style="font-size:0.72rem;padding:1px 7px;border-radius:4px;font-weight:600;${badgeStyle}">${t}</span>
+              </div>`;
+    }).join('');
+    dd.style.display = 'block';
+}
+function selectAutoEntity(id, type, name, terms) {
+    document.getElementById('autoEntityId').value   = id;
+    document.getElementById('autoEntityType').value = type;
+    document.getElementById('autoEntitySearch').value = name;
+    document.getElementById('auto-entity-dd').style.display = 'none';
+    // Auto-set Cash/Credit toggle from the supplier's saved Payment Terms
+    if (type === 'supplier' && (terms === 'Cash' || terms === 'Credit')) {
+        setTerms(terms);
+    }
+}
+function onAutoEntityKeydown(e) {
+    if (e.key === 'Escape') document.getElementById('auto-entity-dd').style.display = 'none';
+}
+function onAutoEntityBlur() {
+    setTimeout(() => { document.getElementById('auto-entity-dd').style.display = 'none'; }, 200);
+}
+
+// Edit form submit — strip commas
+document.getElementById('entry-form').addEventListener('submit', function() {
+    document.querySelectorAll('.dr-input, .cr-input').forEach(el => { el.value = el.value.replace(/,/g, ''); });
+});
+
+<?php if (isset($toast_data)): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    _showJournalToast(<?= json_encode($toast_data) ?>);
+});
+<?php endif; ?>
 
     // Cash transactions don't belong here
     if (hasCash && hasExp)

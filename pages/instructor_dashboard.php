@@ -151,24 +151,13 @@ $availableStudents = $stmtAvail->get_result()->fetch_all(MYSQLI_ASSOC);
 require_once '../includes/header.php';
 ?>
 
-<div class="page-header flex justify-between items-center mb-4">
-    <div class="page-header-text">
-        <h1 class="page-title" style="display: flex; align-items: center; gap: 0.6rem;">
-            <i data-lucide="graduation-cap" style="width: 28px; height: 28px; color: #34d399;"></i>
-            <span>Instructor Monitoring</span>
-        </h1>
-        <p class="text-sm text-muted" style="margin-top: 0.25rem;">
-            Monitor assigned students, evaluate accounting simulations, and review submitted journals and financial statements.
-        </p>
-    </div>
-    <div class="flex items-center gap-2 flex-wrap">
-        <button class="btn btn-secondary btn-sm" onclick="openModal('bulkAssignModal')">
-            <i data-lucide="users" style="width: 15px; height: 15px;"></i> Enroll All Students
-        </button>
-        <button class="btn btn-primary btn-sm" onclick="openModal('assignModal')">
-            <i data-lucide="user-plus" style="width: 15px; height: 15px;"></i> Assign Student
-        </button>
-    </div>
+<div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+    <button class="btn btn-secondary btn-sm" onclick="openModal('bulkAssignModal')">
+        <i data-lucide="users" style="width: 15px; height: 15px;"></i> Enroll All Students
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="openModal('assignModal')">
+        <i data-lucide="user-plus" style="width: 15px; height: 15px;"></i> Assign Student
+    </button>
 </div>
 
 <?php if ($message): ?>

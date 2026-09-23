@@ -73,26 +73,18 @@ $trashed = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 require_once '../includes/header.php';
 ?>
 
-<div class="page-header">
-    <div class="page-header-text">
-        <h1 class="page-title" style="color: #ef4444;">
-            <i data-lucide="trash-2" style="width:22px;height:22px; display:inline; vertical-align:middle; margin-right: 6px;"></i>
-            Trash Bin
-        </h1>
-    </div>
-    <div class="flex gap-2">
-        <a href="journal_entries.php" class="btn btn-secondary">
-            <i data-lucide="arrow-left" style="width:15px;height:15px;"></i> Back to Journal
-        </a>
-        <?php if (count($trashed) > 0): ?>
-        <form method="POST" onsubmit="return confirm('Empty all trash? This cannot be undone!');">
-            <input type="hidden" name="action" value="empty_trash">
-            <button type="submit" class="btn" style="background: #ef4444; color: #fff;">
-                <i data-lucide="trash" style="width:15px;height:15px;"></i> Empty Trash
-            </button>
-        </form>
-        <?php endif; ?>
-    </div>
+<div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 0.75rem;">
+    <a href="journal_entries.php" class="btn btn-secondary">
+        <i data-lucide="arrow-left" style="width:15px;height:15px;"></i> Back to Journal
+    </a>
+    <?php if (count($trashed) > 0): ?>
+    <form method="POST" onsubmit="return confirm('Empty all trash? This cannot be undone!');" style="margin: 0;">
+        <input type="hidden" name="action" value="empty_trash">
+        <button type="submit" class="btn" style="background: #ef4444; color: #fff;">
+            <i data-lucide="trash" style="width:15px;height:15px;"></i> Empty Trash
+        </button>
+    </form>
+    <?php endif; ?>
 </div>
 
 <?php if (count($trashed) === 0): ?>

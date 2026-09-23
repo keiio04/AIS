@@ -472,6 +472,50 @@ h4 { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
 .table tbody tr:hover td { background-color: var(--bg-tertiary); }
 .table tbody tr:last-child td { border-bottom: none; }
 
+/* ── Journal Entry Tables (No per-line boxes, compact accounting format) ── */
+.table.journal-table th {
+  padding: 0.55rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.table.journal-table td {
+  padding: 0.22rem 0.75rem;
+  font-size: 0.8125rem;
+  border-bottom: none !important;
+  vertical-align: top;
+  line-height: 1.4;
+}
+.table.journal-table tbody tr.entry-row-first td {
+  padding-top: 0.6rem;
+}
+.table.journal-table tbody tr.entry-row-last td {
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+.table.journal-table tbody tr:hover td {
+  background-color: transparent !important;
+}
+.table.journal-table tbody tr.is-highlighted td {
+  background-color: #f0fdf4 !important;
+}
+[data-theme='dark'] .table.journal-table tbody tr.is-highlighted td {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+
+/* ── Compact Master Tables (Customers, Suppliers, Employees) ── */
+.table.compact-table th {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.table.compact-table td {
+  padding: 0.42rem 0.75rem;
+  font-size: 0.8125rem;
+  vertical-align: middle;
+}
+
 /* ============================================================
    BADGES
    ============================================================ */

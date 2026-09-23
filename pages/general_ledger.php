@@ -82,40 +82,40 @@ function gl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNorm
     $running = $openingBal;
     ob_start();
     ?>
-    <div class="table-container" style="margin-bottom: 1.75rem;">
-    <table class="table" style="margin: 0; border: 1px solid var(--border-color);">
+    <div class="table-container" style="margin-bottom: 2.25rem;">
+    <table class="table compact-table" style="margin: 0; width: 100%; border-collapse: collapse; border: none;">
         <thead>
-            <tr style="background-color: #f1f5f9;">
-                <td colspan="6" style="padding: 0.85rem 1rem; border-bottom: 1px solid var(--border-color);">
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-                        <span style="font-weight:700; font-size:0.95rem; color:#334155; letter-spacing:0.03em;">
+            <tr style="border-bottom: 1px solid var(--border-color); background: transparent;">
+                <td colspan="6" style="padding: 0.65rem 0.25rem 0.45rem 0.25rem; border: none; background: transparent;">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.5rem;">
+                        <span style="font-weight:700; font-size:0.95rem; color:var(--text-primary); letter-spacing:0.02em;">
                             <?= htmlspecialchars($title) ?>
                         </span>
-                        <span style="font-size:0.8rem; color:#334155;">
+                        <span style="font-size:0.8rem; color:var(--text-secondary);">
                             <strong>Account Code:</strong> <?= htmlspecialchars($code) ?>
                         </span>
                     </div>
                 </td>
             </tr>
-            <tr style="border-bottom: 2px solid var(--text-primary);">
-                <th style="min-width: 95px; width: 12%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);" class="nowrap">Date</th>
-                <th style="min-width: 180px; width: 30%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);"><?= htmlspecialchars($descLabel) ?></th>
-                <th style="min-width: 120px; width: 16%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);" class="nowrap">Reference</th>
-                <th class="text-right nowrap" style="min-width: 110px; width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Debit</th>
-                <th class="text-right nowrap" style="min-width: 110px; width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Credit</th>
-                <th class="text-right nowrap" style="min-width: 120px; width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);">Balance</th>
+            <tr style="border-bottom: 2px solid var(--text-primary); background: var(--bg-tertiary);">
+                <th style="min-width: 95px; width: 12%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); border: none; border-bottom: 1.5px solid var(--border-color);" class="nowrap">Date</th>
+                <th style="min-width: 180px; width: 30%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); border: none; border-bottom: 1.5px solid var(--border-color);"><?= htmlspecialchars($descLabel) ?></th>
+                <th style="min-width: 120px; width: 16%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); border: none; border-bottom: 1.5px solid var(--border-color);" class="nowrap">Reference</th>
+                <th class="text-right nowrap" style="min-width: 110px; width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); border: none; border-bottom: 1.5px solid var(--border-color);">Debit</th>
+                <th class="text-right nowrap" style="min-width: 110px; width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); border: none; border-bottom: 1.5px solid var(--border-color);">Credit</th>
+                <th class="text-right nowrap" style="min-width: 120px; width: 14%; text-transform: uppercase; font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); border: none; border-bottom: 1.5px solid var(--border-color);">Balance</th>
             </tr>
         </thead>
         <tbody>
         <?php if ((float)$openingBal !== 0.0): ?>
             <tr>
-                <td colspan="5" style="padding: 0.65rem 0.5rem; font-style: italic; color: var(--text-secondary); font-size: 0.85rem;">Beginning Balance</td>
-                <td class="text-right" style="padding: 0.65rem 0.5rem; font-style: italic; font-size: 0.85rem;"><?= number_format($openingBal, 2) ?></td>
+                <td colspan="5" style="padding: 0.45rem 0.5rem; font-style: italic; color: var(--text-secondary); font-size: 0.8125rem;">Beginning Balance</td>
+                <td class="text-right" style="padding: 0.45rem 0.5rem; font-style: italic; font-size: 0.8125rem; font-variant-numeric: tabular-nums;"><?= number_format($openingBal, 2) ?></td>
             </tr>
         <?php endif; ?>
 
         <?php if (count($lines) === 0): ?>
-            <tr><td colspan="6" class="text-center text-muted" style="padding: 1.25rem;">No transactions recorded.</td></tr>
+            <tr><td colspan="6" class="text-center text-muted" style="padding: 1rem; font-size: 0.8125rem;">No transactions recorded.</td></tr>
         <?php else: foreach ($lines as $line):
             if ($isDebitNormal) {
                 $running += $line['debit'];
@@ -126,32 +126,32 @@ function gl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNorm
             }
         ?>
             <tr>
-                <td style="color: var(--text-secondary); font-size: 0.85rem; padding: 0.65rem 0.5rem; white-space: nowrap;">
+                <td style="color: var(--text-secondary); font-size: 0.8125rem; padding: 0.45rem 0.5rem; white-space: nowrap;">
                     <?= date('m/d/Y', strtotime($line['date'])) ?>
                 </td>
-                <td style="padding: 0.65rem 0.5rem; font-size: 0.85rem;">
+                <td style="padding: 0.45rem 0.5rem; font-size: 0.8125rem;">
                     <?= htmlspecialchars($line['description'] ?? '') ?>
                 </td>
-                <td style="font-size: 0.8rem; color: var(--text-secondary); padding: 0.65rem 0.5rem;">
+                <td style="font-size: 0.78rem; color: var(--text-secondary); padding: 0.45rem 0.5rem;">
                     <?= htmlspecialchars($line['reference_no'] ?? '') ?>
                 </td>
-                <td class="text-right" style="padding: 0.65rem 0.5rem;">
+                <td class="text-right" style="padding: 0.45rem 0.5rem; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">
                     <?= $line['debit'] > 0 ? number_format($line['debit'], 2) : '' ?>
                 </td>
-                <td class="text-right" style="padding: 0.65rem 0.5rem;">
+                <td class="text-right" style="padding: 0.45rem 0.5rem; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">
                     <?= $line['credit'] > 0 ? number_format($line['credit'], 2) : '' ?>
                 </td>
-                <td class="text-right" style="font-weight: 500; padding: 0.65rem 0.5rem;">
+                <td class="text-right" style="font-weight: 500; padding: 0.45rem 0.5rem; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">
                     <?= number_format($running, 2) ?>
                 </td>
             </tr>
         <?php endforeach; endif; ?>
 
             <tr>
-                <td colspan="5" class="text-right" style="padding: 0.65rem 0.5rem; font-weight: 600; font-size: 0.85rem;">
+                <td colspan="5" class="text-right" style="padding: 0.45rem 0.5rem; font-weight: 600; font-size: 0.8125rem;">
                     Ending Balance
                 </td>
-                <td class="text-right" style="padding: 0.65rem 0.5rem; font-weight: 700; font-size: 0.9rem; border-top: 1px solid var(--border-color); border-bottom: 3px double var(--text-primary);">
+                <td class="text-right" style="padding: 0.45rem 0.5rem; font-weight: 700; font-size: 0.85rem; font-variant-numeric: tabular-nums; border-top: 1px solid var(--border-color); border-bottom: 3px double var(--text-primary);">
                     <?= number_format($running, 2) ?>
                 </td>
             </tr>
@@ -181,22 +181,22 @@ function gl_render_ledger_table($title, $code, $openingBal, $lines, $isDebitNorm
     </div>
 </div>
 
-<div class="card" style="padding: 0; margin-bottom: 2rem; overflow: hidden; box-shadow: none; border: 1px solid var(--border-color); background: transparent;">
+<div id="printable-area" style="width: 100%; margin-bottom: 2rem;">
 
     <!-- Report Header (Standard Accounting Format) -->
-    <div style="padding: 2.5rem 2rem 1.5rem 2rem; text-align: center;">
-        <h2 style="font-size: 1.75rem; margin-bottom: 0.5rem; font-weight: 400; color: #374151; letter-spacing: 0.5px;">
+    <div style="padding: 1rem 0 1.5rem 0; text-align: center;">
+        <h2 style="font-size: 1.5rem; margin-bottom: 0.35rem; font-weight: 600; color: var(--text-primary); letter-spacing: 0.5px;">
             <?= htmlspecialchars($activeCompanyName ?? 'Company') ?>
         </h2>
-        <h3 style="font-size: 1.05rem; color: #4b5563; margin-bottom: 0.25rem; font-weight: 600;">
+        <h3 style="font-size: 1.05rem; color: var(--text-secondary); margin-bottom: 0.25rem; font-weight: 600;">
             General Ledger
         </h3>
-        <p style="font-size: 0.95rem; color: #6b7280; font-weight: 400; margin: 0;">
+        <p style="font-size: 0.85rem; color: var(--text-muted); font-weight: 400; margin: 0;">
             <?= $date_display ?>
         </p>
     </div>
 
-    <div style="padding: 0 2rem 2rem 2rem;">
+    <div>
 <?php
 $displayedAny = false;
 

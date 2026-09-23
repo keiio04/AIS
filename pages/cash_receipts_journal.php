@@ -2,6 +2,7 @@
 require_once '../config.php';
 require_once '../db.php';
 require_once '../includes/auth.php';
+require_once '../includes/transaction_poster.php';
 
 $db = get_db();
 try { $db->query("CREATE TABLE IF NOT EXISTS customers (id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, code VARCHAR(20) NULL, name VARCHAR(150) NOT NULL, opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0, status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"); } catch (Exception $e) {}
@@ -64,65 +65,168 @@ $stmtCo = $db->prepare("SELECT tax_registered FROM companies WHERE id = ?");
 $stmtCo->bind_param('i', $company_id);
 $stmtCo->execute();
 $companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_registered'] ?? false);
+$std_accounts = get_company_standard_accounts($db, $company_id);
 
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    if ($_POST['action'] === 'add_entry' || $_POST['action'] === 'edit_entry') {
-        $action = $_POST['action'];
-        $entry_id = ($action === 'edit_entry') ? (int)($_POST['entry_id'] ?? 0) : null;
-        
-    $date = $_POST['date'];
-    $ref_no = ($action === 'add_entry') ? '' : trim($_POST['reference_no'] ?? '');
-    if (empty(trim($ref_no))) {
-        $ref_no = 'CRJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
-    }
-    $description = trim($_POST['description'] ?? '');
-    $is_taxable = $companyIsTaxRegistered ? 1 : 0;
-        $particulars = '';
-    $type = 'Operating';
-    $entity_id = $_POST['entity_id'] ?? null;
-    if ($entity_id === '') $entity_id = null;
-    $entity_type = $_POST['entity_type'] ?? null;
-    if ($entity_type === '') $entity_type = null;
-    $vendor_name = null; // Legacy field
 
-    $account_ids = $_POST['account_id'] ?? [];
-    $line_descriptions = $_POST['line_description'] ?? [];
-    $line_vendors = $_POST['line_vendor'] ?? [];
-    $debits = $_POST['debit'] ?? [];
-    $credits = $_POST['credit'] ?? [];
-    if (!isset($error)) {
-        if ($action === 'edit_entry') {
-            $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND journal_id = 'CRJ'");
-            $check->bind_param('ii', $entry_id, $company_id);
-            $check->execute();
-            if (!$check->get_result()->fetch_assoc()) {
-                $error = "Entry not found.";
+    // ── AUTO-POST RECEIPT (Simplified student entry) ─────────────────────
+    if ($_POST['action'] === 'auto_receipt') {
+        $date         = trim($_POST['date'] ?? date('Y-m-d'));
+        $receipt_type = trim($_POST['receipt_type'] ?? 'collection'); // 'collection' or 'other'
+        $amount       = (float)str_replace(',', '', $_POST['amount'] ?? 0);
+        $description  = trim($_POST['description'] ?? '');
+        $entity_id    = !empty($_POST['entity_id']) ? (int)$_POST['entity_id'] : null;
+        $entity_type  = !empty($_POST['entity_type']) ? $_POST['entity_type'] : 'customer';
+        $credit_account_id = !empty($_POST['credit_account_id']) ? (int)$_POST['credit_account_id'] : null;
+
+        if ($amount <= 0) {
+            $error = "Amount must be greater than zero.";
+        }
+
+        $std_accounts = get_company_standard_accounts($db, $company_id);
+        $cash_acct    = $std_accounts['cash'];
+        if (!$cash_acct) {
+            $error = "No Cash account found for this company. Please create a Cash on Hand account first.";
+        }
+
+        if ($receipt_type === 'collection') {
+            $ar_acct = $std_accounts['ar'];
+            if (!$ar_acct) {
+                $error = "No Accounts Receivable account found. Please ensure an Accounts Receivable account exists.";
+            }
+        } else {
+            if (!$credit_account_id) {
+                $error = "Please select a Credit / Revenue account.";
             }
         }
-    }
 
-    if (!isset($error)) {
-    $db->begin_transaction();
-    try {
-        $journal_id = 'CRJ';
-        
-        if ($action === 'add_entry') {
-            $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param('isssissssis', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id, $entity_id, $entity_type);
-            $stmt->execute();
-            $entry_id = $stmt->insert_id;
-        } else {
-            $stmt = $db->prepare("UPDATE journal_entries SET reference_no = ?, date = ?, description = ?, is_taxable = ?, entity_id = ?, entity_type = ? WHERE id = ? AND company_id = ?");
-            $stmt->bind_param('sssiisii', $ref_no, $date, $description, $is_taxable, $entity_id, $entity_type, $entry_id, $company_id);
-            $stmt->execute();
+        if (!isset($error)) {
+            $db->begin_transaction();
+            try {
+                $ref_no      = 'CRJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
+                $journal_id  = 'CRJ';
+                $is_taxable  = $companyIsTaxRegistered ? 1 : 0;
+                $particulars = '';
+                $type        = 'Operating';
+                $vendor_name = null;
 
-            $stmtDelLines = $db->prepare("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?");
-            $stmtDelLines->bind_param('i', $entry_id);
-            $stmtDelLines->execute();
+                if (empty($description)) {
+                    if ($receipt_type === 'collection') {
+                        $cust_name = '';
+                        if ($entity_id) {
+                            $stmtC = $db->prepare("SELECT name FROM customers WHERE id = ?");
+                            $stmtC->bind_param('i', $entity_id);
+                            $stmtC->execute();
+                            $cust_name = $stmtC->get_result()->fetch_assoc()['name'] ?? '';
+                        }
+                        $description = $cust_name ? "Collection from $cust_name" : "Customer collection";
+                    } else {
+                        $description = "Cash receipt";
+                    }
+                }
+
+                $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param('isssissssis', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id, $entity_id, $entity_type);
+                $stmt->execute();
+                $entry_id = $stmt->insert_id;
+
+                $stmtL = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
+                $zero  = 0.00;
+
+                if ($receipt_type === 'collection') {
+                    // Dr. Cash on Hand
+                    $stmtL->bind_param('iidd', $entry_id, $cash_acct['id'], $amount, $zero);
+                    $stmtL->execute();
+                    // Cr. Accounts Receivable
+                    $stmtL->bind_param('iidd', $entry_id, $ar_acct['id'], $zero, $amount);
+                    $stmtL->execute();
+                } else {
+                    // Check if credit account is Revenue & company is tax registered
+                    $is_revenue = false;
+                    foreach ($accountsList as $acc) {
+                        if ($acc['id'] == $credit_account_id && $acc['category'] === 'Revenue') {
+                            $is_revenue = true;
+                            break;
+                        }
+                    }
+
+                    if ($is_revenue && $companyIsTaxRegistered) {
+                        $net        = round($amount / 1.12, 2);
+                        $output_vat = round($amount - $net, 2);
+
+                        // Dr. Cash on Hand (gross)
+                        $stmtL->bind_param('iidd', $entry_id, $cash_acct['id'], $amount, $zero);
+                        $stmtL->execute();
+                        // Cr. Revenue (net)
+                        $stmtL->bind_param('iidd', $entry_id, $credit_account_id, $zero, $net);
+                        $stmtL->execute();
+                        // Cr. Output VAT (12%)
+                        $vat_id = $std_accounts['output_vat']['id'] ?? $outputVatId;
+                        if ($vat_id && $output_vat > 0) {
+                            $stmtL->bind_param('iidd', $entry_id, $vat_id, $zero, $output_vat);
+                            $stmtL->execute();
+                        }
+                    } else {
+                        // Dr. Cash on Hand
+                        $stmtL->bind_param('iidd', $entry_id, $cash_acct['id'], $amount, $zero);
+                        $stmtL->execute();
+                        // Cr. Selected Account
+                        $stmtL->bind_param('iidd', $entry_id, $credit_account_id, $zero, $amount);
+                        $stmtL->execute();
+                    }
+                }
+
+                $user_id    = $_SESSION['user_id'];
+                $log_type   = ($receipt_type === 'collection') ? 'Customer Collection' : 'Cash Receipt';
+                $log_action = "Auto-posted Receipt Entry | Ref: {$ref_no} | {$log_type} | Amount: ₱" . number_format($amount, 2);
+                $logStmt    = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+                $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
+                $logStmt->execute();
+
+                $db->commit();
+                header("Location: cash_receipts_journal.php?posted=1&ref=" . urlencode($ref_no));
+                exit;
+            } catch (Exception $e) {
+                $db->rollback();
+                $error = "Failed to save entry: " . $e->getMessage();
+            }
         }
 
-        // --- BACKEND VAT LOGIC START (Cash Receipts Journal: Output VAT only) ---
+    // ── EDIT ENTRY (manual multi-line edit of existing CRJ entry) ────
+    } elseif ($_POST['action'] === 'edit_entry') {
+        $entry_id    = (int)($_POST['entry_id'] ?? 0);
+        $date        = $_POST['date'];
+        $ref_no      = trim($_POST['reference_no'] ?? '');
+        if (empty($ref_no)) $ref_no = 'CRJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
+        $description = trim($_POST['description'] ?? '');
+        $is_taxable  = $companyIsTaxRegistered ? 1 : 0;
+        $particulars = '';
+        $type        = 'Operating';
+        $entity_id   = !empty($_POST['entity_id']) ? (int)$_POST['entity_id'] : null;
+        $entity_type = !empty($_POST['entity_type']) ? $_POST['entity_type'] : null;
+        $account_ids = $_POST['account_id'] ?? [];
+        $debits      = $_POST['debit'] ?? [];
+        $credits     = $_POST['credit'] ?? [];
+
+        $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND journal_id = 'CRJ'");
+        $check->bind_param('ii', $entry_id, $company_id);
+        $check->execute();
+        if (!$check->get_result()->fetch_assoc()) {
+            $error = "Entry not found.";
+        }
+
+        if (!isset($error)) {
+            $db->begin_transaction();
+            try {
+                $stmt = $db->prepare("UPDATE journal_entries SET reference_no=?, date=?, description=?, is_taxable=?, entity_id=?, entity_type=? WHERE id=? AND company_id=?");
+                $stmt->bind_param('sssiisii', $ref_no, $date, $description, $is_taxable, $entity_id, $entity_type, $entry_id, $company_id);
+                $stmt->execute();
+
+                $stmtDel = $db->prepare("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?");
+                $stmtDel->bind_param('i', $entry_id);
+                $stmtDel->execute();
+
                 $final_lines = [];
                 for ($i = 0; $i < count($account_ids); $i++) {
                     $acc_id = (int)$account_ids[$i];
@@ -133,46 +237,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 }
 
-                // Cash Receipts Journal: VAT-registered companies generate OUTPUT VAT on Revenue credits.
-                // Input VAT does NOT apply here (no purchases in a Cash Receipts Journal).
-                // If user already included an Output VAT line manually, skip auto-VAT to prevent double Output VAT.
-                $has_user_output_vat = false;
-                if ($outputVatId) {
-                    foreach ($final_lines as $line) {
-                        if ($line['account_id'] == $outputVatId) {
-                            $has_user_output_vat = true;
-                            break;
-                        }
-                    }
-                }
-
-                if ($action === 'add_entry' && $is_taxable && $outputVatId && !$has_user_output_vat) { // VAT is only auto-added on new entries if not manually entered
-                    $added_output_vat = 0;
-
-                    foreach ($final_lines as &$line) {
-                        $cat = '';
-                        foreach ($accountsList as $a) {
-                            if ($a['id'] == $line['account_id']) { $cat = $a['category']; break; }
-                        }
-                        // Output VAT: Revenue credited is VAT-inclusive → split into Net Revenue and Output VAT (12%)
-                        if ($cat === 'Revenue' && $line['credit'] > 0
-                            && $line['account_id'] != $inputVatId
-                            && $line['account_id'] != $outputVatId) {
-                            $gross = $line['credit'];
-                            $net = round($gross / 1.12, 2);
-                            $vat = round($gross - $net, 2);
-                            $line['credit'] = $net;
-                            $added_output_vat += $vat;
-                        }
-                    }
-                    unset($line);
-
-                    if ($added_output_vat > 0) {
-                        // Credit Output VAT
-                        $final_lines[] = ['account_id' => $outputVatId, 'debit' => 0, 'credit' => $added_output_vat];
-                    }
-                }
-                
                 $stmtLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
                 $total_debit = 0;
                 foreach ($final_lines as $line) {
@@ -182,40 +246,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $stmtLine->bind_param('iidd', $entry_id, $line['account_id'], $dr, $cr);
                     $stmtLine->execute();
                 }
-                // --- BACKEND VAT LOGIC END ---
 
-        // Add to activity log
-        $user_id = $_SESSION['user_id'];
-        $log_action = ($action === 'add_entry')
-            ? "Created Journal Entry | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2)
-            : "Edited Journal Entry #$entry_id | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2);
-        $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
-        $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
-        $logStmt->execute();
+                $user_id    = $_SESSION['user_id'];
+                $log_action = "Edited Cash Receipts Entry #$entry_id | Ref: $ref_no | Amount: ₱" . number_format($total_debit, 2);
+                $logStmt    = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+                $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
+                $logStmt->execute();
 
-        $db->commit();
+                $db->commit();
+                header("Location: cash_receipts_journal.php");
+                exit;
+            } catch (Exception $e) {
+                $db->rollback();
+                $error = "Failed to save entry: " . $e->getMessage();
+            }
+        }
+
+    } elseif ($_POST['action'] === 'delete') {
+        $delete_id = (int)$_POST['id'];
+        $stmtDel   = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?");
+        $stmtDel->bind_param('ii', $delete_id, $company_id);
+        $stmtDel->execute();
+
+        $user_id    = $_SESSION['user_id'];
+        $log_action = "Moved Cash Receipts Entry #$delete_id to Trash";
+        $stmtLog    = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+        $stmtLog->bind_param('iis', $company_id, $user_id, $log_action);
+        $stmtLog->execute();
+
         header("Location: cash_receipts_journal.php");
         exit;
-    } catch (Exception $e) {
-        $db->rollback();
-        $error = "Failed to save entry: " . $e->getMessage();
     }
-    }
-    } elseif ($_POST['action'] === 'delete') {
-    $delete_id = (int)$_POST['id'];
-    $stmtDel = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?");
-    $stmtDel->bind_param('ii', $delete_id, $company_id);
-    $stmtDel->execute();
-    
-    $user_id = $_SESSION['user_id'];
-    $log_action = "Moved Journal Entry #$delete_id to Trash";
-    $stmtLog = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
-    $stmtLog->bind_param('iis', $company_id, $user_id, $log_action);
-    $stmtLog->execute();
-    
-    header("Location: cash_receipts_journal.php");
-    exit;
-}
 }
 
 // ── Search (from the top search bar) ─────────────────────────────
@@ -263,14 +324,14 @@ $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 require_once '../includes/header.php';
 ?>
 
-<div class="page-header">
-    <div class="page-header-text">
-        <h1 class="page-title">Receipts</h1>
+<?php if (isset($_GET['posted'])): ?>
+    <div style="background:#dcfce7; color:#15803d; padding:1rem 1.25rem; border-radius:10px; margin-bottom:1.25rem; border:1px solid #bbf7d0; display:flex; align-items:center; gap:0.75rem;">
+        <i data-lucide="check-circle" style="width:20px;height:20px;color:#16a34a;flex-shrink:0;"></i>
+        <div>
+            <strong>Transaction Posted!</strong> Journal Entry <code><?= htmlspecialchars($_GET['ref'] ?? '') ?></code> was successfully generated and recorded in Cash Receipts.
+        </div>
     </div>
-    <button class="btn btn-primary" onclick="openModal()">
-        <i data-lucide="plus" style="width:15px;height:15px;"></i> New Entry
-    </button>
-</div>
+<?php endif; ?>
 
 <?php if (isset($error)): ?>
     <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
@@ -285,9 +346,9 @@ require_once '../includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="card" style="padding: 0; overflow: hidden;">
+<div class="card" style="padding: 0; overflow: hidden; border: none; box-shadow: none;">
     <div class="table-container">
-        <table class="table">
+        <table class="table journal-table">
             <thead>
                 <tr>
                     <th style="min-width: 105px; width: 11%;" class="nowrap">Date</th>
@@ -306,43 +367,46 @@ require_once '../includes/header.php';
                     $stmtLine->bind_param('i', $tx['id']);
                     $stmtLine->execute();
                     $lines = $stmtLine->get_result()->fetch_all(MYSQLI_ASSOC);
-                    $totalDebit = 0;
-                    $totalCredit = 0;
+                    $lineCount = count($lines);
                 ?>
                 <?php foreach($lines as $index => $line): 
-                    $totalDebit += $line['debit'];
-                    $totalCredit += $line['credit'];
+                    $isFirst = ($index === 0);
+                    $isLast = ($index === $lineCount - 1);
+                    $rowClasses = [];
+                    if ($isFirst) $rowClasses[] = 'entry-row-first';
+                    if ($isLast)  $rowClasses[] = 'entry-row-last';
+                    $rowClassStr = implode(' ', $rowClasses);
                 ?>
-                <tr>
-                    <td>
-                        <?= $index === 0 ? '<strong>' . date('M d, Y', strtotime($tx['date'])) . '</strong><br>' : '' ?>
+                <tr class="<?= $rowClassStr ?>">
+                    <td style="white-space: nowrap;">
+                        <?= $isFirst ? '<strong>' . date('M d, Y', strtotime($tx['date'])) . '</strong>' : '' ?>
                     </td>
-                    <td style="padding-left: <?= $line['credit'] > 0 ? '2.5rem' : '1rem' ?>; font-weight: 500;">
+                    <td style="padding-left: <?= $line['credit'] > 0 ? '1.75rem' : '0.75rem' ?>; font-weight: <?= $line['credit'] > 0 ? '400' : '600' ?>;">
                         <?= htmlspecialchars($line['name']) ?>
                     </td>
-                    <td style="color: #475569 !important; font-size: 0.85rem; opacity: 1;">
-                        <?php if ($index === 0 && !empty($tx['entity_name'])): ?>
+                    <td style="color: #475569 !important; font-size: 0.8125rem;">
+                        <?php if ($isFirst && !empty($tx['entity_name'])): ?>
                             <?= htmlspecialchars($tx['entity_name']) ?>
                             <?php if (!empty($tx['entity_code'])): ?>
                                 <br><span style="font-family: monospace; font-size: 0.7rem; font-weight: 600; color: #64748b;">[<?= htmlspecialchars($tx['entity_code']) ?>]</span>
                             <?php endif; ?>
                         <?php endif; ?>
                     </td>
-                    <td style="color: #334155 !important; font-size: 0.85rem; white-space: normal; word-break: break-word; opacity: 1;">
-                        <?= $index === 0 ? nl2br(htmlspecialchars(($tx['description'] ?? '') !== '' ? $tx['description'] : ($line['description'] ?? ''))) : nl2br(htmlspecialchars($line['description'] ?? '')) ?>
+                    <td style="color: #334155 !important; font-size: 0.8125rem; white-space: normal; word-break: break-word;">
+                        <?= $isFirst ? nl2br(htmlspecialchars(($tx['description'] ?? '') !== '' ? $tx['description'] : ($line['description'] ?? ''))) : nl2br(htmlspecialchars($line['description'] ?? '')) ?>
                     </td>
-                    <td style="font-family: monospace; font-size: 0.85rem;">
-                        <?php if ($index === 0): ?>
-                            <span style="background: #e2e8f0; color: #475569; padding: 2px 4px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span><br>
-                            <?= $tx['reference_no'] ? '<strong>'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
+                    <td style="font-family: monospace; font-size: 0.8125rem; white-space: nowrap;">
+                        <?php if ($isFirst): ?>
+                            <span style="background: #dcfce7; color: #15803d; padding: 1px 5px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span>
+                            <?= $tx['reference_no'] ? ' <strong style="color: #0f172a; font-size: 0.78rem;">'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
                         <?php endif; ?>
                         <span style="color: var(--primary-color)"><?= htmlspecialchars($line['code']) ?></span>
                     </td>
-                    <td class="text-right"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
-                    <td class="text-right"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
-                    <td class="text-center" style="vertical-align: middle;">
-                        <?php if ($index === 0): ?>
-                        <div class="flex gap-1" style="justify-content: center;">
+                    <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
+                    <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
+                    <td class="text-center" style="vertical-align: top;">
+                        <?php if ($isFirst): ?>
+                        <div class="flex gap-1" style="justify-content: center; padding-top: 2px;">
                             <button type="button" style="background: none; border: none; cursor: pointer; color: var(--primary-color);" title="Edit Entry" onclick='openEditModal(<?= json_encode([
                                 "id" => $tx['id'],
                                 "date" => $tx['date'],
@@ -359,13 +423,13 @@ require_once '../includes/header.php';
                                     ];
                                 }, $lines)
                             ]) ?>)'>
-                                <i data-lucide="edit-2" style="width:15px;height:15px;"></i>
+                                <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
                             </button>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Move this entry to Trash Bin?');">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= $tx['id'] ?>">
                                 <button type="submit" style="background: none; border: none; cursor: pointer; color: #ef4444;" title="Move to Trash">
-                                    <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+                                    <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
                                 </button>
                             </form>
                         </div>
@@ -373,13 +437,6 @@ require_once '../includes/header.php';
                     </td>
                 </tr>
                 <?php endforeach; ?>
-                <tr style="background-color: #f8fafc;">
-                    <td colspan="5" class="text-right" style="font-weight: 600; padding-right: 1rem;">Total</td>
-                    <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalDebit, 2) ?></td>
-                    <td class="text-right" style="font-weight: 600;">₱<?= number_format($totalCredit, 2) ?></td>
-                    <td></td>
-                </tr>
-                <tr><td colspan="8" style="border-bottom: 2px solid var(--border-color); padding: 0;"></td></tr>
                 <?php endforeach; ?>
                 <?php if(count($transactions) === 0): ?>
                 <tr>
@@ -391,104 +448,170 @@ require_once '../includes/header.php';
     </div>
 </div>
 
-<!-- Modal -->
+<!-- Modal: dual-mode (simplified auto_receipt for new entries, manual edit for existing) -->
 <div id="entryModal" class="modal-overlay hidden">
-    <div class="modal" style="width: 1100px; max-width: 95vw;">
+    <div class="modal" id="entryModalInner" style="width: 740px; max-width: 96vw;">
         <div class="modal-header">
-            <h2 id="modalTitle">New Journal Entry</h2>
+            <div>
+                <h2 id="modalTitle">New Cash Receipt Entry</h2>
+                <p id="modalSubtitle" style="font-size:0.78rem; color:var(--text-muted); margin:2px 0 0; line-height:1.4;">System automatically generates the balanced accounting entry and posts to Cash Receipts Journal.</p>
+            </div>
             <button class="icon-btn" onclick="closeModal()"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
         </div>
         <div class="modal-body">
-            <form id="entry-form" method="POST">
-                <input type="hidden" name="action" id="formAction" value="add_entry">
-                <input type="hidden" name="entry_id" id="entryId" value="">
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                    <div class="form-group">
-                        <label class="form-label">Date</label>
-                        <input type="date" name="date" id="entryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
+            <!-- ===== AUTO FORM (new entries) ===== -->
+            <div id="crj-auto-section">
+                <form id="auto-entry-form" method="POST">
+                    <input type="hidden" name="action" value="auto_receipt">
+
+                    <!-- Receipt Type toggle -->
+                    <div style="margin-bottom:1.25rem;">
+                        <label class="form-label" style="margin-bottom:0.5rem;">Receipt Type</label>
+                        <div style="display:flex; gap:0.5rem;">
+                            <button type="button" id="typeCollectionBtn" class="btn btn-primary" onclick="setReceiptType('collection')" style="flex:1; font-size:0.875rem;">
+                                <i data-lucide="user-check" style="width:14px;height:14px;"></i>&nbsp; Customer Collection (from A/R)
+                            </button>
+                            <button type="button" id="typeOtherBtn" class="btn btn-secondary" onclick="setReceiptType('other')" style="flex:1; font-size:0.875rem;">
+                                <i data-lucide="banknote" style="width:14px;height:14px;"></i>&nbsp; Direct Cash / Other Income
+                            </button>
+                        </div>
+                        <input type="hidden" name="receipt_type" id="receiptTypeInput" value="collection">
                     </div>
-                    <input type="hidden" name="reference_no" id="entryRefNo" value="">
-                    <!-- Header-level Name (Customer/Vendor) — optional -->
-                    <div class="form-group" style="position: relative;">
-                        <label class="form-label">Name <span style="font-weight:400; color: var(--text-muted); font-size:0.78rem;">(Customer / Vendor — optional)</span></label>
-                        <input type="text" id="entitySearchInput" class="form-control" placeholder="Search customer or vendor..." autocomplete="off"
-                               oninput="onEntitySearchInput()"
-                               onfocus="onEntitySearchInput()"
-                               onkeydown="onEntitySearchKeydown(event)"
-                               onblur="onEntitySearchBlur()">
-                        <input type="hidden" name="entity_id" id="entityIdInput" value="">
-                        <input type="hidden" name="entity_type" id="entityTypeInput" value="">
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Date</label>
+                            <input type="date" name="date" id="autoEntryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                        </div>
+                        <div class="form-group" style="position:relative;">
+                            <label class="form-label">Customer <span id="autoEntityRequired" style="color:#ef4444;">*</span></label>
+                            <input type="text" id="autoEntitySearch" class="form-control" placeholder="Search customer..." autocomplete="off"
+                                   oninput="onAutoEntitySearch()" onfocus="onAutoEntitySearch()"
+                                   onkeydown="onAutoEntityKeydown(event)" onblur="onAutoEntityBlur()">
+                            <input type="hidden" name="entity_id" id="autoEntityId" value="">
+                            <input type="hidden" name="entity_type" id="autoEntityType" value="customer">
+                            <div id="auto-entity-dd" style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:9999;background:var(--bg-primary,#fff);border:1px solid var(--border-color);border-radius:6px;max-height:180px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.14);"></div>
+                        </div>
                     </div>
-                </div>
 
-                <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label class="form-label">Description</label>
-                    <textarea name="description" id="entryDescription" class="form-control" rows="2" style="resize: vertical;"></textarea>
-                </div>
+                    <!-- Credit Account group: shown when 'other' is selected -->
+                    <div id="creditAccountGroup" style="display:none; margin-bottom:1rem;" class="form-group">
+                        <label class="form-label">Credit / Revenue Account</label>
+                        <select name="credit_account_id" id="creditAccountId" class="form-control" onchange="computePreview()">
+                            <option value="">-- Select Account to Credit --</option>
+                            <?php foreach ($accountsList as $acc): if ($acc['category'] === 'Assets') continue; ?>
+                            <option value="<?= $acc['id'] ?>"><?= htmlspecialchars($acc['code'] . ' - ' . $acc['name'] . ' (' . $acc['category'] . ')') ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="card" style="margin-bottom: 1.5rem; background-color: var(--bg-secondary); padding: 1rem;">
-                    <table class="table" style="margin: 0;">
-                        <thead>
-                            <tr>
-                                <th style="width: 55%;">Account</th>
-                                <th style="width: 20%;" class="text-right">Debit</th>
-                                <th style="width: 20%;" class="text-right">Credit</th>
-                                <th style="width: 5%;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="lines-container"></tbody>
-                        <tfoot>
-                            <tr>
-                                <td>
-                                    <button type="button" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" onclick="addLine()">
-                                        <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Line
-                                    </button>
-                                </td>
-                                <td class="text-right" style="font-weight: 600;" id="total-dr">&#8369;0.00</td>
-                                <td class="text-right" style="font-weight: 600;" id="total-cr">&#8369;0.00</td>
+                    <div class="form-group" style="margin-bottom:1rem;">
+                        <label class="form-label">Amount Received (&#8369;)</label>
+                        <input type="number" name="amount" id="autoAmount" class="form-control" placeholder="0.00" step="0.01" min="0.01" required oninput="computePreview()">
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:1rem;">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" id="autoDescription" class="form-control" rows="2" style="resize:vertical;" placeholder="Optional memo/note..."></textarea>
+                    </div>
+
+                    <!-- Auto-Generated Entry Preview -->
+                    <div style="border:1px solid var(--border-color);border-radius:10px;padding:1rem;background:var(--bg-secondary);">
+                        <div style="font-size:0.71rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#0284c7;margin-bottom:0.7rem;display:flex;align-items:center;gap:0.4rem;">
+                            <i data-lucide="zap" style="width:13px;height:13px;"></i>
+                            Auto-Generated Journal Entry &mdash; Posts to Cash Receipts Journal (CRJ)
+                        </div>
+                        <table style="width:100%;font-size:0.875rem;border-collapse:collapse;">
+                            <thead><tr style="border-bottom:1px solid var(--border-color);">
+                                <th style="text-align:left;padding:0.3rem 0.5rem;font-size:0.72rem;font-weight:700;color:var(--text-muted);">Account</th>
+                                <th style="text-align:right;padding:0.3rem 0.5rem;font-size:0.72rem;font-weight:700;color:var(--text-muted);min-width:110px;">Debit</th>
+                                <th style="text-align:right;padding:0.3rem 0.5rem;font-size:0.72rem;font-weight:700;color:var(--text-muted);min-width:110px;">Credit</th>
+                            </tr></thead>
+                            <tbody id="prev-tbody">
+                                <tr>
+                                    <td style="padding:0.4rem 0.5rem;font-weight:500;" id="prev-dr-name">Cash on Hand</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;color:#22c55e;font-variant-numeric:tabular-nums;" id="prev-dr-amt">&#8369;0.00</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:0.4rem 0.5rem;padding-left:2rem;color:var(--text-secondary);" id="prev-cr-name">Accounts Receivable</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:600;color:#60a5fa;font-variant-numeric:tabular-nums;" id="prev-cr-amt">&#8369;0.00</td>
+                                </tr>
+                                <tr id="prev-vat-row" style="display:none;">
+                                    <td style="padding:0.4rem 0.5rem;padding-left:2rem;color:var(--text-secondary);">Output VAT (12%)</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:600;color:#60a5fa;font-variant-numeric:tabular-nums;" id="prev-vat-amt">&#8369;0.00</td>
+                                </tr>
+                            </tbody>
+                            <tfoot><tr style="border-top:2px solid var(--border-color);">
+                                <td style="padding:0.4rem 0.5rem;font-weight:700;font-size:0.8rem;">Total</td>
+                                <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;" id="prev-total-dr">&#8369;0.00</td>
+                                <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;" id="prev-total-cr">&#8369;0.00</td>
+                            </tr></tfoot>
+                        </table>
+                        <div id="prev-vat-info" style="display:none;margin-top:0.55rem;font-size:0.8rem;color:var(--text-muted);padding:0.4rem 0.5rem;background:rgba(59,130,246,0.08);border-radius:6px;border:1px solid rgba(59,130,246,0.2);">
+                            Net Revenue &#8369;<span id="prev-vat-base">0.00</span> + Output VAT 12% &#8369;<span id="prev-vat-computed">0.00</span> = Total Cash &#8369;<span id="prev-vat-full">0.00</span>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- ===== MANUAL / EDIT FORM (editing existing entries) ===== -->
+            <div id="crj-edit-section" style="display:none;">
+                <form id="entry-form" method="POST">
+                    <input type="hidden" name="action" id="formAction" value="edit_entry">
+                    <input type="hidden" name="entry_id" id="entryId" value="">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Date</label>
+                            <input type="date" name="date" id="entryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                        </div>
+                        <input type="hidden" name="reference_no" id="entryRefNo" value="">
+                        <div class="form-group" style="position:relative;">
+                            <label class="form-label">Name <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem;">(Customer / Supplier)</span></label>
+                            <input type="text" id="entitySearchInput" class="form-control" placeholder="Search customer or vendor..." autocomplete="off"
+                                   oninput="onEntitySearchInput()" onfocus="onEntitySearchInput()"
+                                   onkeydown="onEntitySearchKeydown(event)" onblur="onEntitySearchBlur()">
+                            <input type="hidden" name="entity_id" id="entityIdInput" value="">
+                            <input type="hidden" name="entity_type" id="entityTypeInput" value="">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:1.5rem;">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" id="entryDescription" class="form-control" rows="2" style="resize:vertical;"></textarea>
+                    </div>
+                    <div class="card" style="margin-bottom:1.5rem;background-color:var(--bg-secondary);padding:1rem;border:none;box-shadow:none;">
+                        <table class="table" style="margin:0;">
+                            <thead><tr>
+                                <th style="width:55%;">Account</th>
+                                <th style="width:20%;" class="text-right">Debit</th>
+                                <th style="width:20%;" class="text-right">Credit</th>
+                                <th style="width:5%;"></th>
+                            </tr></thead>
+                            <tbody id="lines-container"></tbody>
+                            <tfoot><tr>
+                                <td><button type="button" class="btn btn-secondary" style="padding:0.25rem 0.5rem;font-size:0.8rem;" onclick="addLine()"><i data-lucide="plus" style="width:14px;height:14px;"></i> Add Line</button></td>
+                                <td class="text-right" style="font-weight:600;" id="total-dr">&#8369;0.00</td>
+                                <td class="text-right" style="font-weight:600;" id="total-cr">&#8369;0.00</td>
                                 <td></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-
-                <!-- ===== LIVE VAT PREVIEW ===== -->
-                <div id="vat-preview" style="display:none; margin-bottom:1rem; border:1px solid var(--border-color); border-radius:10px; padding:0.85rem 1rem; background: var(--bg-secondary);">
-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.6rem;">
-                        <span style="font-size:0.72rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color: var(--text-muted);">
-                            VAT Preview
-                        </span>
-                        <span style="font-size:0.72rem; color: var(--text-muted);">auto-added on save</span>
+                            </tr></tfoot>
+                        </table>
                     </div>
-                    <div style="display:flex; justify-content:space-between; font-size:0.875rem; padding:0.18rem 0;">
-                        <span style="color: var(--text-muted);">Vatable Sales (net)</span>
-                        <span id="vat-base" style="font-variant-numeric: tabular-nums;">&#8369;0.00</span>
+                    <div id="balance-warning" style="color:var(--danger-color);font-size:0.875rem;margin-bottom:1rem;text-align:right;display:none;">
+                        Debits and Credits must balance. Difference: &#8369;<span id="diff-amount">0.00</span>
                     </div>
-                    <div style="display:flex; justify-content:space-between; font-size:0.875rem; padding:0.18rem 0;">
-                        <span style="color: var(--text-muted);">Output VAT (12%) &rarr; <span id="vat-account-name" style="font-weight:600; color: var(--text-primary);"></span></span>
-                        <span id="vat-amount" style="font-variant-numeric: tabular-nums; font-weight:600;">&#8369;0.00</span>
-                    </div>
-                    <div style="border-top:1px dashed var(--border-color); margin:0.5rem 0 0.4rem;"></div>
-                    <div style="display:flex; justify-content:space-between; font-size:0.9rem; font-weight:700; padding:0.15rem 0;">
-                        <span>Total Cash Received</span>
-                        <span id="vat-grand-total" style="font-variant-numeric: tabular-nums;">&#8369;0.00</span>
-                    </div>
-                    <div id="vat-offset-note" style="font-size:0.76rem; color: var(--text-muted); margin-top:0.45rem; line-height:1.4;"></div>
-                </div>
-                <!-- ===== END LIVE VAT PREVIEW ===== -->
+                </form>
+            </div>
 
-                <div id="balance-warning" style="color: var(--danger-color); font-size: 0.875rem; margin-bottom: 1rem; text-align: right; display: none;">
-                    Debits and Credits must balance. Difference: &#8369;<span id="diff-amount">0.00</span>
-                </div>
-
-
-
-            </form>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button type="submit" form="entry-form" id="save-btn" class="btn btn-primary" disabled>Save Entry</button>
+            <button type="submit" form="auto-entry-form" id="auto-save-btn" class="btn btn-primary">
+                <i data-lucide="send" style="width:14px;height:14px;"></i>&nbsp; Post to Cash Receipts
+            </button>
+            <button type="submit" form="entry-form" id="save-btn" class="btn btn-primary" style="display:none;" disabled>Save Entry</button>
         </div>
     </div>
 </div>
@@ -516,6 +639,7 @@ require_once '../includes/header.php';
 
 <script>
 const accounts = <?= json_encode($accountsList) ?>;
+const stdAccounts = <?= json_encode($std_accounts) ?>;
 let entitiesList = <?= json_encode($entitiesList ?? []) ?>;
 const customersList = <?= json_encode($customersList ?? []) ?>;
 const suppliersList = <?= json_encode($suppliersList ?? []) ?>;
@@ -1028,31 +1152,218 @@ async function saveQuickAdd() {
     btn.disabled = false; btn.innerText = 'Save';
 }
 
+// ── Auto Receipt Mode ─────────────────────────────────────────────
+let autoReceiptType = 'collection'; // 'collection' or 'other'
+
+function setReceiptType(type) {
+    autoReceiptType = type;
+    document.getElementById('receiptTypeInput').value = type;
+    const collBtn = document.getElementById('typeCollectionBtn');
+    const otherBtn = document.getElementById('typeOtherBtn');
+    const creditGroup = document.getElementById('creditAccountGroup');
+    const entityReq = document.getElementById('autoEntityRequired');
+
+    if (type === 'collection') {
+        collBtn.className = 'btn btn-primary';
+        otherBtn.className = 'btn btn-secondary';
+        creditGroup.style.display = 'none';
+        document.getElementById('creditAccountId').removeAttribute('required');
+        entityReq.style.display = 'inline';
+    } else {
+        collBtn.className = 'btn btn-secondary';
+        otherBtn.className = 'btn btn-primary';
+        creditGroup.style.display = 'block';
+        document.getElementById('creditAccountId').setAttribute('required', 'true');
+        entityReq.style.display = 'none';
+    }
+    computePreview();
+}
+
+function computePreview() {
+    const amt = parseFloat(document.getElementById('autoAmount').value) || 0;
+    const prevTbody = document.getElementById('prev-tbody');
+    const vatInfo = document.getElementById('prev-vat-info');
+    const cashName = (stdAccounts.cash ? (stdAccounts.cash.code + ' - ' + stdAccounts.cash.name) : 'Cash on Hand');
+    const arName = (stdAccounts.ar ? (stdAccounts.ar.code + ' - ' + stdAccounts.ar.name) : 'Accounts Receivable');
+
+    if (autoReceiptType === 'collection') {
+        vatInfo.style.display = 'none';
+        prevTbody.innerHTML = `
+            <tr>
+                <td style="padding:0.4rem 0.5rem;font-weight:500;">${escapeHtml(cashName)}</td>
+                <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;color:#22c55e;font-variant-numeric:tabular-nums;">${vatPeso(amt)}</td>
+                <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+            </tr>
+            <tr>
+                <td style="padding:0.4rem 0.5rem;padding-left:2rem;color:var(--text-secondary);">${escapeHtml(arName)}</td>
+                <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:600;color:#60a5fa;font-variant-numeric:tabular-nums;">${vatPeso(amt)}</td>
+            </tr>
+        `;
+        document.getElementById('prev-total-dr').innerText = vatPeso(amt);
+        document.getElementById('prev-total-cr').innerText = vatPeso(amt);
+    } else {
+        const creditAccId = document.getElementById('creditAccountId').value;
+        const creditAcc = accounts.find(a => String(a.id) === String(creditAccId));
+        const crName = creditAcc ? (creditAcc.code + ' - ' + creditAcc.name) : 'Credit / Income Account';
+        const isRevenue = creditAcc && creditAcc.category === 'Revenue';
+
+        if (isRevenue && companyIsTaxRegistered && amt > 0) {
+            const net = Math.round((amt / 1.12) * 100) / 100;
+            const vat = Math.round((amt - net) * 100) / 100;
+            const vatName = (stdAccounts.output_vat ? (stdAccounts.output_vat.code + ' - ' + stdAccounts.output_vat.name) : 'Output VAT (12%)');
+
+            prevTbody.innerHTML = `
+                <tr>
+                    <td style="padding:0.4rem 0.5rem;font-weight:500;">${escapeHtml(cashName)}</td>
+                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;color:#22c55e;font-variant-numeric:tabular-nums;">${vatPeso(amt)}</td>
+                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                </tr>
+                <tr>
+                    <td style="padding:0.4rem 0.5rem;padding-left:2rem;color:var(--text-secondary);">${escapeHtml(crName)}</td>
+                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:600;color:#60a5fa;font-variant-numeric:tabular-nums;">${vatPeso(net)}</td>
+                </tr>
+                <tr>
+                    <td style="padding:0.4rem 0.5rem;padding-left:2rem;color:var(--text-secondary);">${escapeHtml(vatName)}</td>
+                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:600;color:#60a5fa;font-variant-numeric:tabular-nums;">${vatPeso(vat)}</td>
+                </tr>
+            `;
+            document.getElementById('prev-total-dr').innerText = vatPeso(amt);
+            document.getElementById('prev-total-cr').innerText = vatPeso(amt);
+
+            document.getElementById('prev-vat-base').innerText = net.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+            document.getElementById('prev-vat-computed').innerText = vat.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+            document.getElementById('prev-vat-full').innerText = amt.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+            vatInfo.style.display = 'block';
+        } else {
+            vatInfo.style.display = 'none';
+            prevTbody.innerHTML = `
+                <tr>
+                    <td style="padding:0.4rem 0.5rem;font-weight:500;">${escapeHtml(cashName)}</td>
+                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;color:#22c55e;font-variant-numeric:tabular-nums;">${vatPeso(amt)}</td>
+                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                </tr>
+                <tr>
+                    <td style="padding:0.4rem 0.5rem;padding-left:2rem;color:var(--text-secondary);">${escapeHtml(crName)}</td>
+                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&#8212;</td>
+                    <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:600;color:#60a5fa;font-variant-numeric:tabular-nums;">${vatPeso(amt)}</td>
+                </tr>
+            `;
+            document.getElementById('prev-total-dr').innerText = vatPeso(amt);
+            document.getElementById('prev-total-cr').innerText = vatPeso(amt);
+        }
+    }
+}
+
+// Auto Customer Search
+let _autoMatches = [];
+let _autoHighlight = -1;
+
+function onAutoEntitySearch() {
+    const q = (document.getElementById('autoEntitySearch').value || '').trim().toLowerCase();
+    const dd = document.getElementById('auto-entity-dd');
+    const matches = q ? customersList.filter(c => c.name.toLowerCase().includes(q)) : customersList.slice(0, 30);
+    _autoMatches = matches;
+    _autoHighlight = matches.length ? 0 : -1;
+
+    let html = '';
+    if (matches.length === 0) {
+        html = `<div style="padding:0.5rem 0.75rem;color:var(--text-muted);font-size:0.82rem;">No customers found</div>`;
+    } else {
+        html = matches.map((c, i) => `
+            <div class="auto-cust-opt" data-idx="${i}" style="padding:0.45rem 0.75rem;cursor:pointer;font-size:0.83rem;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:0.4rem;${i===0?'background:var(--bg-secondary);':''}"
+                 onmousedown="selectAutoEntity(${i})"
+                 onmouseover="this.style.background='var(--bg-secondary)'"
+                 onmouseout="if(${i}!==_autoHighlight)this.style.background=''">
+                <span style="font-size:0.68rem;padding:1px 5px;border-radius:10px;font-weight:700;background:#dbeafe;color:#1d4ed8;">C</span>
+                ${escapeHtml(c.name)}
+            </div>
+        `).join('');
+    }
+    html += `<div style="padding:0.4rem 0.75rem;background:var(--bg-secondary);border-top:1px solid var(--border-color);">
+        <button type="button" onmousedown="openQuickAdd('customer')" style="width:100%;padding:0.3rem 0.5rem;font-size:0.78rem;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:4px;cursor:pointer;font-weight:600;">+ Quick Add Customer</button>
+    </div>`;
+    dd.innerHTML = html;
+    dd.style.display = 'block';
+}
+
+function selectAutoEntity(idx) {
+    const c = _autoMatches[idx];
+    if (!c) return;
+    document.getElementById('autoEntitySearch').value = c.name;
+    document.getElementById('autoEntityId').value = c.id;
+    document.getElementById('autoEntityType').value = 'customer';
+    document.getElementById('auto-entity-dd').style.display = 'none';
+}
+
+function onAutoEntityKeydown(e) {
+    const dd = document.getElementById('auto-entity-dd');
+    if (dd.style.display === 'none') {
+        if (e.key === 'ArrowDown') onAutoEntitySearch();
+        return;
+    }
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        _autoHighlight = Math.min(_autoHighlight + 1, _autoMatches.length - 1);
+        updateAutoHighlight();
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        _autoHighlight = Math.max(_autoHighlight - 1, 0);
+        updateAutoHighlight();
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (_autoHighlight >= 0) selectAutoEntity(_autoHighlight);
+    } else if (e.key === 'Escape') {
+        dd.style.display = 'none';
+    }
+}
+
+function updateAutoHighlight() {
+    document.querySelectorAll('.auto-cust-opt').forEach((el, i) => {
+        el.style.background = (i === _autoHighlight) ? 'var(--bg-secondary)' : '';
+    });
+}
+
+function onAutoEntityBlur() {
+    setTimeout(() => {
+        const dd = document.getElementById('auto-entity-dd');
+        if (dd) dd.style.display = 'none';
+        if (!document.getElementById('autoEntityId').value) {
+            document.getElementById('autoEntitySearch').value = '';
+        }
+    }, 180);
+}
+
 function openModal() {
     const modal = document.getElementById('entryModal');
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
-    document.getElementById('modalTitle').innerText = 'New Journal Entry';
-    document.getElementById('formAction').value = 'add_entry';
-    document.getElementById('entryId').value = '';
-    document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
-    document.getElementById('entryRefNo').value = '';
-    document.getElementById('entryDescription').value = '';
-    document.getElementById('entitySearchInput').value = '';
-    document.getElementById('entityIdInput').value = '';
-    document.getElementById('entityTypeInput').value = '';
-    document.getElementById('lines-container').innerHTML = '';
-    lineCount = 0;
-    addLine();
-    addLine();
-    calcTotals();
+    document.getElementById('modalTitle').innerText = 'New Cash Receipt Entry';
+    document.getElementById('modalSubtitle').style.display = 'block';
+    document.getElementById('crj-auto-section').style.display = 'block';
+    document.getElementById('crj-edit-section').style.display = 'none';
+    document.getElementById('auto-save-btn').style.display = 'inline-flex';
+    document.getElementById('save-btn').style.display = 'none';
+    document.getElementById('auto-entry-form').reset();
+    document.getElementById('autoEntryDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('autoEntityId').value = '';
+    document.getElementById('autoEntitySearch').value = '';
+    setReceiptType('collection');
+    computePreview();
 }
 
 function openEditModal(tx) {
     const modal = document.getElementById('entryModal');
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
-    document.getElementById('modalTitle').innerText = 'Edit Journal Entry';
+    document.getElementById('modalTitle').innerText = 'Edit Cash Receipt Entry #' + tx.id;
+    document.getElementById('modalSubtitle').style.display = 'none';
+    document.getElementById('crj-auto-section').style.display = 'none';
+    document.getElementById('crj-edit-section').style.display = 'block';
+    document.getElementById('auto-save-btn').style.display = 'none';
+    document.getElementById('save-btn').style.display = 'inline-flex';
     document.getElementById('formAction').value = 'edit_entry';
     document.getElementById('entryId').value = tx.id;
     document.getElementById('entryDate').value = tx.date;

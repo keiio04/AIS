@@ -139,30 +139,36 @@ $activeTab = $_GET['tab'] ?? 'BS';
 function fmt($n) { return '₱' . number_format($n, 2); }
 ?>
 
-<div class="page-header">
-    <div class="page-header-text">
-        <h1 class="page-title">Financial Statements</h1>
+<!-- Statement Tabs & Actions Toolbar (Option 1) -->
+<div class="no-print" style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.85rem; flex-wrap: wrap;">
+    <div style="display: inline-flex; background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 3px; border-radius: 8px; gap: 3px; max-width: 100%; overflow-x: auto;">
+        <?php 
+        $tabs = [
+            'BS' => 'Balance Sheet',
+            'IS' => 'Income Statement',
+            'EQ' => 'Changes in Equity',
+            'CF' => 'Cash Flows'
+        ];
+        foreach($tabs as $k => $v): 
+            $isActive = ($activeTab === $k);
+        ?>
+        <a href="?tab=<?= $k ?>" style="padding: 0.35rem 0.85rem; font-size: 0.8rem; font-weight: <?= $isActive ? '600' : '500' ?>; border-radius: 6px; text-decoration: none; white-space: nowrap; transition: all 0.15s ease; background: <?= $isActive ? 'var(--primary-color)' : 'transparent' ?>; color: <?= $isActive ? '#ffffff' : 'var(--text-secondary)' ?>; box-shadow: <?= $isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' ?>;">
+            <?= $v ?>
+        </a>
+        <?php endforeach; ?>
     </div>
-    <button class="btn btn-secondary" onclick="window.print()">
-        <i data-lucide="download" style="width:15px;height:15px;"></i> Export PDF
-    </button>
+    <div>
+        <button class="btn btn-secondary" onclick="window.print()" style="font-size: 0.8rem; padding: 0.35rem 0.8rem; display: inline-flex; align-items: center; gap: 0.4rem;">
+            <i data-lucide="printer" style="width:14px;height:14px;"></i> Print / Export PDF
+        </button>
+    </div>
 </div>
 
-<div class="flex gap-1 mb-4" style="overflow-x: auto; background: var(--bg-tertiary); padding: 0.25rem; border-radius: 99px; display: inline-flex;">
-    <?php 
-    $tabs = ['BS'=>'Balance Sheet', 'IS'=>'Income Statement', 'EQ'=>'Changes in Equity', 'CF'=>'Cash Flows', 'Notes'=>'Notes'];
-    foreach($tabs as $k => $v): 
-    ?>
-    <a href="?tab=<?= $k ?>" class="btn <?= $activeTab===$k ? 'btn-primary' : '' ?>" style="<?= $activeTab===$k ? 'border-radius: 99px;' : 'border: none; background: transparent; color: var(--text-secondary); border-radius: 99px; box-shadow: none;' ?>"><?= $v ?></a>
-    <?php endforeach; ?>
-</div>
-
-<div class="card" id="printable-area" style="background-color: white; color: black; max-width: 900px; margin: 0 auto; padding: 2.5rem;">
-    
+<div class="fs-container" id="printable-area">
     <?php if ($activeTab !== 'Notes'): ?>
-    <div class="text-center mb-4">
-        <h2 style="font-size: 1.5rem; margin-bottom: 0.25rem;"><?= htmlspecialchars($activeCompanyName ?? 'Company') ?></h2>
-        <h3 style="font-size: 1.125rem; color: #4b5563; margin-bottom: 0.25rem;">
+    <div style="text-align: center; margin-bottom: 1rem;">
+        <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.2rem;"><?= htmlspecialchars($activeCompanyName ?? 'Company') ?></h2>
+        <h3 style="font-size: 0.925rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.2rem;">
             <?php 
             if($activeTab==='BS') echo 'Statement of Financial Position';
             if($activeTab==='IS') echo 'Statement of Comprehensive Income';
@@ -170,54 +176,55 @@ function fmt($n) { return '₱' . number_format($n, 2); }
             if($activeTab==='CF') echo 'Statement of Cash Flows';
             ?>
         </h3>
-        <p style="color: #6b7280; font-size: 0.875rem; font-weight: 500;">
+        <p style="color: var(--text-muted); font-size: 0.78rem; font-weight: 500; margin: 0;">
             <?= $activeTab==='BS' ? 'As of ' : 'For the period ended ' ?> <?= date('F j, Y') ?>
         </p>
+        <div style="width: 60px; height: 2px; background: var(--primary-color); opacity: 0.7; margin: 0.75rem auto 0; border-radius: 2px;"></div>
     </div>
     <?php endif; ?>
 
     <!-- BALANCE SHEET -->
     <?php if ($activeTab === 'BS'): ?>
-    <table style="width: 100%; border-collapse: collapse; font-size: 0.95rem;">
+    <table class="fs-table">
         <tbody>
-            <tr><td colspan="2" style="padding-top: 1rem;"><strong>ASSETS</strong></td></tr>
-            <tr><td colspan="2" style="padding-left: 2rem;"><strong>Current Assets</strong></td></tr>
+            <tr class="fs-cat-header"><td colspan="2">ASSETS</td></tr>
+            <tr class="fs-subcat-header"><td colspan="2">Current Assets</td></tr>
             <?php foreach($accs as $a): if($a['sub_category']==='Current Assets' && $a['balance']!=0): ?>
-                <tr><td style="padding-left: 3rem;"><?= htmlspecialchars($a['name']) ?></td><td class="text-right"><?= fmt($a['balance']) ?></td></tr>
+                <tr class="fs-item-row"><td class="fs-item-name"><?= htmlspecialchars($a['name']) ?></td><td class="fs-amount"><?= fmt($a['balance']) ?></td></tr>
             <?php endif; endforeach; ?>
-            <tr><td style="padding-left: 2rem;"><strong>Total Current Assets</strong></td><td class="text-right"><strong><?= fmt($currentAssets) ?></strong></td></tr>
+            <tr class="fs-subtotal-row"><td>Total Current Assets</td><td class="fs-amount"><?= fmt($currentAssets) ?></td></tr>
             
-            <tr><td colspan="2" style="padding-left: 2rem; padding-top: 1rem;"><strong>Non-Current Assets</strong></td></tr>
+            <tr class="fs-subcat-header"><td colspan="2" style="padding-top: 0.65rem;">Non-Current Assets</td></tr>
             <?php foreach($accs as $a): if($a['sub_category']==='Non-Current Assets' && $a['balance']!=0): ?>
-                <tr><td style="padding-left: 3rem;"><?= htmlspecialchars($a['name']) ?></td><td class="text-right"><?= fmt($a['balance']) ?></td></tr>
+                <tr class="fs-item-row"><td class="fs-item-name"><?= htmlspecialchars($a['name']) ?></td><td class="fs-amount"><?= fmt($a['balance']) ?></td></tr>
             <?php endif; endforeach; ?>
-            <tr><td style="padding-left: 2rem;"><strong>Total Non-Current Assets</strong></td><td class="text-right"><strong><?= fmt($nonCurrentAssets) ?></strong></td></tr>
+            <tr class="fs-subtotal-row"><td>Total Non-Current Assets</td><td class="fs-amount"><?= fmt($nonCurrentAssets) ?></td></tr>
             
-            <tr>
-                <td style="padding-top: 1rem;"><strong>TOTAL ASSETS</strong></td>
-                <td class="text-right" style="padding-top: 1rem; border-bottom: 3px double black;"><strong><?= fmt($totalAssets) ?></strong></td>
+            <tr class="fs-grand-total">
+                <td>TOTAL ASSETS</td>
+                <td class="fs-amount fs-double-underline"><?= fmt($totalAssets) ?></td>
             </tr>
 
-            <tr><td colspan="2" style="padding-top: 2rem;"><strong>LIABILITIES AND EQUITY</strong></td></tr>
-            <tr><td colspan="2" style="padding-left: 2rem;"><strong>Current Liabilities</strong></td></tr>
+            <tr class="fs-cat-header" style="padding-top: 1.25rem;"><td colspan="2">LIABILITIES AND OWNER'S EQUITY</td></tr>
+            <tr class="fs-subcat-header"><td colspan="2">Current Liabilities</td></tr>
             <?php foreach($accs as $a): if($a['sub_category']==='Current Liabilities' && $a['balance']!=0): ?>
-                <tr><td style="padding-left: 3rem;"><?= htmlspecialchars($a['name']) ?></td><td class="text-right"><?= fmt($a['balance']) ?></td></tr>
+                <tr class="fs-item-row"><td class="fs-item-name"><?= htmlspecialchars($a['name']) ?></td><td class="fs-amount"><?= fmt($a['balance']) ?></td></tr>
             <?php endif; endforeach; ?>
-            <tr><td style="padding-left: 2rem;"><strong>Total Current Liabilities</strong></td><td class="text-right"><strong><?= fmt($currentLiabilities) ?></strong></td></tr>
+            <tr class="fs-subtotal-row"><td>Total Current Liabilities</td><td class="fs-amount"><?= fmt($currentLiabilities) ?></td></tr>
 
-            <tr><td colspan="2" style="padding-left: 2rem; padding-top: 1rem;"><strong>Non-Current Liabilities</strong></td></tr>
+            <tr class="fs-subcat-header"><td colspan="2" style="padding-top: 0.65rem;">Non-Current Liabilities</td></tr>
             <?php foreach($accs as $a): if($a['sub_category']==='Non-Current Liabilities' && $a['balance']!=0): ?>
-                <tr><td style="padding-left: 3rem;"><?= htmlspecialchars($a['name']) ?></td><td class="text-right"><?= fmt($a['balance']) ?></td></tr>
+                <tr class="fs-item-row"><td class="fs-item-name"><?= htmlspecialchars($a['name']) ?></td><td class="fs-amount"><?= fmt($a['balance']) ?></td></tr>
             <?php endif; endforeach; ?>
-            <tr><td style="padding-left: 2rem;"><strong>Total Non-Current Liabilities</strong></td><td class="text-right"><strong><?= fmt($nonCurrentLiabilities) ?></strong></td></tr>
-            <tr><td style="padding-left: 1rem; padding-top: 0.5rem;"><strong>Total Liabilities</strong></td><td class="text-right" style="padding-top: 0.5rem;"><strong><?= fmt($totalLiabilities) ?></strong></td></tr>
+            <tr class="fs-subtotal-row"><td>Total Non-Current Liabilities</td><td class="fs-amount"><?= fmt($nonCurrentLiabilities) ?></td></tr>
+            <tr class="fs-subtotal-row" style="font-weight: 700;"><td>Total Liabilities</td><td class="fs-amount"><?= fmt($totalLiabilities) ?></td></tr>
 
-            <tr><td colspan="2" style="padding-left: 2rem; padding-top: 1rem;"><strong>Owner's Equity</strong></td></tr>
-            <tr><td style="padding-left: 3rem;">Ending Equity</td><td class="text-right"><?= fmt($endingEquity) ?></td></tr>
+            <tr class="fs-subcat-header" style="padding-top: 0.65rem;"><td colspan="2">Owner's Equity</td></tr>
+            <tr class="fs-item-row"><td class="fs-item-name">Owner's Capital, Ending</td><td class="fs-amount"><?= fmt($endingEquity) ?></td></tr>
             
-            <tr>
-                <td style="padding-top: 1rem;"><strong>TOTAL LIABILITIES AND EQUITY</strong></td>
-                <td class="text-right" style="padding-top: 1rem; border-bottom: 3px double black;"><strong><?= fmt($totalLiabilitiesAndEquity) ?></strong></td>
+            <tr class="fs-grand-total">
+                <td>TOTAL LIABILITIES AND EQUITY</td>
+                <td class="fs-amount fs-double-underline"><?= fmt($totalLiabilitiesAndEquity) ?></td>
             </tr>
         </tbody>
     </table>
@@ -225,24 +232,24 @@ function fmt($n) { return '₱' . number_format($n, 2); }
 
     <!-- INCOME STATEMENT -->
     <?php if ($activeTab === 'IS'): ?>
-    <table style="width: 100%; border-collapse: collapse; font-size: 0.95rem;">
+    <table class="fs-table">
         <tbody>
-            <tr><td colspan="2" style="padding-top: 1rem;"><strong>REVENUE</strong></td></tr>
+            <tr class="fs-cat-header"><td colspan="2">REVENUE</td></tr>
             <?php foreach($accs as $a): if($a['category']==='Revenue' && $a['balance']!=0): ?>
-                <tr><td style="padding-left: 2rem;"><?= htmlspecialchars($a['name']) ?></td><td class="text-right"><?= fmt($a['balance']) ?></td></tr>
+                <tr class="fs-item-row"><td class="fs-item-name"><?= htmlspecialchars($a['name']) ?></td><td class="fs-amount"><?= fmt($a['balance']) ?></td></tr>
             <?php endif; endforeach; ?>
-            <tr><td><strong>Total Revenue</strong></td><td class="text-right"><strong><?= fmt($totalRevenue) ?></strong></td></tr>
+            <tr class="fs-subtotal-row"><td>Total Revenue</td><td class="fs-amount"><?= fmt($totalRevenue) ?></td></tr>
 
-            <tr><td colspan="2" style="padding-top: 1.5rem;"><strong>EXPENSES</strong></td></tr>
+            <tr class="fs-cat-header" style="padding-top: 1rem;"><td colspan="2">EXPENSES</td></tr>
             <?php foreach($accs as $a): if($a['category']==='Expenses' && $a['balance']!=0): ?>
-                <tr><td style="padding-left: 2rem;"><?= htmlspecialchars($a['name']) ?></td><td class="text-right"><?= fmt($a['balance']) ?></td></tr>
+                <tr class="fs-item-row"><td class="fs-item-name"><?= htmlspecialchars($a['name']) ?></td><td class="fs-amount"><?= fmt($a['balance']) ?></td></tr>
             <?php endif; endforeach; ?>
-            <tr><td><strong>Total Expenses</strong></td><td class="text-right" style="border-bottom: 1px solid black;"><strong><?= fmt($totalExpenses) ?></strong></td></tr>
+            <tr class="fs-subtotal-row"><td>Total Expenses</td><td class="fs-amount"><?= fmt($totalExpenses) ?></td></tr>
 
-            <tr>
-                <td style="padding-top: 1rem;"><strong>NET INCOME (LOSS)</strong></td>
-                <td class="text-right" style="padding-top: 1rem; border-bottom: 3px double black; color: <?= $netIncome>=0?'inherit':'#ef4444' ?>;">
-                    <strong><?= fmt($netIncome) ?></strong>
+            <tr class="fs-grand-total">
+                <td>NET INCOME (LOSS)</td>
+                <td class="fs-amount fs-double-underline" style="color: <?= $netIncome >= 0 ? 'var(--text-primary)' : '#dc2626' ?>;">
+                    <?= fmt($netIncome) ?>
                 </td>
             </tr>
         </tbody>
@@ -251,19 +258,19 @@ function fmt($n) { return '₱' . number_format($n, 2); }
 
     <!-- EQUITY -->
     <?php if ($activeTab === 'EQ'): ?>
-    <table style="width: 100%; border-collapse: collapse; font-size: 0.95rem;">
+    <table class="fs-table">
         <tbody>
-            <tr><td style="padding-top: 1rem;">Owner's Capital, Beginning</td><td class="text-right"><?= fmt($ownersCapitalBeginning) ?></td></tr>
+            <tr class="fs-item-row" style="font-weight: 500;"><td>Owner's Capital, Beginning</td><td class="fs-amount"><?= fmt($ownersCapitalBeginning) ?></td></tr>
             <?php if($additionalInvestment > 0): ?>
-            <tr><td style="padding-left: 2rem;">Add: Additional Investment</td><td class="text-right"><?= fmt($additionalInvestment) ?></td></tr>
+            <tr class="fs-item-row"><td class="fs-item-name">Add: Additional Investment</td><td class="fs-amount"><?= fmt($additionalInvestment) ?></td></tr>
             <?php elseif($additionalInvestment < 0): ?>
-            <tr><td style="padding-left: 2rem;">Less: Capital Reductions</td><td class="text-right">(<?= fmt(abs($additionalInvestment)) ?>)</td></tr>
+            <tr class="fs-item-row"><td class="fs-item-name">Less: Capital Reductions</td><td class="fs-amount">(<?= fmt(abs($additionalInvestment)) ?>)</td></tr>
             <?php endif; ?>
-            <tr><td style="padding-left: 2rem;"><?= $netIncome >= 0 ? 'Add: Net Income' : 'Less: Net Loss' ?></td><td class="text-right"><?= $netIncome >= 0 ? fmt($netIncome) : '('.fmt(abs($netIncome)).')' ?></td></tr>
-            <tr><td style="padding-left: 2rem;">Less: Withdrawals</td><td class="text-right border-bottom">(<?= fmt($withdrawals) ?>)</td></tr>
-            <tr>
-                <td style="padding-top: 1rem;"><strong>Owner's Capital, Ending</strong></td>
-                <td class="text-right" style="padding-top: 1rem; border-bottom: 3px double black;"><strong><?= fmt($endingEquity) ?></strong></td>
+            <tr class="fs-item-row"><td class="fs-item-name"><?= $netIncome >= 0 ? 'Add: Net Income' : 'Less: Net Loss' ?></td><td class="fs-amount" style="color: <?= $netIncome >= 0 ? 'inherit' : '#dc2626' ?>;"><?= $netIncome >= 0 ? fmt($netIncome) : '('.fmt(abs($netIncome)).')' ?></td></tr>
+            <tr class="fs-item-row"><td class="fs-item-name">Less: Withdrawals</td><td class="fs-amount">(<?= fmt($withdrawals) ?>)</td></tr>
+            <tr class="fs-grand-total">
+                <td>Owner's Capital, Ending</td>
+                <td class="fs-amount fs-double-underline"><?= fmt($endingEquity) ?></td>
             </tr>
         </tbody>
     </table>
@@ -271,20 +278,20 @@ function fmt($n) { return '₱' . number_format($n, 2); }
 
     <!-- CASH FLOWS -->
     <?php if ($activeTab === 'CF'): ?>
-    <table style="width: 100%; border-collapse: collapse; font-size: 0.95rem;">
+    <table class="fs-table">
         <tbody>
-            <tr><td colspan="2" style="padding-top: 1rem;"><strong>Cash Flows from Operating Activities</strong></td></tr>
-            <tr><td style="padding-left: 2rem;">Net Cash provided by (used in) Operating Activities</td><td class="text-right"><?= fmt($cfData['Operating']) ?></td></tr>
+            <tr class="fs-cat-header"><td colspan="2">Cash Flows from Operating Activities</td></tr>
+            <tr class="fs-item-row"><td class="fs-item-name">Net Cash provided by (used in) Operating Activities</td><td class="fs-amount"><?= fmt($cfData['Operating']) ?></td></tr>
 
-            <tr><td colspan="2" style="padding-top: 1rem;"><strong>Cash Flows from Investing Activities</strong></td></tr>
-            <tr><td style="padding-left: 2rem;">Net Cash provided by (used in) Investing Activities</td><td class="text-right"><?= fmt($cfData['Investing']) ?></td></tr>
+            <tr class="fs-cat-header" style="padding-top: 0.75rem;"><td colspan="2">Cash Flows from Investing Activities</td></tr>
+            <tr class="fs-item-row"><td class="fs-item-name">Net Cash provided by (used in) Investing Activities</td><td class="fs-amount"><?= fmt($cfData['Investing']) ?></td></tr>
 
-            <tr><td colspan="2" style="padding-top: 1rem;"><strong>Cash Flows from Financing Activities</strong></td></tr>
-            <tr><td style="padding-left: 2rem;">Net Cash provided by (used in) Financing Activities</td><td class="text-right"><?= fmt($cfData['Financing']) ?></td></tr>
+            <tr class="fs-cat-header" style="padding-top: 0.75rem;"><td colspan="2">Cash Flows from Financing Activities</td></tr>
+            <tr class="fs-item-row"><td class="fs-item-name">Net Cash provided by (used in) Financing Activities</td><td class="fs-amount"><?= fmt($cfData['Financing']) ?></td></tr>
 
-            <tr>
-                <td style="padding-top: 1rem;"><strong>Net Increase (Decrease) in Cash</strong></td>
-                <td class="text-right" style="padding-top: 1rem; border-bottom: 3px double black;"><strong><?= fmt($netCashFlow) ?></strong></td>
+            <tr class="fs-grand-total">
+                <td>Net Increase (Decrease) in Cash</td>
+                <td class="fs-amount fs-double-underline" style="color: <?= $netCashFlow >= 0 ? 'var(--text-primary)' : '#dc2626' ?>;"><?= fmt($netCashFlow) ?></td>
             </tr>
         </tbody>
     </table>
@@ -293,45 +300,53 @@ function fmt($n) { return '₱' . number_format($n, 2); }
     <!-- NOTES -->
     <?php if ($activeTab === 'Notes'): ?>
     <div>
-        <h2 style="font-size: 1.5rem; margin-bottom: 1.5rem;">Notes to Financial Statements</h2>
+        <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+            <i data-lucide="file-text" style="width:18px;height:18px;color:var(--primary-color);"></i>
+            Notes to Financial Statements
+        </h2>
         
         <?php foreach($notes as $n): ?>
-        <div style="margin-bottom: 1.5rem;">
-            <div class="flex justify-between items-center">
-                <h3 style="font-size: 1.125rem;">Note <?= htmlspecialchars($n['note_number']) ?> - <?= htmlspecialchars($n['title']) ?></h3>
+        <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.75rem;">
+            <div class="flex justify-between items-center" style="margin-bottom: 0.35rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="badge badge-primary" style="font-size: 0.7rem; padding: 2px 7px;">Note <?= htmlspecialchars($n['note_number']) ?></span>
+                    <h3 style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin: 0;"><?= htmlspecialchars($n['title']) ?></h3>
+                </div>
                 <form method="POST" class="no-print" onsubmit="return confirm('Delete this note?');">
                     <input type="hidden" name="action" value="delete_note">
                     <input type="hidden" name="id" value="<?= $n['id'] ?>">
-                    <button type="submit" class="icon-btn text-danger"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
+                    <button type="submit" class="icon-btn text-danger" title="Delete Note"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>
                 </form>
             </div>
-            <p style="margin-top: 0.5rem; white-space: pre-wrap; font-size: 0.95rem; line-height: 1.5; color: #374151;"><?= htmlspecialchars($n['description']) ?></p>
+            <p style="margin: 0; white-space: pre-wrap; font-size: 0.8125rem; line-height: 1.5; color: var(--text-secondary);"><?= htmlspecialchars($n['description']) ?></p>
         </div>
         <?php endforeach; ?>
 
         <?php if(count($notes)===0): ?>
-        <p class="text-muted text-center" style="margin: 2rem 0;">No notes added yet.</p>
+        <p class="text-muted text-center" style="margin: 2rem 0; font-size: 0.85rem;">No notes added yet.</p>
         <?php endif; ?>
 
-        <div class="card no-print" style="margin-top: 2rem; background: var(--bg-tertiary); border: 1px dashed var(--border-color);">
-            <h4 style="margin-bottom: 1rem;">Add New Note</h4>
+        <div class="card no-print" style="margin-top: 1.5rem; background: var(--bg-secondary); border: 1px dashed var(--border-color); padding: 1rem 1.25rem;">
+            <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--text-primary);">Add New Note</h4>
             <form method="POST">
                 <input type="hidden" name="action" value="add_note">
-                <div class="flex gap-4">
-                    <div class="form-group" style="width: 120px;">
-                        <label class="form-label">Note No.</label>
-                        <input type="text" name="note_number" class="form-control" required>
+                <div class="flex gap-3" style="margin-bottom: 0.65rem;">
+                    <div class="form-group" style="width: 100px; margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.75rem;">Note No.</label>
+                        <input type="text" name="note_number" class="form-control" required placeholder="e.g. 1" style="height: 32px; font-size: 0.8rem; padding: 0.35rem 0.55rem;">
                     </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Title</label>
-                        <input type="text" name="title" class="form-control" required>
+                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.75rem;">Title</label>
+                        <input type="text" name="title" class="form-control" required placeholder="e.g. Summary of Significant Accounting Policies" style="height: 32px; font-size: 0.8rem; padding: 0.35rem 0.55rem;">
                     </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Description</label>
-                    <textarea name="description" class="form-control" rows="3" required></textarea>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label class="form-label" style="font-size: 0.75rem;">Description</label>
+                    <textarea name="description" class="form-control" rows="3" required placeholder="Enter note details..." style="font-size: 0.8rem; padding: 0.5rem;"></textarea>
                 </div>
-                <button type="submit" class="btn btn-primary mt-2">Save Note</button>
+                <button type="submit" class="btn btn-primary" style="font-size: 0.8rem; padding: 0.35rem 0.85rem;">
+                    <i data-lucide="plus" style="width:14px;height:14px;"></i> Save Note
+                </button>
             </form>
         </div>
     </div>
@@ -340,22 +355,96 @@ function fmt($n) { return '₱' . number_format($n, 2); }
 </div>
 
 <style>
-#printable-area {
-    padding: 1.25rem !important;
+.fs-container {
+    background: transparent;
+    color: var(--text-primary);
+    width: 100%;
+    margin: 0 0 2rem;
+    padding: 0;
+    border: none;
+    box-shadow: none;
 }
-@media (min-width: 640px) {
-    #printable-area {
-        padding: 2.5rem !important;
-    }
+.fs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
 }
+.fs-table td {
+    padding: 0.28rem 0.5rem;
+    vertical-align: middle;
+}
+.fs-item-row:hover td, .fs-subtotal-row:hover td {
+    background-color: var(--bg-tertiary);
+}
+.fs-cat-header td {
+    font-weight: 700;
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-top: 1rem;
+    padding-bottom: 0.25rem;
+    padding-left: 0.5rem;
+}
+.fs-subcat-header td {
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding-left: 1.25rem;
+    padding-top: 0.45rem;
+    padding-bottom: 0.2rem;
+}
+.fs-item-row td.fs-item-name {
+    padding-left: 2.25rem;
+    color: var(--text-primary);
+    font-weight: 400;
+}
+.fs-amount {
+    text-align: right;
+    font-family: monospace;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    width: 200px;
+    padding-right: 0.5rem !important;
+}
+.fs-subtotal-row td {
+    font-weight: 600;
+    font-size: 0.8125rem;
+    padding-left: 1.25rem;
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+    border-top: 1px solid var(--border-color);
+}
+.fs-grand-total td {
+    font-weight: 700;
+    font-size: 0.835rem;
+    color: var(--text-primary);
+    padding-top: 0.65rem;
+    padding-bottom: 0.65rem;
+    padding-left: 0.5rem;
+    border-top: 1px solid var(--border-color);
+}
+.fs-double-underline {
+    border-bottom: 3px double var(--text-primary) !important;
+}
+
+@media (max-width: 768px) {
+    .fs-spacer { display: none !important; }
+}
+
 @media print {
     body * { visibility: hidden; }
     #printable-area, #printable-area * { visibility: visible; }
-    #printable-area { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border: none !important; padding: 0 !important; }
+    #printable-area {
+        position: absolute; left: 0; top: 0; width: 100% !important;
+        box-shadow: none !important; border: none !important; padding: 0 !important;
+        background: #ffffff !important; color: #000000 !important;
+    }
+    #printable-area * { color: #000000 !important; border-color: #000000 !important; }
     .page-header, .sidebar, .topbar, .btn, .no-print { display: none !important; }
     .main-wrapper { padding: 0 !important; margin: 0 !important; }
 }
-table td { padding: 0.4rem 0; }
 </style>
 
 <?php require_once '../includes/footer.php'; ?>

@@ -281,7 +281,7 @@ $registeredDate = !empty($user['created_at']) ? date('M d, Y', strtotime($user['
     <?php endif; ?>
 
     <!-- 3. EDITABLE SETTINGS & SECURITY GRID -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 1.5rem;">
         
         <!-- Profile Details Form -->
         <div class="card" style="padding: 1.5rem; border-radius: 16px; background: var(--bg-card); border: 1px solid var(--border-color);">
