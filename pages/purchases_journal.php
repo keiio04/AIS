@@ -1,4 +1,4 @@
-    <?php
+<?php
 require_once '../config.php';
 require_once '../db.php';
 require_once '../includes/auth.php';
@@ -265,12 +265,7 @@ require_once '../includes/header.php';
     <?= htmlspecialchars($error) ?>
 </div>
 <?php endif; ?>
-<?php if (isset($_GET['posted'])): ?>
-<div class="alert alert-success" style="margin-bottom: 1rem; display:flex; align-items:center; gap:0.6rem;">
-    <i data-lucide="check-circle" style="width:16px;height:16px;"></i>
-    Purchase entry <strong><?= htmlspecialchars($_GET['ref'] ?? '') ?></strong> auto-posted to Purchases Journal successfully.
-</div>
-<?php endif; ?>
+
 
 <?php if ($search !== ''): ?>
 <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem; font-size:0.875rem; color: var(--text-secondary);">

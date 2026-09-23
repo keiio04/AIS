@@ -363,14 +363,7 @@ $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 require_once '../includes/header.php';
 ?>
 
-<?php if (isset($_GET['posted'])): ?>
-    <div style="background:#dcfce7; color:#15803d; padding:1rem 1.25rem; border-radius:10px; margin-bottom:1.25rem; border:1px solid #bbf7d0; display:flex; align-items:center; gap:0.75rem;">
-        <i data-lucide="check-circle" style="width:20px;height:20px;color:#16a34a;flex-shrink:0;"></i>
-        <div>
-            <strong>Transaction Posted!</strong> Journal Entry <code><?= htmlspecialchars($_GET['ref'] ?? '') ?></code> was successfully generated and recorded in Cash Disbursements.
-        </div>
-    </div>
-<?php endif; ?>
+
 
 <?php if (isset($error)): ?>
     <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">

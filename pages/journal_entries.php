@@ -81,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $credits = $_POST['credit'] ?? [];
 
         if ($action === 'edit_entry') {
-            $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL");
+            $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND journal_id = 'GJ'");
             $check->bind_param('ii', $entry_id, $company_id);
             $check->execute();
             if (!$check->get_result()->fetch_assoc()) {
@@ -149,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     } elseif ($_POST['action'] === 'delete') {
         $delete_id = (int)$_POST['id'];
-        $stmtDel = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?");
+        $stmtDel = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ? AND journal_id = 'GJ'");
         $stmtDel->bind_param('ii', $delete_id, $company_id);
         $stmtDel->execute();
         
@@ -198,7 +198,7 @@ $query = "
     FROM journal_entries e
     LEFT JOIN customers c ON e.entity_id = c.id AND e.entity_type = 'customer'
     LEFT JOIN suppliers s ON e.entity_id = s.id AND e.entity_type = 'supplier'
-    WHERE e.company_id = ? AND e.deleted_at IS NULL $searchSql
+    WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'GJ' $searchSql
     ORDER BY e.date DESC, e.id DESC
 ";
 $stmt = $db->prepare($query);
@@ -220,20 +220,7 @@ $postedJournalLabel = $journalLabels[$postedJournal] ?? ($postedJournal ?: 'Spec
 require_once '../includes/header.php';
 ?>
 
-<?php if (isset($_GET['posted']) && $postedRef !== ''): ?>
-    <div style="background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; padding: 1rem 1.25rem; border-radius: 8px; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
-        <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <i data-lucide="check-circle" style="width: 22px; height: 22px; color: #059669; flex-shrink: 0;"></i>
-            <div>
-                <div style="font-weight: 700; font-size: 0.95rem;">Transaction Successfully Saved & Journal Entry Generated!</div>
-                <div style="font-size: 0.825rem; color: #047857; margin-top: 2px;">
-                    Journal: <strong><?= htmlspecialchars($postedJournalLabel) ?> (<?= htmlspecialchars($postedJournal) ?>)</strong> | Reference No: <strong style="font-family: monospace; font-size: 0.9rem;"><?= htmlspecialchars($postedRef) ?></strong>
-                </div>
-            </div>
-        </div>
-        <span class="badge badge-success" style="font-size: 0.75rem; padding: 4px 10px;">Auto-Generated</span>
-    </div>
-<?php endif; ?>
+
 
 <?php if (isset($error)): ?>
     <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
