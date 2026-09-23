@@ -166,12 +166,16 @@ $stmtCo->execute();
 $companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_registered'] ?? false);
 
 // Fetch revenue accounts for customer transactions
-$stmtRev = $db->prepare("SELECT id, code, name FROM accounts WHERE company_id = ? AND category = 'Revenue' ORDER BY code ASC");
+$stmtRev = $db->prepare("SELECT id, code, name, category FROM accounts WHERE company_id = ? AND category = 'Revenue' ORDER BY code ASC");
 $stmtRev->bind_param('i', $company_id);
 $stmtRev->execute();
 $revenueAccounts = $stmtRev->get_result()->fetch_all(MYSQLI_ASSOC);
 
 $stdAccts = get_company_standard_accounts($db, $company_id);
+// Re-fetch to include any auto-provisioned standard revenue accounts
+$stmtRev->execute();
+$revenueAccounts = $stmtRev->get_result()->fetch_all(MYSQLI_ASSOC);
+
 $defaultRevenueId = $stdAccts['service_revenue']['id'] ?? ($revenueAccounts[0]['id'] ?? 0);
 
 require_once '../includes/header.php';
@@ -278,23 +282,19 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 <?php if (count($customers) === 0): ?>
                 <tr><td colspan="10" class="text-center text-secondary" style="padding: 2rem; font-size: 0.8125rem;">No customers found.</td></tr>
                 <?php else: foreach($customers as $c): ?>
-                <tr style="color: #000;">
-                    <td style="font-family: monospace; font-weight: 600; font-size: 0.78rem; color: var(--primary-color);"><?= htmlspecialchars($c['code'] ?: '—') ?></td>
-                    <td style="font-weight: 600; font-size: 0.8125rem;"><?= htmlspecialchars($c['name']) ?></td>
+                <tr style="color: var(--text-primary);">
+                    <td style="font-family: monospace; font-size: 0.78rem; color: var(--text-primary);"><?= htmlspecialchars($c['code'] ?: '—') ?></td>
+                    <td style="font-size: 0.8125rem;"><?= htmlspecialchars($c['name']) ?></td>
                     <td style="font-size: 0.8125rem; color: var(--text-secondary);"><?= htmlspecialchars($c['contact_person'] ?: '—') ?></td>
                     <td style="font-size: 0.78rem; line-height: 1.3;">
                         <?= htmlspecialchars($c['email'] ?: '—') ?><br>
                         <span style="color: var(--text-muted); font-size: 0.72rem;"><?= htmlspecialchars($c['phone'] ?: '') ?></span>
                     </td>
                     <td style="font-size: 0.8125rem;"><?= htmlspecialchars($c['terms'] ?: '—') ?></td>
-                    <td class="text-right" style="font-weight: 600; color: #16a34a; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($c['total_revenue'], 2) ?></td>
-                    <td class="text-right" style="font-weight: 600; color: #d97706; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($c['total_output_vat'], 2) ?></td>
-                    <td class="text-right" style="font-weight: 700; color: var(--primary-color); font-size: 0.8125rem; font-variant-numeric: tabular-nums;">
-                        <?php
-                            $bal = $c['current_balance'];
-                            $balColor = $bal > 0 ? 'var(--primary-color)' : ($bal < 0 ? '#dc2626' : 'var(--text-muted)');
-                        ?>
-                        <span style="color: <?= $balColor ?>;">₱<?= number_format($bal, 2) ?></span>
+                    <td class="text-right" style="font-weight: 600; color: var(--text-primary); font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($c['total_revenue'], 2) ?></td>
+                    <td class="text-right" style="font-weight: 600; color: var(--text-primary); font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($c['total_output_vat'], 2) ?></td>
+                    <td class="text-right" style="font-weight: 700; color: var(--text-primary); font-size: 0.8125rem; font-variant-numeric: tabular-nums;">
+                        <span>₱<?= number_format($c['current_balance'], 2) ?></span>
                     </td>
                     <td class="text-center">
                         <span class="badge <?= $c['status'] === 'Active' ? 'badge-success' : 'badge-neutral' ?>" style="font-size: 0.65rem; padding: 2px 7px;"><?= htmlspecialchars($c['status']) ?></span>
@@ -426,7 +426,7 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Customer <span class="required">*</span></label>
                         <!-- Searchable customer combo -->
                         <div style="position: relative;">
-                            <input type="text" id="txCustomerSearch" class="form-control" placeholder="Type to search customer..." autocomplete="off"
+                            <input type="text" id="txCustomerSearch" class="form-control" autocomplete="off"
                                 style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;"
                                 oninput="filterCustomerList()" onfocus="showCustomerList()">
                             <input type="hidden" name="customer_id" id="txCustomerId" required>
@@ -467,6 +467,11 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <input type="number" step="0.01" min="0.01" name="amount" id="txAmount" class="form-control" placeholder="0.00" required oninput="updateTxPreview()" style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;">
                     </div>
                 </div>
+
+<div class="form-group" style="margin-bottom: 0.5rem;">
+    <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Description / Particulars</label>
+    <input type="text" name="description" id="txDescription" class="form-control" placeholder="Description / Particulars..." style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;">
+</div>
 
                 <!-- Tax / VAT Settings -->
                 <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.45rem 0.75rem; margin-bottom: 0.5rem;">
@@ -583,6 +588,7 @@ function openTxModal(c = null) {
     // Reset search combo
     document.getElementById('txCustomerSearch').value = '';
     document.getElementById('txCustomerId').value = '';
+    document.getElementById('txDescription').value = '';
     hideCustomerList();
 
     if (c) {

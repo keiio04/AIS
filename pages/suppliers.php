@@ -166,12 +166,16 @@ $stmtCo->execute();
 $companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_registered'] ?? false);
 
 // Fetch expense / supplies accounts for supplier transactions
-$stmtExp = $db->prepare("SELECT id, code, name, category FROM accounts WHERE company_id = ? AND (category = 'Expenses' OR (category = 'Assets' AND (name LIKE '%supplies%' OR name LIKE '%inventory%'))) ORDER BY category DESC, code ASC");
+$stmtExp = $db->prepare("SELECT id, code, name, category FROM accounts WHERE company_id = ? AND (category = 'Expenses' OR (category = 'Assets' AND (name LIKE '%supplies%' OR name LIKE '%inventory%' OR name LIKE '%merchandise%'))) AND name NOT LIKE '%cash%' AND name NOT LIKE '%receivable%' AND name NOT LIKE '%payable%' ORDER BY category DESC, code ASC");
 $stmtExp->bind_param('i', $company_id);
 $stmtExp->execute();
 $expenseAccounts = $stmtExp->get_result()->fetch_all(MYSQLI_ASSOC);
 
 $stdAccts = get_company_standard_accounts($db, $company_id);
+// Re-fetch to include any auto-provisioned standard accounts
+$stmtExp->execute();
+$expenseAccounts = $stmtExp->get_result()->fetch_all(MYSQLI_ASSOC);
+
 $defaultExpenseId = $stdAccts['purchases']['id'] ?? ($expenseAccounts[0]['id'] ?? 0);
 
 require_once '../includes/header.php';
@@ -278,23 +282,22 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 <?php if (count($suppliers) === 0): ?>
                 <tr><td colspan="10" class="text-center text-secondary" style="padding: 2rem; font-size: 0.8125rem;">No suppliers found.</td></tr>
                 <?php else: foreach($suppliers as $s): ?>
-                <tr style="color: #000;">
-                    <td style="font-family: monospace; font-weight: 600; font-size: 0.78rem; color: var(--primary-color);"><?= htmlspecialchars($s['code'] ?: '—') ?></td>
-                    <td style="font-weight: 600; font-size: 0.8125rem;"><?= htmlspecialchars($s['name']) ?></td>
+                <tr>
+                    <td style="font-family: monospace; font-size: 0.78rem; color: var(--primary-color);"><?= htmlspecialchars($s['code'] ?: '—') ?></td>
+                    <td style="font-size: 0.8125rem;"><?= htmlspecialchars($s['name']) ?></td>
                     <td style="font-size: 0.8125rem; color: var(--text-secondary);"><?= htmlspecialchars($s['contact_person'] ?: '—') ?></td>
                     <td style="font-size: 0.78rem; line-height: 1.3;">
                         <?= htmlspecialchars($s['email'] ?: '—') ?><br>
                         <span style="color: var(--text-muted); font-size: 0.72rem;"><?= htmlspecialchars($s['phone'] ?: '') ?></span>
                     </td>
                     <td style="font-size: 0.8125rem;"><?= htmlspecialchars($s['terms'] ?: '—') ?></td>
-                    <td class="text-right" style="font-weight: 600; color: #d97706; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($s['total_purchases'], 2) ?></td>
-                    <td class="text-right" style="font-weight: 600; color: #6d28d9; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($s['total_input_vat'], 2) ?></td>
+                    <td class="text-right" style="font-weight: 600; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($s['total_purchases'], 2) ?></td>
+                    <td class="text-right" style="font-weight: 600; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱<?= number_format($s['total_input_vat'], 2) ?></td>
                     <td class="text-right" style="font-weight: 700; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">
                         <?php
                             $bal = $s['current_balance'];
-                            $balColor = $bal > 0 ? 'var(--primary-color)' : ($bal < 0 ? '#dc2626' : 'var(--text-muted)');
                         ?>
-                        <span style="color: <?= $balColor ?>;">₱<?= number_format($bal, 2) ?></span>
+                        <span>₱<?= number_format($bal, 2) ?></span>
                     </td>
                     <td class="text-center">
                         <span class="badge <?= $s['status'] === 'Active' ? 'badge-success' : 'badge-neutral' ?>" style="font-size: 0.65rem; padding: 2px 7px;"><?= htmlspecialchars($s['status']) ?></span>
@@ -426,13 +429,13 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Supplier <span class="required">*</span></label>
                         <!-- Searchable supplier combo -->
                         <div style="position: relative;">
-                            <input type="text" id="txSupplierSearch" class="form-control" placeholder="Type to search supplier..." autocomplete="off"
+                            <input type="text" id="txSupplierSearch" class="form-control" autocomplete="off"
                                 style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;"
                                 oninput="filterSupplierList()" onfocus="showSupplierList()">
                             <input type="hidden" name="supplier_id" id="txSupplierId" required>
                             <div id="txSupplierDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--border-color); border-top:none; border-radius:0 0 6px 6px; max-height:180px; overflow-y:auto; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
                                 <?php foreach($suppliers as $sup): ?>
-                                <div class="sup-opt" data-id="<?= $sup['id'] ?>" data-terms="<?= htmlspecialchars($sup['terms'] ?? 'Cash') ?>"
+                                <div class="supp-opt" data-id="<?= $sup['id'] ?>" data-terms="<?= htmlspecialchars($sup['terms'] ?? 'Cash') ?>"
                                     data-label="<?= htmlspecialchars(($sup['code'] ? '[' . $sup['code'] . '] ' : '') . $sup['name']) ?>"
                                     style="padding:5px 8px; cursor:pointer; font-size:0.78rem;"
                                     onmousedown="selectSupplier(this)">
@@ -454,7 +457,7 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <select name="expense_account_id" id="txExpenseAccountId" class="form-control" required onchange="updateTxPreview()" style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;">
                             <?php foreach ($expenseAccounts as $exp): ?>
                             <option value="<?= $exp['id'] ?>" data-name="<?= htmlspecialchars($exp['name']) ?>" <?= $exp['id'] == $defaultExpenseId ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($exp['code'] . ' - ' . $exp['name'] . ' (' . $exp['category'] . ')') ?>
+                                <?= htmlspecialchars($exp['code'] . ' - ' . $exp['name']) ?>
                             </option>
                             <?php endforeach; ?>
                             <?php if (empty($expenseAccounts)): ?>
@@ -466,6 +469,11 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Amount (₱) <span class="required">*</span></label>
                         <input type="number" step="0.01" min="0.01" name="amount" id="txAmount" class="form-control" placeholder="0.00" required oninput="updateTxPreview()" style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;">
                     </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+<label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Description / Particulars</label>
+<input type="text" name="description" id="txDescription" class="form-control" placeholder="Description / Particulars..." style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;">
                 </div>
 
                 <!-- Tax / VAT Settings -->
@@ -583,6 +591,7 @@ function openTxModal(s = null) {
     // Reset search combo
     document.getElementById('txSupplierSearch').value = '';
     document.getElementById('txSupplierId').value = '';
+    document.getElementById('txDescription').value = '';
     hideSupplierList();
 
     if (s) {

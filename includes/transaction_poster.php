@@ -242,9 +242,9 @@ if (!function_exists('post_student_transaction')) {
         }
 
         $journal_names = [
-            'CRJ' => 'Cash Receipts Journal',
+            'CRJ' => 'Receipts Journal',
             'SJ'  => 'Sales Journal',
-            'CDJ' => 'Cash Disbursements Journal',
+            'CDJ' => 'Disbursements Journal',
             'PJ'  => 'Purchases Journal',
         ];
         $journal_name = $journal_names[$journal_id] ?? 'Journal Entries';

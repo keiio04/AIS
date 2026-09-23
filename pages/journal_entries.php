@@ -215,9 +215,9 @@ $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $postedRef = trim($_GET['ref'] ?? '');
 $postedJournal = trim($_GET['journal'] ?? '');
 $journalLabels = [
-    'CRJ' => 'Cash Receipts Journal',
+    'CRJ' => 'Receipts Journal',
     'SJ'  => 'Sales Journal',
-    'CDJ' => 'Cash Disbursements Journal',
+    'CDJ' => 'Disbursements Journal',
     'PJ'  => 'Purchases Journal',
     'GJ'  => 'General Journal',
 ];
@@ -225,8 +225,6 @@ $postedJournalLabel = $journalLabels[$postedJournal] ?? ($postedJournal ?: 'Spec
 
 require_once '../includes/header.php';
 ?>
-
-
 
 <?php if (isset($error)): ?>
     <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
@@ -241,7 +239,16 @@ require_once '../includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="card" style="padding: 0; overflow: hidden; border: none; box-shadow: none;">
+<div class="card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 0.75rem; background: var(--bg-primary);">
+        <div>
+            <h3 style="font-size: 1rem; font-weight: 600; color: var(--text-primary); margin: 0;">General Journal Entries</h3>
+            <p class="text-muted" style="font-size: 0.78rem; margin: 2px 0 0 0;">Record adjusting entries, depreciation, accruals, and general entries.</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModal()" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; padding: 0.45rem 0.9rem; border-radius: 6px; font-weight: 600; background: #2563eb; color: #ffffff; border: none; cursor: pointer;">
+            <i data-lucide="plus" style="width:15px;height:15px;"></i> New Journal Entry
+        </button>
+    </div>
     <div class="table-container">
         <table class="table journal-table">
             <thead>
@@ -347,7 +354,12 @@ require_once '../includes/header.php';
                 <?php endforeach; ?>
                 <?php if(count($transactions) === 0): ?>
                 <tr>
-                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;"><?= $search !== '' ? 'No entries match your search.' : 'No journal entries found.' ?></td>
+                    <td colspan="8" class="text-center text-muted" style="padding: 2.5rem 1rem;">
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="book-open" style="width: 32px; height: 32px; color: var(--text-muted); opacity: 0.5;"></i>
+                            <div style="font-size: 0.9rem; font-weight: 500; color: var(--text-secondary);"><?= $search !== '' ? 'No entries match your search.' : 'No journal entries found.' ?></div>
+                        </div>
+                    </td>
                 </tr>
                 <?php endif; ?>
             </tbody>
