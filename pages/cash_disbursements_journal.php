@@ -378,7 +378,19 @@ require_once '../includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="card" style="padding: 0; overflow: hidden; border: none; box-shadow: none;">
+<div class="card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1.25rem; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 0.75rem; background: var(--bg-primary);">
+        <div>
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0; display:flex; align-items:center; gap:0.5rem;">
+                <i data-lucide="arrow-up-right" style="width:18px;height:18px;color:#ea580c;"></i>
+                Cash Disbursements Journal (CDJ)
+            </h3>
+            <p class="text-muted" style="font-size: 0.78rem; margin: 2px 0 0 0;">Record cash payments to suppliers (A/P payments), direct expenses, and other cash outflows.</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModal()" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; padding: 0.45rem 0.95rem; border-radius: 6px; font-weight: 600; background: #ea580c; color: #ffffff; border: none; cursor: pointer;">
+            <i data-lucide="plus" style="width:15px;height:15px;"></i> New Cash Disbursement
+        </button>
+    </div>
     <div class="table-container">
         <table class="table journal-table">
             <thead>

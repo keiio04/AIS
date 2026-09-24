@@ -46,7 +46,7 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
 $pageNames = [
     'dashboard' => in_array($userRole, ['Instructor', 'Admin']) ? 'Reports/Outputs' : 'Dashboard',
     'journal_entries' => 'Journal Entries',
-    'sales_journal' => 'Sales Journal',
+    'sales_journal' => 'Sales / Invoices',
     'purchases_journal' => 'Purchases Journal',
     'cash_receipts_journal' => 'Receipts Journal',
     'cash_disbursements_journal' => 'Disbursements Journal',
@@ -207,7 +207,7 @@ $showTopSearch = !in_array($current_page, $hideTopSearchPages, true);
                                     <span style="font-size: 0.75rem;">General</span>
                                 </a>
                                 <a href="<?= BASE_URL ?>pages/sales_journal.php" class="nav-subitem <?= $current_page==='sales_journal'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
-                                    <span style="font-size: 0.75rem;">Sales</span>
+                                    <span style="font-size: 0.75rem;">Sales / Invoices</span>
                                 </a>
                                 <a href="<?= BASE_URL ?>pages/purchases_journal.php" class="nav-subitem <?= $current_page==='purchases_journal'?'active':'' ?>" style="padding: 0.25rem 0.5rem; margin-bottom: 2px;">
                                     <span style="font-size: 0.75rem;">Purchases</span>

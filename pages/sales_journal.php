@@ -14,6 +14,35 @@ try { $db->query("ALTER TABLE journal_entries ADD COLUMN entity_id INT NULL AFTE
 try { $db->query("ALTER TABLE journal_entries ADD COLUMN entity_type VARCHAR(20) NULL AFTER entity_id"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE customers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE suppliers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
+// ── Sales Invoices table (AR tracking) ──────────────────────────────
+try { $db->query("
+    CREATE TABLE IF NOT EXISTS sales_invoices (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        company_id INT NOT NULL,
+        journal_entry_id INT NOT NULL,
+        customer_id INT NOT NULL,
+        invoice_seq INT NULL,
+        invoice_no VARCHAR(60) NOT NULL,
+        invoice_date DATE NOT NULL,
+        amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+        amount_paid DECIMAL(15,2) NOT NULL DEFAULT 0,
+        status ENUM('Open','Partially Paid','Paid','Cancelled') NOT NULL DEFAULT 'Open',
+        cancellation_reason VARCHAR(255) NULL,
+        cancelled_at TIMESTAMP NULL,
+        reversal_entry_id INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_company (company_id),
+        INDEX idx_customer (customer_id),
+        INDEX idx_journal (journal_entry_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE sales_invoices ADD COLUMN invoice_seq INT NULL AFTER customer_id"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE sales_invoices ADD COLUMN cancellation_reason VARCHAR(255) NULL AFTER status"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE sales_invoices ADD COLUMN cancelled_at TIMESTAMP NULL AFTER cancellation_reason"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE sales_invoices ADD COLUMN reversal_entry_id INT NULL AFTER cancelled_at"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE sales_invoices MODIFY COLUMN status ENUM('Open','Partially Paid','Paid','Cancelled') NOT NULL DEFAULT 'Open'"); } catch (Exception $e) {}
+// Add invoice_id column to journal_entries (links CRJ payments back to SJ invoices)
+try { $db->query("ALTER TABLE journal_entries ADD COLUMN invoice_id INT NULL DEFAULT NULL AFTER entity_type"); } catch (Exception $e) {}
 
 
 $db = get_db();
@@ -66,22 +95,28 @@ $stmtCo->bind_param('i', $company_id);
 $stmtCo->execute();
 $companyIsTaxRegistered = (bool)($stmtCo->get_result()->fetch_assoc()['tax_registered'] ?? false);
 
+// Calculate next sequential Sales Invoice Number across all customers for this company
+$stmtNextSeq = $db->prepare("SELECT COALESCE(MAX(invoice_seq), 0) as max_seq FROM sales_invoices WHERE company_id = ?");
+$stmtNextSeq->bind_param('i', $company_id);
+$stmtNextSeq->execute();
+$nextInvoiceSeq = ((int)$stmtNextSeq->get_result()->fetch_assoc()['max_seq']) + 1;
+$nextInvoiceNo = sprintf('%03d', $nextInvoiceSeq);
+
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
-    // ── AUTO SALE: Cash or Credit revenue entry (simplified form) ────
+    // ── AUTO SALE: All sales initially recorded as Credit / Accounts Receivable ────
     if ($_POST['action'] === 'auto_sale') {
         $date        = $_POST['date'] ?? date('Y-m-d');
         $description = trim($_POST['description'] ?? '');
-        $terms       = (($_POST['terms'] ?? 'Cash') === 'Credit') ? 'Credit' : 'Cash';
         $amount      = round((float)str_replace(',', '', $_POST['amount'] ?? 0), 2);
         $rev_acc_id  = (int)($_POST['revenue_account_id'] ?? 0);
         $entity_id   = !empty($_POST['entity_id']) ? (int)$_POST['entity_id'] : null;
-        $entity_type = !empty($_POST['entity_type']) ? $_POST['entity_type'] : 'customer';
-        $ref_no      = 'SJ-' . str_replace('-', '', $date) . '-' . rand(1000, 9999);
+        $entity_type = 'customer';
 
-        if ($amount <= 0)   { $error = "Amount must be greater than zero."; }
-        if (!$rev_acc_id)   { $error = "Please select a Revenue account."; }
+        if (!$entity_id)    { $error = "Please search and select a Customer. All sales must initially be recorded through Accounts Receivable."; }
+        elseif ($amount <= 0)  { $error = "Amount must be greater than zero."; }
+        elseif (!$rev_acc_id)  { $error = "Please select a Revenue account."; }
 
         if (!isset($error)) {
             $stdAccts   = get_company_standard_accounts($db, $company_id);
@@ -91,18 +126,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $output_vat = round($amount * 0.12, 2);
                 $total      = round($amount + $output_vat, 2);
             }
-            $debit_acct = ($terms === 'Cash') ? $stdAccts['cash'] : $stdAccts['ar'];
-            if (!$debit_acct) {
-                $error = "Could not find " . ($terms === 'Cash' ? 'Cash on Hand' : 'Accounts Receivable') . " account. Please add it to your Chart of Accounts.";
+            $ar_acct = $stdAccts['ar'];
+            if (!$ar_acct) {
+                $error = "Could not find Accounts Receivable account. Please add it to your Chart of Accounts.";
             }
         }
 
         if (!isset($error)) {
             $db->begin_transaction();
             try {
+                // Generate next sequential invoice number across all customers for this company
+                $stmtSeq = $db->prepare("SELECT COALESCE(MAX(invoice_seq), 0) as max_seq FROM sales_invoices WHERE company_id = ?");
+                $stmtSeq->bind_param('i', $company_id);
+                $stmtSeq->execute();
+                $seq_res = $stmtSeq->get_result()->fetch_assoc();
+                $invoice_seq = ((int)$seq_res['max_seq']) + 1;
+                $invoice_no = sprintf('%03d', $invoice_seq);
+
+                $ref_no      = $invoice_no;
                 $is_taxable  = $companyIsTaxRegistered ? 1 : 0;
                 $journal_id  = 'SJ';
-                $particulars = '';
+                $particulars = 'Sales Invoice #' . $invoice_no;
                 $type        = 'Operating';
                 $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 $stmt->bind_param('isssisssis', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $journal_id, $entity_id, $entity_type);
@@ -111,8 +155,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 $zero  = 0.0;
                 $stmtL = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
-                // Dr. Cash on Hand or Accounts Receivable
-                $stmtL->bind_param('iidd', $entry_id, $debit_acct['id'], $total, $zero);
+                // Dr. Accounts Receivable (Total amount customer owes including VAT)
+                $stmtL->bind_param('iidd', $entry_id, $ar_acct['id'], $total, $zero);
                 $stmtL->execute();
                 // Cr. Service Revenue (net amount)
                 $stmtL->bind_param('iidd', $entry_id, $rev_acc_id, $zero, $amount);
@@ -124,18 +168,221 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $stmtL->execute();
                 }
 
+                // ── Create Sales Invoice record ──────────────────────────
+                $stmtInv = $db->prepare("
+                    INSERT INTO sales_invoices (company_id, journal_entry_id, customer_id, invoice_seq, invoice_no, invoice_date, amount, amount_paid, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'Open')
+                ");
+                $stmtInv->bind_param('iiiissd', $company_id, $entry_id, $entity_id, $invoice_seq, $invoice_no, $date, $total);
+                $stmtInv->execute();
+                $invoice_id = $stmtInv->insert_id;
+
+                // Link invoice_id back to journal_entries
+                $stmtUpdJE = $db->prepare("UPDATE journal_entries SET invoice_id = ? WHERE id = ?");
+                $stmtUpdJE->bind_param('ii', $invoice_id, $entry_id);
+                $stmtUpdJE->execute();
+
                 $user_id    = $_SESSION['user_id'];
-                $log_action = "Auto-posted Sales Entry | Ref: {$ref_no} | {$terms} Sale | Revenue: ₱" . number_format($amount, 2) . " | Total: ₱" . number_format($total, 2);
+                $log_action = "Recorded Sales Invoice #{$invoice_no} | Accounts Receivable | Revenue: ₱" . number_format($amount, 2) . " | Total: ₱" . number_format($total, 2);
                 $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
                 $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
                 $logStmt->execute();
 
                 $db->commit();
-                header("Location: sales_journal.php?posted=1&ref=" . urlencode($ref_no));
+                header("Location: sales_journal.php?posted=1&ref=" . urlencode($invoice_no));
                 exit;
             } catch (Exception $e) {
                 $db->rollback();
                 $error = "Failed to save entry: " . $e->getMessage();
+            }
+        }
+
+    // ── CANCEL SALE: Reversal of Accounts Receivable Sales Invoice ────
+    } elseif ($_POST['action'] === 'cancel_sale') {
+        $invoice_id = (int)($_POST['invoice_id'] ?? 0);
+        $reason     = trim($_POST['cancellation_reason'] ?? 'Order cancelled');
+
+        if (!$invoice_id) {
+            $error = "Invalid invoice selected for cancellation.";
+        } else {
+            $db->begin_transaction();
+            try {
+                // 1. Fetch the invoice
+                $stmtInv = $db->prepare("
+                    SELECT si.*, c.name as customer_name 
+                    FROM sales_invoices si 
+                    JOIN customers c ON si.customer_id = c.id
+                    WHERE si.id = ? AND si.company_id = ?
+                ");
+                $stmtInv->bind_param('ii', $invoice_id, $company_id);
+                $stmtInv->execute();
+                $inv = $stmtInv->get_result()->fetch_assoc();
+
+                if (!$inv) {
+                    throw new Exception("Sales invoice not found.");
+                }
+                if ($inv['status'] === 'Cancelled') {
+                    throw new Exception("Sales invoice is already cancelled.");
+                }
+                if ((float)$inv['amount_paid'] > 0) {
+                    throw new Exception("Cannot cancel Sales Invoice #{$inv['invoice_no']} because customer payments (₱" . number_format($inv['amount_paid'], 2) . ") have already been applied to it. Please reverse or delete the payment receipt in Cash Receipts Journal first.");
+                }
+
+                // 2. Fetch original journal entry & lines
+                $orig_entry_id = (int)$inv['journal_entry_id'];
+                $stmtOrig = $db->prepare("SELECT * FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL");
+                $stmtOrig->bind_param('ii', $orig_entry_id, $company_id);
+                $stmtOrig->execute();
+                $origEntry = $stmtOrig->get_result()->fetch_assoc();
+                if (!$origEntry) {
+                    throw new Exception("Original accounting journal entry not found.");
+                }
+
+                $stmtOrigLines = $db->prepare("SELECT * FROM journal_entry_lines WHERE journal_entry_id = ?");
+                $stmtOrigLines->bind_param('i', $orig_entry_id);
+                $stmtOrigLines->execute();
+                $origLines = $stmtOrigLines->get_result()->fetch_all(MYSQLI_ASSOC);
+
+                // 3. Create Reversal Journal Entry (preserves original for audit history)
+                $rev_ref = 'CN-' . $inv['invoice_no'];
+                $rev_date = date('Y-m-d');
+                $rev_desc = "Cancellation of Sales Invoice #" . $inv['invoice_no'] . ($reason !== '' ? " (" . $reason . ")" : "");
+                $is_taxable = (int)$origEntry['is_taxable'];
+                $journal_id = 'SJ';
+                $particulars = 'Sales Cancellation / Credit Note';
+                $type = 'Operating';
+
+                $stmtRev = $db->prepare("
+                    INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, journal_id, entity_id, entity_type, invoice_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'customer', ?)
+                ");
+                $stmtRev->bind_param('isssisssii', $company_id, $rev_ref, $rev_date, $rev_desc, $is_taxable, $particulars, $type, $journal_id, $inv['customer_id'], $invoice_id);
+                $stmtRev->execute();
+                $reversal_entry_id = $stmtRev->insert_id;
+
+                // 4. Invert debits and credits: original debits (AR) become credits (reverses AR), original credits (Revenue/VAT) become debits
+                $stmtRevLine = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, description, debit, credit) VALUES (?, ?, ?, ?, ?)");
+                foreach ($origLines as $ol) {
+                    $acc_id = (int)$ol['account_id'];
+                    $rev_line_desc = "Reversal: " . ($ol['description'] ?: "Inv #" . $inv['invoice_no']);
+                    $new_debit = (float)$ol['credit'];   // invert credit to debit
+                    $new_credit = (float)$ol['debit'];  // invert debit to credit
+                    $stmtRevLine->bind_param('iisdd', $reversal_entry_id, $acc_id, $rev_line_desc, $new_debit, $new_credit);
+                    $stmtRevLine->execute();
+                }
+
+                // 5. Update sales_invoices status to 'Cancelled'
+                $stmtCancelInv = $db->prepare("
+                    UPDATE sales_invoices 
+                    SET status = 'Cancelled',
+                        reversal_entry_id = ?,
+                        cancellation_reason = ?,
+                        cancelled_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ");
+                $stmtCancelInv->bind_param('isi', $reversal_entry_id, $reason, $invoice_id);
+                $stmtCancelInv->execute();
+
+                // 6. Log audit activity
+                $user_id = $_SESSION['user_id'];
+                $log_action = "Cancelled Sales Invoice #{$inv['invoice_no']} for customer {$inv['customer_name']} | Reversal Ref: {$rev_ref} | Reason: {$reason}";
+                $stmtLog = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+                $stmtLog->bind_param('iis', $company_id, $user_id, $log_action);
+                $stmtLog->execute();
+
+                $db->commit();
+                header("Location: sales_journal.php?cancelled=1&ref=" . urlencode($inv['invoice_no']));
+                exit;
+            } catch (Exception $e) {
+                $db->rollback();
+                $error = "Failed to cancel sales invoice: " . $e->getMessage();
+            }
+        }
+
+    // ── RECEIVE CUSTOMER PAYMENT: Reduces Accounts Receivable and Posts to CRJ ────
+    } elseif ($_POST['action'] === 'receive_payment') {
+        $invoice_id     = (int)($_POST['invoice_id'] ?? 0);
+        $payment_date   = trim($_POST['payment_date'] ?? date('Y-m-d'));
+        $payment_amount = (float)str_replace(',', '', $_POST['payment_amount'] ?? 0);
+        $cash_acc_id    = (int)($_POST['cash_account_id'] ?? 0);
+        $receipt_ref    = trim($_POST['receipt_ref'] ?? '');
+
+        if (!$invoice_id || $payment_amount <= 0) {
+            $error = "Please enter a valid payment amount greater than zero.";
+        } else {
+            $db->begin_transaction();
+            try {
+                // Fetch invoice
+                $stmtInv = $db->prepare("SELECT si.*, c.name as customer_name FROM sales_invoices si JOIN customers c ON si.customer_id = c.id WHERE si.id = ? AND si.company_id = ?");
+                $stmtInv->bind_param('ii', $invoice_id, $company_id);
+                $stmtInv->execute();
+                $inv = $stmtInv->get_result()->fetch_assoc();
+
+                if (!$inv) {
+                    throw new Exception("Sales invoice not found.");
+                }
+                if ($inv['status'] === 'Cancelled') {
+                    throw new Exception("Cannot receive payment on a cancelled invoice.");
+                }
+                if ($inv['status'] === 'Paid') {
+                    throw new Exception("Invoice is already fully paid.");
+                }
+                $remaining = round($inv['amount'] - $inv['amount_paid'], 2);
+                if ($payment_amount > $remaining + 0.01) {
+                    throw new Exception("Payment amount (₱" . number_format($payment_amount, 2) . ") cannot exceed remaining balance of ₱" . number_format($remaining, 2) . ".");
+                }
+
+                $stdAccts = get_company_standard_accounts($db, $company_id);
+                $cash_acct_id = $cash_acc_id ?: ($stdAccts['cash']['id'] ?? null);
+                $ar_acct_id   = $stdAccts['ar']['id'] ?? null;
+
+                if (!$cash_acct_id) throw new Exception("No Cash account found. Please create a Cash on Hand account first.");
+                if (!$ar_acct_id) throw new Exception("No Accounts Receivable account found.");
+
+                // 1. Create CRJ Journal Entry
+                $ref_no      = !empty($receipt_ref) ? $receipt_ref : ('CRJ-' . str_replace('-', '', $payment_date) . '-' . rand(1000, 9999));
+                $description = "Collection from {$inv['customer_name']} (Applied to SI-{$inv['invoice_no']})";
+                $is_taxable  = 0;
+                $particulars = "Customer Payment - SI-{$inv['invoice_no']}";
+                $type        = 'Operating';
+                $journal_id  = 'CRJ';
+                $entity_id   = $inv['customer_id'];
+                $entity_type = 'customer';
+
+                $stmtJE = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, journal_id, entity_id, entity_type, invoice_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmtJE->bind_param('isssisssisi', $company_id, $ref_no, $payment_date, $description, $is_taxable, $particulars, $type, $journal_id, $entity_id, $entity_type, $invoice_id);
+                $stmtJE->execute();
+                $crj_entry_id = $stmtJE->insert_id;
+
+                $zero = 0.00;
+                $stmtLines = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
+                // Dr. Cash
+                $stmtLines->bind_param('iidd', $crj_entry_id, $cash_acct_id, $payment_amount, $zero);
+                $stmtLines->execute();
+                // Cr. Accounts Receivable
+                $stmtLines->bind_param('iidd', $crj_entry_id, $ar_acct_id, $zero, $payment_amount);
+                $stmtLines->execute();
+
+                // 2. Update Sales Invoice
+                $new_paid = round($inv['amount_paid'] + $payment_amount, 2);
+                $new_status = ($new_paid >= $inv['amount']) ? 'Paid' : 'Partially Paid';
+                $stmtUpdInv = $db->prepare("UPDATE sales_invoices SET amount_paid = ?, status = ? WHERE id = ?");
+                $stmtUpdInv->bind_param('dsi', $new_paid, $new_status, $invoice_id);
+                $stmtUpdInv->execute();
+
+                // 3. Log activity
+                $user_id    = $_SESSION['user_id'];
+                $log_action = "Received Customer Payment of ₱" . number_format($payment_amount, 2) . " for SI-{$inv['invoice_no']} ({$inv['customer_name']}) | Reduced Accounts Receivable | Entry Ref: {$ref_no}";
+                $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+                $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
+                $logStmt->execute();
+
+                $db->commit();
+                header("Location: sales_journal.php?paid=1&ref=" . urlencode($inv['invoice_no']) . "&amt=" . $payment_amount);
+                exit;
+            } catch (Exception $e) {
+                $db->rollback();
+                $error = "Payment failed: " . $e->getMessage();
             }
         }
 
@@ -241,16 +488,25 @@ if ($search !== '') {
     }
 }
 
-// Fetch existing journal entries
+// Fetch existing journal entries (with invoice status for credit sales)
+// Fetch existing journal entries (with invoice status for credit sales)
 $query = "
     SELECT e.*,
            COALESCE(c.name, s.name) AS entity_name,
            COALESCE(c.code, s.code) AS entity_code,
            (SELECT SUM(debit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_debit,
-           (SELECT SUM(credit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_credit
+           (SELECT SUM(credit) FROM journal_entry_lines WHERE journal_entry_id = e.id) as total_credit,
+           si.id AS inv_id,
+           si.invoice_no AS inv_no,
+           si.amount AS inv_amount,
+           si.amount_paid AS inv_paid,
+           si.status AS inv_status,
+           si.cancellation_reason,
+           si.cancelled_at
     FROM journal_entries e
     LEFT JOIN customers c ON e.entity_id = c.id AND e.entity_type = 'customer'
     LEFT JOIN suppliers s ON e.entity_id = s.id AND e.entity_type = 'supplier'
+    LEFT JOIN sales_invoices si ON (si.journal_entry_id = e.id OR (e.invoice_id IS NOT NULL AND si.id = e.invoice_id))
     WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'SJ' $searchSql
     ORDER BY e.date DESC, e.id DESC
 ";
@@ -268,6 +524,27 @@ require_once '../includes/header.php';
 </div>
 <?php endif; ?>
 
+<?php if (isset($_GET['posted'])): ?>
+<div class="alert alert-success" style="margin-bottom: 1rem; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; padding:0.75rem 1rem; border-radius:8px;">
+    <strong>Success!</strong> Sales Invoice #<?= htmlspecialchars($_GET['ref'] ?? '') ?> recorded under Accounts Receivable.
+</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['paid'])): ?>
+<div class="alert alert-success" style="margin-bottom: 1rem; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; padding:0.75rem 1rem; border-radius:8px; display:flex; align-items:center; gap:0.6rem;">
+    <i data-lucide="check-circle" style="width:20px;height:20px;color:#16a34a;flex-shrink:0;"></i>
+    <div>
+        <strong>Payment Received!</strong> Successfully recorded payment of <strong>&#8369;<?= number_format((float)($_GET['amt'] ?? 0), 2) ?></strong> for Sales Invoice #<?= htmlspecialchars($_GET['ref'] ?? '') ?>. 
+        Accounts Receivable balance has been updated and entry posted to <a href="cash_receipts_journal.php" style="color:#15803d; font-weight:700; text-decoration:underline;">Cash Receipts Journal</a>.
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['cancelled'])): ?>
+<div class="alert alert-warning" style="margin-bottom: 1rem; background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:0.75rem 1rem; border-radius:8px;">
+    <strong>Cancelled:</strong> Sales Invoice #<?= htmlspecialchars($_GET['ref'] ?? '') ?> has been cancelled and reversed in Accounts Receivable. The original entry is preserved for audit purposes.
+</div>
+<?php endif; ?>
 
 <?php if ($search !== ''): ?>
 <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem; font-size:0.875rem; color: var(--text-secondary);">
@@ -276,19 +553,38 @@ require_once '../includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="card" style="padding: 0; overflow: hidden; border: none; box-shadow: none;">
+<div class="card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1.25rem; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 0.75rem; background: var(--bg-primary);">
+        <div>
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0; display:flex; align-items:center; gap:0.5rem;">
+                <i data-lucide="file-text" style="width:18px;height:18px;color:#2563eb;"></i>
+                Sales / Invoices Journal (SJ)
+            </h3>
+            <p class="text-muted" style="font-size: 0.78rem; margin: 2px 0 0 0;">All sales are recorded through Accounts Receivable. Issue sequential sales invoices and track customer debt collections.</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <a href="cash_receipts_journal.php" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; padding: 0.45rem 0.85rem; border-radius: 6px; text-decoration:none;">
+                <i data-lucide="wallet" style="width:14px;height:14px;"></i> View Cash Receipts
+            </a>
+            <button class="btn btn-primary" onclick="openModal()" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; padding: 0.45rem 0.95rem; border-radius: 6px; font-weight: 600; background: #2563eb; color: #ffffff; border: none; cursor: pointer;">
+                <i data-lucide="plus" style="width:15px;height:15px;"></i> New Sales Invoice
+            </button>
+        </div>
+    </div>
     <div class="table-container">
         <table class="table journal-table">
             <thead>
                 <tr>
-                    <th style="min-width: 105px; white-space: nowrap;">Date</th>
-                    <th style="min-width: 180px;">Account Title</th>
-                    <th style="min-width: 130px;">Name</th>
+                    <th style="min-width: 100px; white-space: nowrap;">Date</th>
+                    <th style="min-width: 110px; white-space: nowrap;">Sales Invoice #</th>
+                    <th style="min-width: 140px;">Customer</th>
+                    <th style="min-width: 170px;">Account Title</th>
                     <th style="min-width: 150px;">Description</th>
-                    <th style="min-width: 130px; white-space: nowrap;">Ref No. / Code</th>
+                    <th style="min-width: 100px; white-space: nowrap;">Ref / Code</th>
                     <th class="text-right" style="min-width: 105px; white-space: nowrap;">Debit</th>
                     <th class="text-right" style="min-width: 105px; white-space: nowrap;">Credit</th>
-                    <th class="text-center" style="min-width: 60px; white-space: nowrap;"></th>
+                    <th style="min-width: 100px; white-space: nowrap;">Status</th>
+                    <th class="text-center" style="min-width: 130px; white-space: nowrap;">Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -311,8 +607,22 @@ require_once '../includes/header.php';
                     <td style="white-space: nowrap;">
                         <?= $isFirst ? '<strong>' . date('M d, Y', strtotime($tx['date'])) . '</strong>' : '' ?>
                     </td>
-                    <td style="padding-left: <?= $line['credit'] > 0 ? '1.75rem' : '0.75rem' ?>; font-weight: <?= $line['credit'] > 0 ? '400' : '600' ?>;">
-                        <?= htmlspecialchars($line['name']) ?>
+                    <td style="white-space: nowrap; font-family: monospace;">
+                        <?php if ($isFirst): ?>
+                            <?php 
+                                $rawInv = $tx['inv_no'] ?? '';
+                                if (!empty($rawInv)) {
+                                    $cleanInv = (str_starts_with($rawInv, 'SI-') || str_starts_with($rawInv, 'CN-')) ? $rawInv : 'SI-' . $rawInv;
+                                } else {
+                                    $cleanInv = '';
+                                }
+                            ?>
+                            <?php if (!empty($cleanInv)): ?>
+                                <strong style="color: #0369a1; font-size: 0.85rem;"><?= htmlspecialchars($cleanInv) ?></strong>
+                            <?php else: ?>
+                                <span style="color: var(--text-muted);">&mdash;</span>
+                            <?php endif; ?>
+                        <?php endif; ?>
                     </td>
                     <td style="color: #475569 !important; font-size: 0.8125rem;">
                         <?php if ($isFirst && !empty($tx['entity_name'])): ?>
@@ -322,25 +632,97 @@ require_once '../includes/header.php';
                             <?php endif; ?>
                         <?php endif; ?>
                     </td>
+                    <td style="padding-left: <?= $line['credit'] > 0 ? '1.75rem' : '0.75rem' ?>; font-weight: <?= $line['credit'] > 0 ? '400' : '600' ?>;">
+                        <?= htmlspecialchars($line['name']) ?>
+                    </td>
                     <td style="color: #334155 !important; font-size: 0.8125rem; white-space: normal; word-break: break-word;">
                         <?= $isFirst ? nl2br(htmlspecialchars(($tx['description'] ?? '') !== '' ? $tx['description'] : ($line['description'] ?? ''))) : nl2br(htmlspecialchars($line['description'] ?? '')) ?>
                     </td>
                     <td style="font-family: monospace; font-size: 0.8125rem; white-space: nowrap;">
                         <?php if ($isFirst): ?>
                             <span style="background: #dbeafe; color: #1d4ed8; padding: 1px 5px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; margin-bottom: 2px; display: inline-block;" title="Journal Type"><?= htmlspecialchars($tx['journal_id']) ?></span>
-                            <?= $tx['reference_no'] ? ' <strong style="color: #0f172a; font-size: 0.78rem;">'.htmlspecialchars($tx['reference_no']).'</strong><br>' : '' ?>
+                            <?= $tx['reference_no'] ? ' <span style="color: #0f172a; font-size: 0.75rem;">'.htmlspecialchars($tx['reference_no']).'</span><br>' : '' ?>
                         <?php endif; ?>
                         <span style="color: var(--primary-color)"><?= htmlspecialchars($line['code']) ?></span>
                     </td>
                     <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
                     <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
-                    <td class="text-center" style="vertical-align: top;"></td>
+                    <td style="vertical-align: top; padding-top: 0.45rem;">
+                        <?php if ($isFirst && !empty($tx['inv_status'])): ?>
+                            <?php
+                                $invStatus = $tx['inv_status'];
+                                $invBg = match($invStatus) {
+                                    'Open'           => '#fef9c3',
+                                    'Partially Paid' => '#dbeafe',
+                                    'Paid'           => '#dcfce7',
+                                    'Cancelled'      => '#fee2e2',
+                                    default          => '#f1f5f9'
+                                };
+                                $invColor = match($invStatus) {
+                                    'Open'           => '#92400e',
+                                    'Partially Paid' => '#1d4ed8',
+                                    'Paid'           => '#15803d',
+                                    'Cancelled'      => '#991b1b',
+                                    default          => '#475569'
+                                };
+                            ?>
+                            <span style="background:<?= $invBg ?>; color:<?= $invColor ?>; padding: 2px 7px; border-radius: 99px; font-size: 0.68rem; font-weight: 700; white-space: nowrap;">
+                                <?= htmlspecialchars($invStatus) ?>
+                            </span>
+                            <?php if ($invStatus === 'Cancelled'): ?>
+                                <br><span style="font-size: 0.68rem; color: #b91c1c;" title="<?= htmlspecialchars($tx['cancellation_reason'] ?? '') ?>">Reversed</span>
+                            <?php elseif ($invStatus !== 'Paid'): ?>
+                                <br><span style="font-size: 0.7rem; color: #64748b; font-weight:600;">Bal: ₱<?= number_format($tx['inv_amount'] - $tx['inv_paid'], 2) ?></span>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </td>
+                    <td class="text-center" style="vertical-align: top; padding-top: 0.45rem;">
+                        <?php if ($isFirst): ?>
+                            <?php if (!empty($tx['inv_id']) && in_array($tx['inv_status'], ['Open', 'Partially Paid'])): 
+                                $remBal = round((float)$tx['inv_amount'] - (float)$tx['inv_paid'], 2);
+                            ?>
+                                <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
+                                    <button type="button" class="btn btn-sm" style="background:#dcfce7; color:#15803d; border:1px solid #86efac; font-size:0.72rem; padding:3px 8px; border-radius:5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05);"
+                                            onclick='openReceivePaymentModal(<?= json_encode([
+                                                "id" => (int)$tx["inv_id"],
+                                                "invoice_no" => $tx["inv_no"] ?: $tx["reference_no"],
+                                                "customer_id" => (int)$tx["entity_id"],
+                                                "customer" => $tx["entity_name"] ?: "Customer",
+                                                "amount" => (float)$tx["inv_amount"],
+                                                "amount_paid" => (float)$tx["inv_paid"],
+                                                "remaining" => $remBal
+                                            ]) ?>)' title="Receive customer payment and reduce Accounts Receivable">
+                                        <i data-lucide="hand-coins" style="width:13px;height:13px;"></i> Receive Payment
+                                    </button>
+                                    <?php if ((float)$tx['inv_paid'] == 0): ?>
+                                        <button type="button" class="btn btn-sm" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-size:0.68rem; padding:2px 6px; border-radius:4px; font-weight:600; cursor:pointer;"
+                                                onclick='openCancelModal(<?= json_encode([
+                                                    "id" => $tx["inv_id"],
+                                                    "invoice_no" => $tx["inv_no"] ?: $tx["reference_no"],
+                                                    "customer" => $tx["entity_name"] ?: "Customer",
+                                                    "amount" => number_format($tx["inv_amount"] ?: 0, 2)
+                                                ]) ?>)' title="Cancel sale and reverse Accounts Receivable">
+                                            Cancel
+                                        </button>
+                                    <?php endif; ?>
+                                </div>
+                            <?php elseif (($tx['inv_status'] ?? '') === 'Paid'): ?>
+                                <span style="display:inline-flex; align-items:center; gap:3px; font-size:0.75rem; color:#15803d; font-weight:700;">
+                                    <i data-lucide="check-circle" style="width:13px;height:13px;"></i> Fully Paid
+                                </span>
+                            <?php elseif (($tx['inv_status'] ?? '') === 'Cancelled'): ?>
+                                <span style="color:#991b1b; font-size:0.72rem; font-weight:600; font-style:italic;">Reversed</span>
+                            <?php else: ?>
+                                <span style="color:var(--text-muted); font-size:0.75rem;">&mdash;</span>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
                 <?php endforeach; ?>
                 <?php if(count($transactions) === 0): ?>
                 <tr>
-                    <td colspan="8" class="text-center text-muted" style="padding: 2rem;"><?= $search !== '' ? 'No entries match your search.' : 'No journal entries found.' ?></td>
+                    <td colspan="10" class="text-center text-muted" style="padding: 2rem;"><?= $search !== '' ? 'No entries match your search.' : 'No sales entries found.' ?></td>
                 </tr>
                 <?php endif; ?>
             </tbody>
@@ -353,8 +735,8 @@ require_once '../includes/header.php';
     <div class="modal" id="entryModalInner" style="width: 740px; max-width: 96vw;">
         <div class="modal-header">
             <div>
-                <h2 id="modalTitle">New Sales / Revenue Entry</h2>
-                <p id="modalSubtitle" style="font-size:0.78rem; color:var(--text-muted); margin:2px 0 0; line-height:1.4;">System automatically generates the balanced accounting entry and posts to Sales Journal.</p>
+                <h2 id="modalTitle">New Sales Invoice</h2>
+                <p id="modalSubtitle" style="font-size:0.78rem; color:var(--text-muted); margin:2px 0 0; line-height:1.4;">All new sales are recorded through Accounts Receivable. Customer collection is processed via Cash Receipts Journal.</p>
             </div>
             <button class="icon-btn" onclick="closeModal()"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
         </div>
@@ -362,37 +744,28 @@ require_once '../includes/header.php';
 
             <!-- ===== AUTO FORM (new entries) ===== -->
             <div id="sj-auto-section">
-                <form id="auto-entry-form" method="POST">
+                <form id="auto-entry-form" method="POST" onsubmit="return validateAutoEntryForm()">
                     <input type="hidden" name="action" value="auto_sale">
-
-                    <!-- Terms toggle -->
-                    <div style="margin-bottom:1.25rem;">
-                        <label class="form-label" style="margin-bottom:0.5rem;">Terms</label>
-                        <div style="display:flex; gap:0.5rem;">
-                            <button type="button" id="termsCashBtn" class="btn btn-primary" onclick="setTerms('Cash')" style="flex:1; font-size:0.875rem;">
-                                <i data-lucide="banknote" style="width:14px;height:14px;"></i>&nbsp; Cash Sale
-                            </button>
-                            <button type="button" id="termsCreditBtn" class="btn btn-secondary" onclick="setTerms('Credit')" style="flex:1; font-size:0.875rem;">
-                                <i data-lucide="credit-card" style="width:14px;height:14px;"></i>&nbsp; Credit Sale
-                            </button>
-                        </div>
-                        <input type="hidden" name="terms" id="termsInput" value="Cash">
-                    </div>
 
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
                         <div class="form-group">
-                            <label class="form-label">Date</label>
+                            <label class="form-label">Sales Invoice Number</label>
+                            <input type="text" class="form-control" value="<?= htmlspecialchars($nextInvoiceNo) ?>" readonly style="background:var(--bg-secondary); font-family:monospace; font-weight:700; color:#0369a1;" title="Auto-generated sequential number across all customers">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Invoice Date <span style="color:#ef4444;">*</span></label>
                             <input type="date" name="date" id="autoEntryDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
                         </div>
-                        <div class="form-group" style="position:relative;">
-                            <label class="form-label">Customer <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem;">(optional)</span></label>
-                            <input type="text" id="autoEntitySearch" class="form-control" placeholder="Search customer..." autocomplete="off"
-                                   oninput="onAutoEntitySearch()" onfocus="onAutoEntitySearch()"
-                                   onkeydown="onAutoEntityKeydown(event)" onblur="onAutoEntityBlur()">
-                            <input type="hidden" name="entity_id" id="autoEntityId" value="">
-                            <input type="hidden" name="entity_type" id="autoEntityType" value="customer">
-                            <div id="auto-entity-dd" style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:9999;background:var(--bg-primary,#fff);border:1px solid var(--border-color);border-radius:6px;max-height:180px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.14);"></div>
-                        </div>
+                    </div>
+
+                    <div class="form-group" style="position:relative; margin-bottom:1rem;">
+                        <label class="form-label">Customer <span style="color:#ef4444;">*</span></label>
+                        <input type="text" id="autoEntitySearch" class="form-control" placeholder="Search customer (required)..." autocomplete="off"
+                               oninput="onAutoEntitySearch()" onfocus="onAutoEntitySearch()"
+                               onkeydown="onAutoEntityKeydown(event)" onblur="onAutoEntityBlur()" required>
+                        <input type="hidden" name="entity_id" id="autoEntityId" value="" required>
+                        <input type="hidden" name="entity_type" id="autoEntityType" value="customer">
+                        <div id="auto-entity-dd" style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:9999;background:var(--bg-primary,#fff);border:1px solid var(--border-color);border-radius:6px;max-height:180px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.14);"></div>
                     </div>
 
                     <div style="display:grid; grid-template-columns:2fr 1fr; gap:1rem; margin-bottom:1rem;">
@@ -406,21 +779,21 @@ require_once '../includes/header.php';
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Revenue Amount (₱)</label>
+                            <label class="form-label">Amount (₱)</label>
                             <input type="number" name="amount" id="autoAmount" class="form-control" placeholder="0.00" step="0.01" min="0.01" required oninput="computePreview()">
                         </div>
                     </div>
 
                     <div class="form-group" style="margin-bottom:1rem;">
-                        <label class="form-label">Description</label>
-                        <textarea name="description" id="autoDescription" class="form-control" rows="2" style="resize:vertical;"></textarea>
+                        <label class="form-label">Description / Memo</label>
+                        <textarea name="description" id="autoDescription" class="form-control" rows="2" style="resize:vertical;" placeholder="Optional memo / invoice description..."></textarea>
                     </div>
 
                     <!-- Auto-Generated Entry Preview -->
                     <div style="border:1px solid var(--border-color);border-radius:10px;padding:1rem;background:var(--bg-secondary);">
-                        <div style="font-size:0.71rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#d97706;margin-bottom:0.7rem;display:flex;align-items:center;gap:0.4rem;">
+                        <div style="font-size:0.71rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#0284c7;margin-bottom:0.7rem;display:flex;align-items:center;gap:0.4rem;">
                             <i data-lucide="zap" style="width:13px;height:13px;"></i>
-                            Auto-Generated Journal Entry &mdash; Posts to Sales Journal (SJ)
+                            Auto-Generated Journal Entry &mdash; Debits Accounts Receivable &amp; Credits Revenue
                         </div>
                         <table style="width:100%;font-size:0.875rem;border-collapse:collapse;">
                             <thead><tr style="border-bottom:1px solid var(--border-color);">
@@ -430,13 +803,13 @@ require_once '../includes/header.php';
                             </tr></thead>
                             <tbody>
                                 <tr>
-                                    <td style="padding:0.4rem 0.5rem;font-weight:500;" id="prev-debit-name">Cash on Hand</td>
+                                    <td style="padding:0.4rem 0.5rem;font-weight:500;" id="prev-debit-name">Accounts Receivable</td>
                                     <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;color:#22c55e;font-variant-numeric:tabular-nums;" id="prev-debit-amt">&#8369;0.00</td>
-                                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">—</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&mdash;</td>
                                 </tr>
                                 <tr>
                                     <td style="padding:0.4rem 0.5rem;padding-left:2rem;color:var(--text-secondary);" id="prev-rev-name">Service Revenue</td>
-                                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">—</td>
+                                    <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">&mdash;</td>
                                     <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:600;color:#60a5fa;font-variant-numeric:tabular-nums;" id="prev-rev-amt">&#8369;0.00</td>
                                 </tr>
                                 <tr id="prev-vat-row" style="display:none;">
@@ -554,6 +927,156 @@ require_once '../includes/header.php';
             <button type="button" class="btn btn-secondary" onclick="closeQuickAdd()">Cancel</button>
             <button type="button" class="btn btn-primary" onclick="saveQuickAdd()" id="quickAddSaveBtn">Save</button>
         </div>
+    </div>
+</div>
+
+<!-- Cancel Sales Invoice Modal -->
+<div id="cancelModal" class="modal-overlay hidden" style="display:none; z-index:10000;">
+    <div class="modal" style="width: 480px; max-width: 95vw;">
+        <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <div style="width:32px; height:32px; border-radius:50%; background:#fee2e2; color:#ef4444; display:flex; align-items:center; justify-content:center;">
+                    <i data-lucide="alert-triangle" style="width:18px;height:18px;"></i>
+                </div>
+                <div>
+                    <h3 style="margin:0; font-size:1.05rem; font-weight:700; color:#991b1b;">Cancel Sales Invoice</h3>
+                    <p style="margin:0; font-size:0.75rem; color:var(--text-muted);">Reverses Accounts Receivable while keeping audit history.</p>
+                </div>
+            </div>
+            <button type="button" class="icon-btn" onclick="closeCancelModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+        </div>
+        <form method="POST">
+            <div class="modal-body" style="padding:1.25rem;">
+                <input type="hidden" name="action" value="cancel_sale">
+                <input type="hidden" name="invoice_id" id="cancelInvoiceId" value="">
+                
+                <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; padding:0.85rem; margin-bottom:1rem; font-size:0.83rem;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:0.3rem;">
+                        <span style="color:var(--text-muted);">Invoice Number:</span>
+                        <strong id="cancelInvNo" style="font-family:monospace; color:#0369a1;"></strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:0.3rem;">
+                        <span style="color:var(--text-muted);">Customer:</span>
+                        <strong id="cancelCustName"></strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between;">
+                        <span style="color:var(--text-muted);">Invoice Amount:</span>
+                        <strong id="cancelAmount" style="color:#b45309;"></strong>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label class="form-label">Reason for Cancellation <span style="color:#ef4444;">*</span></label>
+                    <textarea name="cancellation_reason" id="cancelReasonInput" class="form-control" rows="2" placeholder="e.g. Customer cancelled order, wrong pricing, billing error..." required></textarea>
+                </div>
+
+                <div style="font-size:0.76rem; color:#64748b; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.2); border-radius:6px; padding:0.5rem 0.75rem;">
+                    <strong>Audit Notice:</strong> The original Sales Invoice and journal entry will not be deleted. A balanced reversal journal entry will be automatically posted to credit Accounts Receivable and remove the outstanding balance.
+                </div>
+            </div>
+            <div class="modal-footer" style="padding:0.75rem 1.25rem; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end; gap:0.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="closeCancelModal()">Dismiss</button>
+                <button type="submit" class="btn" style="background:#ef4444; color:#fff; border:none; font-weight:600; padding:0.45rem 1rem; border-radius:6px; cursor:pointer;">Confirm Cancellation</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Receive Customer Payment Modal -->
+<div id="receivePaymentModal" class="modal-overlay hidden" style="display:none; z-index:10000;">
+    <div class="modal" style="width: 580px; max-width: 95vw;">
+        <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+                <div style="width:36px; height:36px; border-radius:50%; background:#dcfce7; color:#15803d; display:flex; align-items:center; justify-content:center;">
+                    <i data-lucide="hand-coins" style="width:20px;height:20px;"></i>
+                </div>
+                <div>
+                    <h3 style="margin:0; font-size:1.05rem; font-weight:700; color:#15803d;">Receive Customer Payment</h3>
+                    <p style="margin:0; font-size:0.75rem; color:var(--text-muted);">Posts collection to Cash Receipts Journal (Dr. Cash, Cr. Accounts Receivable).</p>
+                </div>
+            </div>
+            <button type="button" class="icon-btn" onclick="closeReceivePaymentModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+        </div>
+        <form method="POST" id="receivePaymentForm" onsubmit="return validateReceivePayment()">
+            <div class="modal-body" style="padding:1.25rem;">
+                <input type="hidden" name="action" value="receive_payment">
+                <input type="hidden" name="invoice_id" id="payInvoiceId" value="">
+                
+                <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; padding:0.85rem 1rem; margin-bottom:1.25rem; font-size:0.83rem;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:0.35rem;">
+                        <span style="color:var(--text-muted);">Customer:</span>
+                        <strong id="payCustomerName" style="color:var(--text-primary); font-size:0.9rem;"></strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:0.35rem;">
+                        <span style="color:var(--text-muted);">Sales Invoice #:</span>
+                        <strong id="payInvoiceNo" style="font-family:monospace; color:#0369a1;"></strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:0.35rem;">
+                        <span style="color:var(--text-muted);">Invoice Total:</span>
+                        <span id="payInvoiceAmount" style="font-variant-numeric:tabular-nums;"></span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; border-top:1px dashed var(--border-color); padding-top:0.45rem; margin-top:0.45rem;">
+                        <span style="color:var(--text-secondary); font-weight:600;">Current Remaining Balance:</span>
+                        <strong id="payRemainingBalance" style="color:#b45309; font-size:0.95rem; font-variant-numeric:tabular-nums;"></strong>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                    <div class="form-group">
+                        <label class="form-label">Payment Date <span style="color:#ef4444;">*</span></label>
+                        <input type="date" name="payment_date" id="payDate" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Amount Paid (&#8369;) <span style="color:#ef4444;">*</span></label>
+                        <input type="number" name="payment_amount" id="payAmountInput" class="form-control" step="0.01" min="0.01" required oninput="updatePayPreview()">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label class="form-label">Deposit To Cash Account <span style="color:#ef4444;">*</span></label>
+                    <select name="cash_account_id" id="payCashAccountId" class="form-control" required onchange="updatePayPreview()">
+                        <?php foreach ($accountsList as $acc): if ($acc['category'] === 'Assets' && preg_match('/cash|bank/i', $acc['name'])): ?>
+                            <option value="<?= $acc['id'] ?>" <?= stripos($acc['name'], 'cash on hand') !== false ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($acc['code'] . ' - ' . $acc['name']) ?>
+                            </option>
+                        <?php endif; endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label class="form-label">Official Receipt / Ref No. <span style="color:var(--text-muted); font-size:0.78rem;">(optional)</span></label>
+                    <input type="text" name="receipt_ref" id="payReceiptRef" class="form-control" placeholder="e.g. OR-001 or check/ref #">
+                </div>
+
+                <!-- Live Accounting Entry Preview -->
+                <div style="border:1px solid #bbf7d0; border-radius:8px; padding:0.85rem; background:#f0fdf4;">
+                    <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#15803d; margin-bottom:0.5rem; display:flex; align-items:center; gap:0.4rem;">
+                        <i data-lucide="zap" style="width:13px;height:13px;"></i>
+                        Accounting Entry Preview (Posts to Cash Receipts Journal):
+                    </div>
+                    <div style="font-size:0.84rem; font-family:monospace; line-height:1.6;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span><strong>Dr.</strong> <span id="payPrevDrName">Cash on Hand</span></span>
+                            <span style="font-weight:700; color:#15803d;" id="payPrevDrAmt">&#8369;0.00</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding-left:1.5rem;">
+                            <span><strong>Cr.</strong> Accounts Receivable</span>
+                            <span style="font-weight:700; color:#0369a1;" id="payPrevCrAmt">&#8369;0.00</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:0.4rem; font-size:0.74rem; color:#166534; line-height:1.4;">
+                        &bull; Reduces customer's Accounts Receivable by the exact payment amount.<br>
+                        &bull; Updates invoice status to <strong>Partially Paid</strong> or <strong>Fully Paid</strong>.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding:0.75rem 1.25rem; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end; gap:0.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="closeReceivePaymentModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary" style="background:#16a34a; border-color:#16a34a; color:#fff; font-weight:600;">
+                    <i data-lucide="check" style="width:15px;height:15px;display:inline;"></i> Post Payment
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -1089,7 +1612,7 @@ function _showEditMode() {
 
 function openModal() {
     _showAutoMode();
-    document.getElementById('modalTitle').innerText = 'New Sales / Revenue Entry';
+    document.getElementById('modalTitle').innerText = 'New Sales Invoice';
     document.getElementById('modalSubtitle').style.display = '';
     // Reset auto form
     document.getElementById('auto-entry-form').reset();
@@ -1097,7 +1620,6 @@ function openModal() {
     document.getElementById('autoEntitySearch').value = '';
     document.getElementById('autoEntityId').value = '';
     document.getElementById('autoEntityType').value = 'customer';
-    setTerms('Cash');
     computePreview();
     const modal = document.getElementById('entryModal');
     modal.classList.remove('hidden');
@@ -1137,22 +1659,102 @@ document.getElementById('entryModal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
 });
 
-// ── Terms toggle ─────────────────────────────────────────────────
-function setTerms(terms) {
-    document.getElementById('termsInput').value = terms;
-    const cashBtn   = document.getElementById('termsCashBtn');
-    const creditBtn = document.getElementById('termsCreditBtn');
-    if (terms === 'Cash') {
-        cashBtn.className = 'btn btn-primary';
-        creditBtn.className = 'btn btn-secondary';
-    } else {
-        cashBtn.className = 'btn btn-secondary';
-        creditBtn.className = 'btn btn-primary';
+function validateAutoEntryForm() {
+    const custId = document.getElementById('autoEntityId').value;
+    if (!custId) {
+        alert('Please search and select a Customer. All sales must initially be recorded under Accounts Receivable.');
+        document.getElementById('autoEntitySearch').focus();
+        return false;
     }
-    computePreview();
+    const amt = parseFloat(document.getElementById('autoAmount').value) || 0;
+    if (amt <= 0) {
+        alert('Please enter a valid revenue amount.');
+        document.getElementById('autoAmount').focus();
+        return false;
+    }
+    return true;
 }
 
-// ── Live auto-entry preview ─────────────────────────────────────
+function openCancelModal(inv) {
+    document.getElementById('cancelInvoiceId').value = inv.id;
+    document.getElementById('cancelInvNo').innerText = 'SI-' + inv.invoice_no;
+    document.getElementById('cancelCustName').innerText = inv.customer;
+    document.getElementById('cancelAmount').innerText = '₱' + inv.amount;
+    document.getElementById('cancelReasonInput').value = '';
+    const modal = document.getElementById('cancelModal');
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('cancelReasonInput').focus(), 50);
+}
+
+function closeCancelModal() {
+    const modal = document.getElementById('cancelModal');
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+}
+
+// ── Receive Payment Modal Logic ────────────────────────────────────
+function openReceivePaymentModal(inv) {
+    document.getElementById('payInvoiceId').value = inv.id;
+    const invNoStr = (inv.invoice_no && (inv.invoice_no.startsWith('SI-') || inv.invoice_no.startsWith('CN-'))) ? inv.invoice_no : ('SI-' + inv.invoice_no);
+    document.getElementById('payInvoiceNo').innerText = invNoStr;
+    document.getElementById('payCustomerName').innerText = inv.customer;
+    document.getElementById('payInvoiceAmount').innerText = '₱' + parseFloat(inv.amount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('payRemainingBalance').innerText = '₱' + parseFloat(inv.remaining || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    
+    // Set date to today
+    document.getElementById('payDate').value = new Date().toISOString().split('T')[0];
+    
+    // Default amount to remaining balance
+    const remAmt = parseFloat(inv.remaining || 0);
+    const amtInput = document.getElementById('payAmountInput');
+    amtInput.value = remAmt.toFixed(2);
+    amtInput.max = remAmt.toFixed(2);
+    document.getElementById('payReceiptRef').value = '';
+    
+    updatePayPreview();
+    
+    const modal = document.getElementById('receivePaymentModal');
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    lucide.createIcons();
+    setTimeout(() => amtInput.focus(), 50);
+}
+
+function closeReceivePaymentModal() {
+    const modal = document.getElementById('receivePaymentModal');
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+}
+
+function updatePayPreview() {
+    const amt = parseFloat(document.getElementById('payAmountInput').value) || 0;
+    const cashSel = document.getElementById('payCashAccountId');
+    const cashName = (cashSel && cashSel.selectedIndex >= 0) ? cashSel.options[cashSel.selectedIndex].text.replace(/^\S+\s*-\s*/, '') : 'Cash on Hand';
+    
+    document.getElementById('payPrevDrName').innerText = cashName;
+    document.getElementById('payPrevDrAmt').innerText = '₱' + amt.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('payPrevCrAmt').innerText = '₱' + amt.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function validateReceivePayment() {
+    const amt = parseFloat(document.getElementById('payAmountInput').value) || 0;
+    const max = parseFloat(document.getElementById('payAmountInput').max) || 0;
+    if (amt <= 0) {
+        alert('Please enter a valid payment amount greater than zero.');
+        document.getElementById('payAmountInput').focus();
+        return false;
+    }
+    if (max > 0 && amt > max + 0.009) {
+        alert('Payment amount (₱' + amt.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ') cannot exceed the remaining balance of ₱' + max.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '.');
+        document.getElementById('payAmountInput').focus();
+        return false;
+    }
+    return true;
+}
+
+
+// ── Live auto-entry preview (Accounts Receivable Debit) ─────────────────────
 const SJ_IS_TAX = <?= $companyIsTaxRegistered ? 'true' : 'false' ?>;
 
 function fmtPeso(n) {
@@ -1160,7 +1762,6 @@ function fmtPeso(n) {
 }
 
 function computePreview() {
-    const terms  = document.getElementById('termsInput').value;
     const amount = parseFloat(document.getElementById('autoAmount').value) || 0;
     const revSel = document.getElementById('revenueAccountId');
     const revName = revSel.selectedIndex > 0
@@ -1170,7 +1771,8 @@ function computePreview() {
     const vat   = (SJ_IS_TAX && amount > 0) ? Math.round(amount * 0.12 * 100) / 100 : 0;
     const total = Math.round((amount + vat) * 100) / 100;
 
-    document.getElementById('prev-debit-name').innerText = terms === 'Cash' ? 'Cash on Hand' : 'Accounts Receivable';
+    // All sales are initially Credit sales debited to Accounts Receivable
+    document.getElementById('prev-debit-name').innerText = 'Accounts Receivable';
     document.getElementById('prev-debit-amt').innerText  = total > 0 ? fmtPeso(total) : '\u20b10.00';
     document.getElementById('prev-rev-name').innerText   = revName;
     document.getElementById('prev-rev-amt').innerText    = amount > 0 ? fmtPeso(amount) : '\u20b10.00';
@@ -1215,10 +1817,6 @@ function selectAutoEntity(id, type, name, terms) {
     document.getElementById('autoEntityType').value = type;
     document.getElementById('autoEntitySearch').value = name;
     document.getElementById('auto-entity-dd').style.display = 'none';
-    // Auto-set Cash/Credit toggle from the customer's saved Payment Terms
-    if (type === 'customer' && (terms === 'Cash' || terms === 'Credit')) {
-        setTerms(terms);
-    }
 }
 function onAutoEntityKeydown(e) {
     if (e.key === 'Escape') document.getElementById('auto-entity-dd').style.display = 'none';

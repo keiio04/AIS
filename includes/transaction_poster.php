@@ -231,12 +231,12 @@ if (!function_exists('post_student_transaction')) {
         $is_vat_inclusive = !empty($data['is_vat_inclusive']);
 
         // Determine target journal automatically:
-        // Customer + Cash   => Cash Receipts Journal (CRJ)
-        // Customer + Credit => Sales Journal (SJ)
+        // Customer => Sales Journal (SJ) (All customer sales are initially Credit/AR)
         // Supplier + Cash   => Cash Disbursements Journal (CDJ)
         // Supplier + Credit => Purchases Journal (PJ)
         if ($entity_type === 'customer') {
-            $journal_id = ($terms === 'Cash') ? 'CRJ' : 'SJ';
+            $terms = 'Credit'; // Accounting rule: All customer sales must initially be recorded as Accounts Receivable (Credit)
+            $journal_id = 'SJ';
         } else {
             $journal_id = ($terms === 'Cash') ? 'CDJ' : 'PJ';
         }
@@ -387,24 +387,46 @@ if (!function_exists('post_student_transaction')) {
             }
         }
 
-        // Generate unique reference number: {JOURNAL}-{YYYYMMDD}-{RAND}
-        $dateFormatted = str_replace('-', '', $date);
-        $attempts = 0;
-        do {
-            $randSuffix = str_pad((string)random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
-            $ref_no = "{$journal_id}-{$dateFormatted}-{$randSuffix}";
-            $checkStmt = $db->prepare("SELECT id FROM journal_entries WHERE company_id = ? AND reference_no = ?");
-            $checkStmt->bind_param('is', $company_id, $ref_no);
-            $checkStmt->execute();
-            $exists = $checkStmt->get_result()->fetch_assoc();
-            $attempts++;
-        } while ($exists && $attempts < 20);
+        // Generate reference number & invoice numbering
+        $invoice_seq = null;
+        $invoice_no  = null;
+        $particulars = '';
+
+        if ($entity_type === 'customer' && $journal_id === 'SJ') {
+            // Ensure table and columns exist
+            try {
+                $db->query("CREATE TABLE IF NOT EXISTS sales_invoices (id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, journal_entry_id INT NOT NULL, customer_id INT NOT NULL, invoice_seq INT NULL, invoice_no VARCHAR(60) NOT NULL, invoice_date DATE NOT NULL, amount DECIMAL(15,2) NOT NULL DEFAULT 0, amount_paid DECIMAL(15,2) NOT NULL DEFAULT 0, status ENUM('Open','Partially Paid','Paid','Cancelled') NOT NULL DEFAULT 'Open', cancellation_reason VARCHAR(255) NULL, cancelled_at TIMESTAMP NULL, reversal_entry_id INT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_company (company_id), INDEX idx_customer (customer_id), INDEX idx_journal (journal_entry_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                $db->query("ALTER TABLE sales_invoices ADD COLUMN invoice_seq INT NULL AFTER customer_id");
+                $db->query("ALTER TABLE journal_entries ADD COLUMN invoice_id INT NULL DEFAULT NULL AFTER entity_type");
+            } catch (Exception $e) {}
+
+            $stmtSeq = $db->prepare("SELECT COALESCE(MAX(invoice_seq), 0) as max_seq FROM sales_invoices WHERE company_id = ?");
+            $stmtSeq->bind_param('i', $company_id);
+            $stmtSeq->execute();
+            $seq_res = $stmtSeq->get_result()->fetch_assoc();
+            $invoice_seq = ((int)($seq_res['max_seq'] ?? 0)) + 1;
+            $invoice_no  = sprintf('%03d', $invoice_seq);
+            $ref_no      = $invoice_no;
+            $particulars = 'Sales Invoice #' . $invoice_no;
+        } else {
+            // Generate unique reference number: {JOURNAL}-{YYYYMMDD}-{RAND}
+            $dateFormatted = str_replace('-', '', $date);
+            $attempts = 0;
+            do {
+                $randSuffix = str_pad((string)random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
+                $ref_no = "{$journal_id}-{$dateFormatted}-{$randSuffix}";
+                $checkStmt = $db->prepare("SELECT id FROM journal_entries WHERE company_id = ? AND reference_no = ?");
+                $checkStmt->bind_param('is', $company_id, $ref_no);
+                $checkStmt->execute();
+                $exists = $checkStmt->get_result()->fetch_assoc();
+                $attempts++;
+            } while ($exists && $attempts < 20);
+        }
 
         // Execute DB Transaction
         $db->begin_transaction();
         try {
             $is_taxable_int = $is_vatable ? 1 : 0;
-            $particulars = '';
             $type = 'Operating';
 
             $stmtIns = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -419,6 +441,21 @@ if (!function_exists('post_student_transaction')) {
                 $accId = (int)$line['account_id'];
                 $stmtLine->bind_param('iidd', $entry_id, $accId, $dr, $cr);
                 $stmtLine->execute();
+            }
+
+            // Create sales_invoices record if customer credit sale
+            if ($entity_type === 'customer' && $journal_id === 'SJ' && $invoice_no !== null) {
+                $stmtInv = $db->prepare("
+                    INSERT INTO sales_invoices (company_id, journal_entry_id, customer_id, invoice_seq, invoice_no, invoice_date, amount, amount_paid, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'Open')
+                ");
+                $stmtInv->bind_param('iiiissd', $company_id, $entry_id, $entity_id, $invoice_seq, $invoice_no, $date, $total_amount);
+                $stmtInv->execute();
+                $inv_id = $stmtInv->insert_id;
+
+                $stmtUpdJE = $db->prepare("UPDATE journal_entries SET invoice_id = ? WHERE id = ?");
+                $stmtUpdJE->bind_param('ii', $inv_id, $entry_id);
+                $stmtUpdJE->execute();
             }
 
             // Log activity

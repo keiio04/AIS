@@ -119,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             'entity_type'       => 'customer',
             'entity_id'         => (int)($_POST['customer_id'] ?? 0),
             'date'              => $_POST['date'] ?? date('Y-m-d'),
-            'terms'             => $_POST['terms'] ?? 'Cash',
+            'terms'             => 'Credit', // All customer sales are recorded as Accounts Receivable (Credit)
             'amount'            => (float)($_POST['amount'] ?? 0),
             'is_vatable'        => !empty($_POST['is_vatable']),
             'is_vat_inclusive'  => !empty($_POST['is_vat_inclusive']),
@@ -397,8 +397,8 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         <div class="modal-header" style="padding: 0.65rem 1rem;">
             <div>
                 <h2 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;" id="txModalTitle">
-                    <i data-lucide="receipt" style="width: 16px; height: 16px; color: #16a34a;"></i>
-                    Record Customer Transaction
+                    <i data-lucide="file-text" style="width: 16px; height: 16px; color: #1d4ed8;"></i>
+                    New Sales Invoice (Accounts Receivable)
                 </h2>
             </div>
             <button class="icon-btn" onclick="closeTxModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
@@ -407,18 +407,13 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             <form id="tx-form" method="POST">
                 <input type="hidden" name="action" value="record_transaction">
 
-                <!-- Terms toggle -->
+                <!-- All sales go through AR (Credit/SJ) only -->
+                <input type="hidden" name="terms" id="txTerms" value="Credit">
                 <div style="margin-bottom: 0.5rem;">
-                    <label class="form-label" style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.25rem;">Payment Terms <span class="required">*</span></label>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button type="button" id="txTermsCashBtn" class="btn btn-primary" onclick="setTxTerms('Cash')" style="flex: 1; padding: 0.35rem 0.6rem; font-size: 0.78rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
-                            <i data-lucide="banknote" style="width:14px;height:14px;"></i> Cash
-                        </button>
-                        <button type="button" id="txTermsCreditBtn" class="btn btn-secondary" onclick="setTxTerms('Credit')" style="flex: 1; padding: 0.35rem 0.6rem; font-size: 0.78rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
-                            <i data-lucide="credit-card" style="width:14px;height:14px;"></i> Credit
-                        </button>
+                    <div style="background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
+                        <i data-lucide="file-text" style="width:13px;height:13px;"></i>
+                        All sales are recorded as Accounts Receivable (Credit) &rarr; Sales Journal (SJ)
                     </div>
-                    <input type="hidden" name="terms" id="txTerms" value="Cash">
                 </div>
 
                 <div class="flex gap-3" style="margin-bottom: 0.5rem;">
@@ -501,7 +496,7 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem 0.75rem;">
                     <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.35rem;">
                         <div id="txRoutingBadge" style="font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: #dbeafe; color: #1d4ed8;">
-                            Cash Receipts Journal (CRJ)
+                            Sales Journal (SJ)
                         </div>
                     </div>
 
@@ -595,14 +590,9 @@ function openTxModal(c = null) {
         const label = (c.code ? '[' + c.code + '] ' : '') + c.name;
         document.getElementById('txCustomerSearch').value = label;
         document.getElementById('txCustomerId').value = c.id;
-        if (c.terms && ['Cash', 'Credit'].includes(c.terms)) {
-            setTxTerms(c.terms);
-        } else {
-            setTxTerms('Cash');
-        }
-    } else {
-        setTxTerms('Cash');
     }
+    // Always default to Credit (AR) - no cash sales
+    setTxTerms('Credit');
     updateTxPreview();
     if (window.lucide) lucide.createIcons();
 }
@@ -618,17 +608,8 @@ document.getElementById('txModal').addEventListener('click', function(e) {
 });
 
 function setTxTerms(terms) {
-    document.getElementById('txTerms').value = terms;
-    const cashBtn = document.getElementById('txTermsCashBtn');
-    const creditBtn = document.getElementById('txTermsCreditBtn');
-
-    if (terms === 'Cash') {
-        cashBtn.className = 'btn btn-primary';
-        creditBtn.className = 'btn btn-secondary';
-    } else {
-        cashBtn.className = 'btn btn-secondary';
-        creditBtn.className = 'btn btn-primary';
-    }
+    // Always force Credit (AR) - no cash sales allowed
+    document.getElementById('txTerms').value = 'Credit';
     updateTxPreview();
 }
 
@@ -656,9 +637,8 @@ function selectCustomer(el) {
     document.getElementById('txCustomerSearch').value = el.dataset.label;
     document.getElementById('txCustomerId').value = el.dataset.id;
     document.getElementById('txCustomerDropdown').style.display = 'none';
-    if (el.dataset.terms && ['Cash', 'Credit'].includes(el.dataset.terms)) {
-        setTxTerms(el.dataset.terms);
-    }
+    // Always use Credit (AR) regardless of customer default terms
+    setTxTerms('Credit');
     updateTxPreview();
 }
 document.getElementById('txCustomerSearch').addEventListener('blur', hideCustomerList);
@@ -670,7 +650,7 @@ document.addEventListener('mouseout', function(e) {
 });
 
 function updateTxPreview() {
-    const terms = document.getElementById('txTerms').value || 'Cash';
+    const terms = 'Credit'; // Always AR/Credit
     const amountVal = parseFloat(document.getElementById('txAmount').value) || 0;
     const isVatable = document.getElementById('txVatableYes').checked;
     const isInclusive = document.getElementById('txVatInclusive').checked;
@@ -681,15 +661,9 @@ function updateTxPreview() {
         inclusiveGroup.style.display = isVatable ? 'flex' : 'none';
     }
 
-    // Auto Journal Routing:
-    // Customer + Cash   => Cash Receipts Journal (CRJ)
-    // Customer + Credit => Sales Journal (SJ)
+    // Always Sales Journal (SJ)
     const badge = document.getElementById('txRoutingBadge');
-    if (terms === 'Cash') {
-        badge.innerText = 'Cash Receipts Journal (CRJ)';
-        badge.style.background = '#dcfce7';
-        badge.style.color = '#15803d';
-    } else {
+    if (badge) {
         badge.innerText = 'Sales Journal (SJ)';
         badge.style.background = '#dbeafe';
         badge.style.color = '#1d4ed8';
@@ -726,16 +700,11 @@ function updateTxPreview() {
     const linesBody = document.getElementById('txPreviewLines');
     let html = '';
 
-    // Customer Accounting:
-    // Cash:
-    // Debit Cash
-    // Credit Service Revenue
-    // Credit Output VAT if VATable
-    // Credit:
+    // Customer Accounting (always AR/Credit):
     // Debit Accounts Receivable
     // Credit Service Revenue
     // Credit Output VAT if VATable
-    const debitAccountName = (terms === 'Cash') ? 'Cash on Hand' : 'Accounts Receivable';
+    const debitAccountName = 'Accounts Receivable';
 
     // Debit Line
     html += `<tr>

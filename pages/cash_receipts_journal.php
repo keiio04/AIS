@@ -14,6 +14,25 @@ try { $db->query("ALTER TABLE journal_entries ADD COLUMN entity_id INT NULL AFTE
 try { $db->query("ALTER TABLE journal_entries ADD COLUMN entity_type VARCHAR(20) NULL AFTER entity_id"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE customers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
 try { $db->query("ALTER TABLE suppliers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
+// ── Sales Invoices table (AR tracking) ──────────────────────────────
+try { $db->query("
+    CREATE TABLE IF NOT EXISTS sales_invoices (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        company_id INT NOT NULL,
+        journal_entry_id INT NOT NULL,
+        customer_id INT NOT NULL,
+        invoice_no VARCHAR(60) NOT NULL,
+        invoice_date DATE NOT NULL,
+        amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+        amount_paid DECIMAL(15,2) NOT NULL DEFAULT 0,
+        status ENUM('Open','Partially Paid','Paid') NOT NULL DEFAULT 'Open',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_company (company_id),
+        INDEX idx_customer (customer_id),
+        INDEX idx_journal (journal_entry_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+"); } catch (Exception $e) {}
+try { $db->query("ALTER TABLE journal_entries ADD COLUMN invoice_id INT NULL DEFAULT NULL AFTER entity_type"); } catch (Exception $e) {}
 
 
 $db = get_db();
@@ -22,6 +41,25 @@ $company_id = $_SESSION['active_company_id'] ?? null;
 if (!$company_id) {
     echo '<div class="alert alert-warning" style="margin: 2rem;">Please <a href="'.BASE_URL.'pages/company_setup.php">select or create a company</a> first to view entries.</div>';
     require_once '../includes/footer.php';
+    exit;
+}
+
+// AJAX: fetch open/partially-paid invoices for a customer
+if (isset($_GET['get_invoices']) && isset($_GET['customer_id'])) {
+    header('Content-Type: application/json');
+    $cust_id = (int)$_GET['customer_id'];
+    if (!$cust_id) {
+        echo json_encode(['success' => false, 'invoices' => []]);
+        exit;
+    }
+    $invStmt = $db->prepare("SELECT id, invoice_no, invoice_date, amount, amount_paid, status, (amount - amount_paid) AS balance 
+                             FROM sales_invoices 
+                             WHERE company_id = ? AND customer_id = ? AND status IN ('Open','Partially Paid')
+                             ORDER BY invoice_date ASC, id ASC");
+    $invStmt->bind_param('ii', $company_id, $cust_id);
+    $invStmt->execute();
+    $invoices = $invStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    echo json_encode(['success' => true, 'invoices' => $invoices]);
     exit;
 }
 
@@ -79,6 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $entity_id    = !empty($_POST['entity_id']) ? (int)$_POST['entity_id'] : null;
         $entity_type  = !empty($_POST['entity_type']) ? $_POST['entity_type'] : 'customer';
         $credit_account_id = !empty($_POST['credit_account_id']) ? (int)$_POST['credit_account_id'] : null;
+        $invoice_id_post   = !empty($_POST['invoice_id']) ? (int)$_POST['invoice_id'] : null;
 
         if ($amount <= 0) {
             $error = "Amount must be greater than zero.";
@@ -95,6 +134,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if (!$ar_acct) {
                 $error = "No Accounts Receivable account found. Please ensure an Accounts Receivable account exists.";
             }
+            if (!$entity_id) {
+                $error = "Please select a customer for this collection.";
+            }
+            if (!$invoice_id_post) {
+                $error = "Please select the specific invoice you are collecting payment for.";
+            }
+            // Validate amount does not exceed invoice remaining balance
+            if (!isset($error) && $invoice_id_post) {
+                $stmtChk = $db->prepare("SELECT id, amount, amount_paid, status FROM sales_invoices WHERE id = ? AND company_id = ? AND customer_id = ?");
+                $stmtChk->bind_param('iii', $invoice_id_post, $company_id, $entity_id);
+                $stmtChk->execute();
+                $invChk = $stmtChk->get_result()->fetch_assoc();
+                if (!$invChk) {
+                    $error = "Invoice not found or does not belong to the selected customer.";
+                } elseif ($invChk['status'] === 'Paid') {
+                    $error = "This invoice is already fully paid.";
+                } else {
+                    $remaining = round($invChk['amount'] - $invChk['amount_paid'], 2);
+                    if ($amount > $remaining) {
+                        $error = "Payment amount (₱" . number_format($amount, 2) . ") exceeds the invoice remaining balance (₱" . number_format($remaining, 2) . "). Please enter an amount ≤ ₱" . number_format($remaining, 2) . ".";
+                    }
+                }
+            }
         } else {
             if (!$credit_account_id) {
                 $error = "Please select a Credit / Revenue account.";
@@ -110,6 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $particulars = '';
                 $type        = 'Operating';
                 $vendor_name = null;
+                $invoice_id  = $invoice_id_post;
 
                 if (empty($description)) {
                     if ($receipt_type === 'collection') {
@@ -126,8 +189,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 }
 
-                $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id, entity_id, entity_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                $stmt->bind_param('isssissssis', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id, $entity_id, $entity_type);
+                $stmt = $db->prepare("INSERT INTO journal_entries (company_id, reference_no, date, description, is_taxable, particulars, type, vendor_name, journal_id, entity_id, entity_type, invoice_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param('isssissssisi', $company_id, $ref_no, $date, $description, $is_taxable, $particulars, $type, $vendor_name, $journal_id, $entity_id, $entity_type, $invoice_id);
                 $stmt->execute();
                 $entry_id = $stmt->insert_id;
 
@@ -174,6 +237,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         // Cr. Selected Account
                         $stmtL->bind_param('iidd', $entry_id, $credit_account_id, $zero, $amount);
                         $stmtL->execute();
+                    }
+                }
+
+                // ── Update Sales Invoice if this is a collection linked to one ──
+                if ($receipt_type === 'collection' && $invoice_id) {
+                    // Fetch invoice to validate it belongs to this company/customer
+                    $stmtInv = $db->prepare("SELECT id, amount, amount_paid FROM sales_invoices WHERE id = ? AND company_id = ? AND customer_id = ?");
+                    $stmtInv->bind_param('iii', $invoice_id, $company_id, $entity_id);
+                    $stmtInv->execute();
+                    $inv = $stmtInv->get_result()->fetch_assoc();
+                    if ($inv) {
+                        $new_paid = round($inv['amount_paid'] + $amount, 2);
+                        $remaining = round($inv['amount'] - $new_paid, 2);
+                        if ($remaining <= 0) {
+                            $new_status = 'Paid';
+                            $new_paid = $inv['amount']; // cap at invoice amount
+                        } elseif ($new_paid > 0) {
+                            $new_status = 'Partially Paid';
+                        } else {
+                            $new_status = 'Open';
+                        }
+                        $stmtUpd = $db->prepare("UPDATE sales_invoices SET amount_paid = ?, status = ? WHERE id = ?");
+                        $stmtUpd->bind_param('dsi', $new_paid, $new_status, $invoice_id);
+                        $stmtUpd->execute();
                     }
                 }
 
@@ -264,9 +351,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     } elseif ($_POST['action'] === 'delete') {
         $delete_id = (int)$_POST['id'];
+
+        // Check if this entry was linked to an invoice
+        $stmtFindInv = $db->prepare("SELECT invoice_id FROM journal_entries WHERE id = ? AND company_id = ?");
+        $stmtFindInv->bind_param('ii', $delete_id, $company_id);
+        $stmtFindInv->execute();
+        $invRow = $stmtFindInv->get_result()->fetch_assoc();
+        $linked_inv_id = $invRow ? $invRow['invoice_id'] : null;
+
         $stmtDel   = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?");
         $stmtDel->bind_param('ii', $delete_id, $company_id);
         $stmtDel->execute();
+
+        // If linked to an invoice, recompute invoice amount_paid and status
+        if ($linked_inv_id) {
+            $stmtRecalc = $db->prepare("
+                SELECT COALESCE(SUM(l.credit), 0) as total_paid
+                FROM journal_entries e
+                JOIN journal_entry_lines l ON l.journal_entry_id = e.id
+                JOIN accounts a ON l.account_id = a.id
+                WHERE e.invoice_id = ? AND e.deleted_at IS NULL AND a.name LIKE '%receivable%'
+            ");
+            $stmtRecalc->bind_param('i', $linked_inv_id);
+            $stmtRecalc->execute();
+            $recalcRow = $stmtRecalc->get_result()->fetch_assoc();
+            $recalculated_paid = (float)($recalcRow['total_paid'] ?? 0);
+
+            $stmtInvObj = $db->prepare("SELECT amount FROM sales_invoices WHERE id = ?");
+            $stmtInvObj->bind_param('i', $linked_inv_id);
+            $stmtInvObj->execute();
+            $invObj = $stmtInvObj->get_result()->fetch_assoc();
+            if ($invObj) {
+                $inv_amt = (float)$invObj['amount'];
+                $new_stat = 'Open';
+                if ($recalculated_paid >= $inv_amt && $inv_amt > 0) {
+                    $new_stat = 'Paid';
+                } elseif ($recalculated_paid > 0) {
+                    $new_stat = 'Partially Paid';
+                }
+                $stmtUpdInv = $db->prepare("UPDATE sales_invoices SET amount_paid = ?, status = ? WHERE id = ?");
+                $stmtUpdInv->bind_param('dsi', $recalculated_paid, $new_stat, $linked_inv_id);
+                $stmtUpdInv->execute();
+            }
+        }
 
         $user_id    = $_SESSION['user_id'];
         $log_action = "Moved Cash Receipts Entry #$delete_id to Trash";
@@ -339,7 +466,24 @@ require_once '../includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="card" style="padding: 0; overflow: hidden; border: none; box-shadow: none;">
+<div class="card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1.25rem; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 0.75rem; background: var(--bg-primary);">
+        <div>
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0; display:flex; align-items:center; gap:0.5rem;">
+                <i data-lucide="wallet" style="width:18px;height:18px;color:#16a34a;"></i>
+                Cash Receipts Journal (CRJ)
+            </h3>
+            <p class="text-muted" style="font-size: 0.78rem; margin: 2px 0 0 0;">Record customer collections (A/R payments), cash sales, and other cash receipts.</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <a href="sales_journal.php" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; padding: 0.45rem 0.85rem; border-radius: 6px; text-decoration:none;">
+                <i data-lucide="file-text" style="width:14px;height:14px;"></i> View Sales Invoices
+            </a>
+            <button class="btn btn-primary" onclick="openModal()" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; padding: 0.45rem 0.95rem; border-radius: 6px; font-weight: 600; background: #16a34a; color: #ffffff; border: none; cursor: pointer;">
+                <i data-lucide="plus" style="width:15px;height:15px;"></i> New Cash Receipt / Collection
+            </button>
+        </div>
+    </div>
     <div class="table-container">
         <table class="table journal-table">
             <thead>
@@ -458,7 +602,15 @@ require_once '../includes/header.php';
                         </div>
                     </div>
 
-                    <!-- Credit Account group: shown when 'other' is selected -->
+                    <!-- Open Invoice group: shown when receipt type is 'collection' and customer is selected -->
+                    <div id="invoiceSelectGroup" style="display:none; margin-bottom:1rem;" class="form-group">
+                        <label class="form-label">Apply to Invoice <span style="color:#ef4444;">*</span> <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem;">— select the specific invoice to collect</span></label>
+                        <select name="invoice_id" id="invoiceIdSelect" class="form-control" onchange="onInvoiceSelect()">
+                            <option value="">-- Select an Invoice --</option>
+                        </select>
+                        <div id="invoiceBalanceInfo" style="margin-top:0.4rem;font-size:0.78rem;color:#0369a1;display:none;"></div>
+                        <div id="invoiceRequiredMsg" style="display:none;margin-top:0.3rem;font-size:0.77rem;color:#dc2626;font-weight:600;">⚠ You must select a specific invoice to proceed.</div>
+                    </div>
                     <div id="creditAccountGroup" style="display:none; margin-bottom:1rem;" class="form-group">
                         <label class="form-label">Credit / Revenue Account</label>
                         <select name="credit_account_id" id="creditAccountId" class="form-control" onchange="computePreview()">
@@ -607,6 +759,40 @@ let entitiesList = <?= json_encode($entitiesList ?? []) ?>;
 const customersList = <?= json_encode($customersList ?? []) ?>;
 const suppliersList = <?= json_encode($suppliersList ?? []) ?>;
 
+// Client-side guard: enforce invoice selection for collections
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('auto-entry-form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const receiptType = document.getElementById('receiptTypeInput');
+            if (!receiptType || receiptType.value !== 'collection') return;
+            const custId = document.getElementById('autoEntityId');
+            if (!custId || !custId.value) {
+                e.preventDefault();
+                alert('Please select a customer.');
+                return;
+            }
+            const invSel = document.getElementById('invoiceIdSelect');
+            if (!invSel || !invSel.value) {
+                e.preventDefault();
+                const reqMsg = document.getElementById('invoiceRequiredMsg');
+                if (reqMsg) reqMsg.style.display = 'block';
+                invSel.focus();
+                return;
+            }
+            const amtInput = document.getElementById('autoAmount');
+            const maxBal = parseFloat(amtInput ? amtInput.getAttribute('data-max-balance') : 0) || 0;
+            const amt = parseFloat(amtInput ? amtInput.value : 0) || 0;
+            if (maxBal > 0 && amt > maxBal) {
+                e.preventDefault();
+                alert('Payment amount exceeds the remaining invoice balance of \u20b1' + maxBal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '. Please enter a lower amount.');
+                amtInput.value = maxBal.toFixed(2);
+                computePreview();
+                return;
+            }
+        });
+    }
+});
 
 const globalInputVatId = <?= $inputVatId ?: 'null' ?>;
 const globalOutputVatId = <?= $outputVatId ?: 'null' ?>;
@@ -1125,6 +1311,7 @@ function setReceiptType(type) {
     const otherBtn = document.getElementById('typeOtherBtn');
     const creditGroup = document.getElementById('creditAccountGroup');
     const entityReq = document.getElementById('autoEntityRequired');
+    const invGroup = document.getElementById('invoiceSelectGroup');
 
     if (type === 'collection') {
         collBtn.className = 'btn btn-primary';
@@ -1132,12 +1319,17 @@ function setReceiptType(type) {
         creditGroup.style.display = 'none';
         document.getElementById('creditAccountId').removeAttribute('required');
         entityReq.style.display = 'inline';
+        const custId = document.getElementById('autoEntityId').value;
+        if (custId) {
+            loadCustomerInvoices(custId);
+        }
     } else {
         collBtn.className = 'btn btn-secondary';
         otherBtn.className = 'btn btn-primary';
         creditGroup.style.display = 'block';
         document.getElementById('creditAccountId').setAttribute('required', 'true');
         entityReq.style.display = 'none';
+        if (invGroup) invGroup.style.display = 'none';
     }
     computePreview();
 }
@@ -1259,6 +1451,106 @@ function selectAutoEntity(idx) {
     document.getElementById('autoEntityId').value = c.id;
     document.getElementById('autoEntityType').value = 'customer';
     document.getElementById('auto-entity-dd').style.display = 'none';
+    if (autoReceiptType === 'collection') {
+        loadCustomerInvoices(c.id);
+    }
+}
+
+async function loadCustomerInvoices(custId) {
+    const invGroup = document.getElementById('invoiceSelectGroup');
+    const sel = document.getElementById('invoiceIdSelect');
+    const info = document.getElementById('invoiceBalanceInfo');
+    if (!invGroup || !sel) return;
+
+    if (!custId || autoReceiptType !== 'collection') {
+        invGroup.style.display = 'none';
+        return;
+    }
+
+    try {
+        sel.innerHTML = '<option value="">Loading open invoices...</option>';
+        invGroup.style.display = 'block';
+        if (info) info.style.display = 'none';
+
+        const res = await fetch(`cash_receipts_journal.php?get_invoices=1&customer_id=${custId}`);
+        const data = await res.json();
+
+        sel.innerHTML = '<option value="">-- Select an Invoice --</option>';
+        if (data.success && data.invoices && data.invoices.length > 0) {
+            data.invoices.forEach(inv => {
+                const opt = document.createElement('option');
+                opt.value = inv.id;
+                const bal = parseFloat(inv.balance);
+                const tot = parseFloat(inv.amount);
+                const pd = parseFloat(inv.amount_paid);
+                opt.dataset.amount = tot;
+                opt.dataset.paid = pd;
+                opt.dataset.balance = bal;
+                opt.dataset.invoiceno = inv.invoice_no;
+                opt.textContent = `${inv.invoice_no} (${inv.invoice_date}) - Bal: \u20b1${bal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} [${inv.status}]`;
+                sel.appendChild(opt);
+            });
+            invGroup.style.display = 'block';
+        } else {
+            sel.innerHTML = '<option value="" disabled>-- No open invoices found for this customer --</option>';
+            invGroup.style.display = 'block';
+            if (info) {
+                info.innerHTML = '<span style="color:#dc2626;font-weight:600;">&#9888; This customer has no open or partially paid invoices.</span>';
+                info.style.display = 'block';
+            }
+        }
+    } catch (e) {
+        console.error('Error loading invoices:', e);
+        sel.innerHTML = '<option value="">-- Error loading invoices --</option>';
+    }
+}
+
+function onInvoiceSelect() {
+    const sel = document.getElementById('invoiceIdSelect');
+    const info = document.getElementById('invoiceBalanceInfo');
+    const reqMsg = document.getElementById('invoiceRequiredMsg');
+    const amtInput = document.getElementById('autoAmount');
+    if (!sel || !info) return;
+
+    const opt = sel.options[sel.selectedIndex];
+    if (opt && opt.value && opt.dataset.balance) {
+        const bal = parseFloat(opt.dataset.balance);
+        const tot = parseFloat(opt.dataset.amount);
+        const paid = parseFloat(opt.dataset.paid);
+        info.innerHTML = `<strong>Invoice #${escapeHtml(opt.dataset.invoiceno)}</strong> &bull; Total: &#8369;${tot.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})} &bull; Paid: &#8369;${paid.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})} &bull; <span style="color:#0369a1;font-weight:700;">Remaining: &#8369;${bal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>`;
+        info.style.display = 'block';
+        if (reqMsg) reqMsg.style.display = 'none';
+
+        // Set max on amount input to remaining balance
+        if (amtInput) {
+            amtInput.max = bal.toFixed(2);
+            amtInput.setAttribute('data-max-balance', bal.toFixed(2));
+            if (!amtInput.value || parseFloat(amtInput.value) === 0) {
+                amtInput.value = bal.toFixed(2);
+            } else if (parseFloat(amtInput.value) > bal) {
+                amtInput.value = bal.toFixed(2);
+            }
+            computePreview();
+        }
+    } else {
+        info.style.display = 'none';
+        // Remove max cap if no invoice selected
+        if (amtInput) {
+            amtInput.removeAttribute('max');
+            amtInput.removeAttribute('data-max-balance');
+        }
+    }
+}
+
+// Validate amount does not exceed selected invoice balance (client-side guard)
+function validateCollectionAmount() {
+    const amtInput = document.getElementById('autoAmount');
+    const maxBal = parseFloat(amtInput ? amtInput.getAttribute('data-max-balance') : 0) || 0;
+    const amt = parseFloat(amtInput ? amtInput.value : 0) || 0;
+    if (maxBal > 0 && amt > maxBal) {
+        amtInput.value = maxBal.toFixed(2);
+        computePreview();
+    }
 }
 
 function onAutoEntityKeydown(e) {
@@ -1295,6 +1587,8 @@ function onAutoEntityBlur() {
         if (dd) dd.style.display = 'none';
         if (!document.getElementById('autoEntityId').value) {
             document.getElementById('autoEntitySearch').value = '';
+            const invGroup = document.getElementById('invoiceSelectGroup');
+            if (invGroup) invGroup.style.display = 'none';
         }
     }, 180);
 }
@@ -1313,6 +1607,12 @@ function openModal() {
     document.getElementById('autoEntryDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('autoEntityId').value = '';
     document.getElementById('autoEntitySearch').value = '';
+    const invGroup = document.getElementById('invoiceSelectGroup');
+    if (invGroup) invGroup.style.display = 'none';
+    const invSel = document.getElementById('invoiceIdSelect');
+    if (invSel) invSel.innerHTML = '<option value="">-- Select an Invoice --</option>';
+    const invBal = document.getElementById('invoiceBalanceInfo');
+    if (invBal) invBal.style.display = 'none';
     setReceiptType('collection');
     computePreview();
 }
@@ -1417,6 +1717,33 @@ document.getElementById('entry-form').addEventListener('submit', function(e) {
     const mismatch = _detectMismatch(_getLines());
     if (mismatch) { e.preventDefault(); _showJournalToast(mismatch); }
 });
+
+// Auto-open modal if URL has ?action=new or ?customer_id=...
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const custId = params.get('customer_id');
+    const invId = params.get('invoice_id');
+    if (params.get('action') === 'new' || custId) {
+        openModal();
+        if (custId) {
+            const cust = customersList.find(c => String(c.id) === String(custId));
+            if (cust) {
+                document.getElementById('autoEntitySearch').value = cust.name;
+                document.getElementById('autoEntityId').value = cust.id;
+                document.getElementById('autoEntityType').value = 'customer';
+                loadCustomerInvoices(cust.id).then(() => {
+                    if (invId) {
+                        const sel = document.getElementById('invoiceIdSelect');
+                        if (sel) {
+                            sel.value = invId;
+                            onInvoiceSelect();
+                        }
+                    }
+                });
+            }
+        }
+    }
+})();
 </script>
 
 <script>window.AUTOSAVE_KEY = 'autosave_cash_receipts';</script>
