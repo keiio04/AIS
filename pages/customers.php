@@ -653,12 +653,15 @@ document.getElementById('custModal').addEventListener('click', function(e) {
 // Customer Transaction History Modal
 function statusBadge(status) {
     const colors = {
-        'Outstanding': ['#fef9c3', '#a16207'],
-        'Paid':        ['#dcfce7', '#15803d'],
-        'Voided':      ['#f1f5f9', '#64748b']
+        'Open':           ['#fef9c3', '#a16207'],
+        'Partially Paid': ['#e0f2fe', '#0369a1'],
+        'Paid':           ['#dcfce7', '#15803d'],
+        'Cancelled':      ['#fee2e2', '#b91c1c'],
+        'Outstanding':    ['#fef9c3', '#a16207'],
+        'Voided':         ['#f1f5f9', '#64748b']
     };
     const [bg, fg] = colors[status] || ['#f1f5f9', '#64748b'];
-    return `<span class="badge" style="font-size: 0.65rem; padding: 2px 7px; background:${bg}; color:${fg};">${status}</span>`;
+    return `<span class="badge" style="font-size: 0.65rem; padding: 2px 7px; background:${bg}; color:${fg}; font-weight: 600;">${status}</span>`;
 }
 
 function renderHistoryRows(tbodyId, rows) {

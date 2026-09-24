@@ -148,6 +148,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $invChk = $stmtChk->get_result()->fetch_assoc();
                 if (!$invChk) {
                     $error = "Invoice not found or does not belong to the selected customer.";
+                } elseif ($invChk['status'] === 'Cancelled') {
+                    $error = "Cannot record collection: this sales invoice is cancelled.";
                 } elseif ($invChk['status'] === 'Paid') {
                     $error = "This invoice is already fully paid.";
                 } else {
@@ -377,11 +379,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $recalcRow = $stmtRecalc->get_result()->fetch_assoc();
             $recalculated_paid = (float)($recalcRow['total_paid'] ?? 0);
 
-            $stmtInvObj = $db->prepare("SELECT amount FROM sales_invoices WHERE id = ?");
+            $stmtInvObj = $db->prepare("SELECT amount, status FROM sales_invoices WHERE id = ?");
             $stmtInvObj->bind_param('i', $linked_inv_id);
             $stmtInvObj->execute();
             $invObj = $stmtInvObj->get_result()->fetch_assoc();
-            if ($invObj) {
+            if ($invObj && $invObj['status'] !== 'Cancelled') {
                 $inv_amt = (float)$invObj['amount'];
                 $new_stat = 'Open';
                 if ($recalculated_paid >= $inv_amt && $inv_amt > 0) {

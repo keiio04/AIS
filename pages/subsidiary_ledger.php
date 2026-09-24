@@ -53,6 +53,7 @@ try {
         WHERE e.company_id = {$company_id}
           AND e.deleted_at IS NULL
           AND e.journal_id = 'SJ'
+          AND e.reference_no NOT LIKE 'CN-%'
           AND e.entity_id IS NOT NULL
           AND e.entity_type = 'customer'
           AND a.name LIKE '%receivable%'
@@ -61,7 +62,7 @@ try {
         GROUP BY e.id
     ");
 
-    // Sync payments and status
+    // Sync payments and status (only for non-cancelled invoices, only counting CRJ payments)
     $db->query("
         UPDATE sales_invoices si
         SET 
@@ -71,16 +72,19 @@ try {
                 JOIN journal_entry_lines l ON l.journal_entry_id = e.id 
                 JOIN accounts a ON l.account_id = a.id
                 WHERE e.invoice_id = si.id 
+                  AND e.journal_id = 'CRJ'
                   AND e.deleted_at IS NULL 
                   AND a.name LIKE '%receivable%'
             ), 0),
             status = CASE 
+                WHEN si.status = 'Cancelled' THEN 'Cancelled'
                 WHEN COALESCE((
                     SELECT SUM(l.credit) 
                     FROM journal_entries e 
                     JOIN journal_entry_lines l ON l.journal_entry_id = e.id 
                     JOIN accounts a ON l.account_id = a.id
                     WHERE e.invoice_id = si.id 
+                      AND e.journal_id = 'CRJ'
                       AND e.deleted_at IS NULL 
                       AND a.name LIKE '%receivable%'
                 ), 0) >= si.amount AND si.amount > 0 THEN 'Paid'
@@ -90,12 +94,14 @@ try {
                     JOIN journal_entry_lines l ON l.journal_entry_id = e.id 
                     JOIN accounts a ON l.account_id = a.id
                     WHERE e.invoice_id = si.id 
+                      AND e.journal_id = 'CRJ'
                       AND e.deleted_at IS NULL 
                       AND a.name LIKE '%receivable%'
                 ), 0) > 0 THEN 'Partially Paid'
                 ELSE 'Open'
             END
         WHERE si.company_id = {$company_id}
+          AND si.status != 'Cancelled'
     ");
 } catch (Exception $e) {}
 
