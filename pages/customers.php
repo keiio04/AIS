@@ -450,16 +450,32 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 <div class="flex gap-3" style="margin-bottom: 0.5rem;">
                     <div class="form-group" style="flex: 2; margin-bottom: 0;">
                         <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Service / Revenue Account <span class="required">*</span></label>
-                        <select name="revenue_account_id" id="txRevenueAccountId" class="form-control" required onchange="updateTxPreview()" style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;">
-                            <?php foreach ($revenueAccounts as $rev): ?>
-                            <option value="<?= $rev['id'] ?>" data-name="<?= htmlspecialchars($rev['name']) ?>" <?= $rev['id'] == $defaultRevenueId ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($rev['code'] . ' - ' . $rev['name']) ?>
-                            </option>
-                            <?php endforeach; ?>
-                            <?php if (empty($revenueAccounts)): ?>
-                            <option value="0" data-name="Service Revenue">Service Revenue (Default)</option>
-                            <?php endif; ?>
-                        </select>
+                        <!-- Searchable revenue account combo -->
+                        <div style="position: relative;">
+                            <input type="text" id="txAccountSearch" class="form-control" autocomplete="off"
+                                placeholder="Search account code or title..."
+                                style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;"
+                                oninput="filterAccountList()" onfocus="showAccountList()">
+                            <input type="hidden" name="revenue_account_id" id="txRevenueAccountId" value="<?= $defaultRevenueId ?>" required>
+                            <div id="txAccountDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--border-color); border-top:none; border-radius:0 0 6px 6px; max-height:180px; overflow-y:auto; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                                <?php foreach ($revenueAccounts as $rev): ?>
+                                <div class="acc-opt" data-id="<?= $rev['id'] ?>" data-code="<?= htmlspecialchars($rev['code']) ?>" data-name="<?= htmlspecialchars($rev['name']) ?>"
+                                    data-label="<?= htmlspecialchars($rev['code'] . ' - ' . $rev['name']) ?>"
+                                    style="padding:5px 8px; cursor:pointer; font-size:0.78rem;"
+                                    onmousedown="selectAccount(this)">
+                                    <span style="font-family:monospace; font-weight:600; color:#2563eb;"><?= htmlspecialchars($rev['code']) ?></span> &mdash; <?= htmlspecialchars($rev['name']) ?>
+                                </div>
+                                <?php endforeach; ?>
+                                <?php if (empty($revenueAccounts)): ?>
+                                <div class="acc-opt" data-id="0" data-code="4-100" data-name="Service Revenue"
+                                    data-label="4-100 - Service Revenue"
+                                    style="padding:5px 8px; cursor:pointer; font-size:0.78rem;"
+                                    onmousedown="selectAccount(this)">
+                                    <span style="font-family:monospace; font-weight:600; color:#2563eb;">4-100</span> &mdash; Service Revenue
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                     </div>
                     <div class="form-group" style="flex: 1; margin-bottom: 0;">
                         <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Amount (₱) <span class="required">*</span></label>
@@ -735,6 +751,17 @@ function openTxModal(c = null) {
     document.getElementById('txCustomerId').value = '';
     document.getElementById('txDescription').value = '';
     hideCustomerList();
+    hideAccountList();
+
+    // Initialize default revenue account
+    const firstAcc = document.querySelector('#txAccountDropdown .acc-opt');
+    const curRevId = document.getElementById('txRevenueAccountId').value;
+    const matchAcc = Array.from(document.querySelectorAll('#txAccountDropdown .acc-opt')).find(o => o.dataset.id == curRevId) || firstAcc;
+    if (matchAcc) {
+        document.getElementById('txAccountSearch').value = matchAcc.dataset.label;
+        document.getElementById('txRevenueAccountId').value = matchAcc.dataset.id;
+        document.getElementById('txRevenueAccountId').dataset.selectedName = matchAcc.dataset.name;
+    }
 
     if (c) {
         const label = (c.code ? '[' + c.code + '] ' : '') + c.name;
@@ -751,6 +778,8 @@ function closeTxModal() {
     const modal = document.getElementById('txModal');
     modal.classList.add('hidden');
     modal.style.display = 'none';
+    hideCustomerList();
+    hideAccountList();
 }
 
 document.getElementById('txModal').addEventListener('click', function(e) {
@@ -769,14 +798,17 @@ function showCustomerList() {
     document.getElementById('txCustomerDropdown').style.display = 'block';
 }
 function hideCustomerList() {
-    setTimeout(() => { document.getElementById('txCustomerDropdown').style.display = 'none'; }, 150);
+    setTimeout(() => { 
+        const dd = document.getElementById('txCustomerDropdown');
+        if (dd) dd.style.display = 'none'; 
+    }, 150);
 }
 function filterCustomerList() {
-    const q = document.getElementById('txCustomerSearch').value.toLowerCase();
+    const q = document.getElementById('txCustomerSearch').value.toLowerCase().trim();
     const opts = document.querySelectorAll('#txCustomerDropdown .cust-opt');
     let any = false;
     opts.forEach(opt => {
-        const match = opt.dataset.label.toLowerCase().includes(q);
+        const match = !q || opt.dataset.label.toLowerCase().includes(q);
         opt.style.display = match ? 'block' : 'none';
         if (match) any = true;
     });
@@ -792,11 +824,66 @@ function selectCustomer(el) {
     updateTxPreview();
 }
 document.getElementById('txCustomerSearch').addEventListener('blur', hideCustomerList);
+document.getElementById('txCustomerSearch').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const first = Array.from(document.querySelectorAll('#txCustomerDropdown .cust-opt')).find(o => o.style.display !== 'none');
+        if (first) selectCustomer(first);
+    }
+});
+
+// Searchable revenue account combo functions
+function showAccountList() {
+    filterAccountList();
+    document.getElementById('txAccountDropdown').style.display = 'block';
+}
+function hideAccountList() {
+    setTimeout(() => { 
+        const dd = document.getElementById('txAccountDropdown');
+        if (dd) dd.style.display = 'none'; 
+    }, 150);
+}
+function filterAccountList() {
+    const q = (document.getElementById('txAccountSearch').value || '').toLowerCase().trim();
+    const opts = document.querySelectorAll('#txAccountDropdown .acc-opt');
+    let any = false;
+    opts.forEach(opt => {
+        const label = (opt.dataset.label || '').toLowerCase();
+        const code  = (opt.dataset.code || '').toLowerCase();
+        const name  = (opt.dataset.name || '').toLowerCase();
+        const match = !q || label.includes(q) || code.includes(q) || name.includes(q);
+        opt.style.display = match ? 'block' : 'none';
+        if (match) any = true;
+    });
+    document.getElementById('txAccountDropdown').style.display = any ? 'block' : 'none';
+}
+function selectAccount(el) {
+    document.getElementById('txAccountSearch').value = el.dataset.label;
+    document.getElementById('txRevenueAccountId').value = el.dataset.id;
+    document.getElementById('txRevenueAccountId').dataset.selectedName = el.dataset.name;
+    document.getElementById('txAccountDropdown').style.display = 'none';
+    updateTxPreview();
+}
+document.getElementById('txAccountSearch').addEventListener('blur', hideAccountList);
+document.getElementById('txAccountSearch').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const first = Array.from(document.querySelectorAll('#txAccountDropdown .acc-opt')).find(o => o.style.display !== 'none');
+        if (first) selectAccount(first);
+    }
+});
+
 document.addEventListener('mouseover', function(e) {
-    if (e.target.classList.contains('cust-opt')) e.target.style.background = '#f1f5f9';
+    const c = e.target.closest('.cust-opt');
+    if (c) c.style.background = '#f1f5f9';
+    const a = e.target.closest('.acc-opt');
+    if (a) a.style.background = '#f1f5f9';
 });
 document.addEventListener('mouseout', function(e) {
-    if (e.target.classList.contains('cust-opt')) e.target.style.background = '';
+    const c = e.target.closest('.cust-opt');
+    if (c) c.style.background = '';
+    const a = e.target.closest('.acc-opt');
+    if (a) a.style.background = '';
 });
 
 function updateTxPreview() {
@@ -841,10 +928,11 @@ function updateTxPreview() {
     }
 
     // Revenue Account Title
-    const revSelect = document.getElementById('txRevenueAccountId');
-    let revName = 'Service Revenue';
-    if (revSelect && revSelect.options.length > 0 && revSelect.selectedIndex >= 0) {
-        revName = revSelect.options[revSelect.selectedIndex].text.replace(/^[0-9-]+\s*-\s*/, '') || 'Service Revenue';
+    const revInput = document.getElementById('txRevenueAccountId');
+    let revName = revInput.dataset.selectedName || 'Service Revenue';
+    if (!revName || revName === 'Service Revenue') {
+        const selectedOpt = document.querySelector('#txAccountDropdown .acc-opt[data-id="' + revInput.value + '"]');
+        if (selectedOpt) revName = selectedOpt.dataset.name;
     }
 
     const linesBody = document.getElementById('txPreviewLines');

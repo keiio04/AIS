@@ -458,16 +458,29 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 <div class="flex gap-3" style="margin-bottom: 0.5rem;">
                     <div class="form-group" style="flex: 2; margin-bottom: 0;">
                         <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Expense / Supplies Account <span class="required">*</span></label>
-                        <select name="expense_account_id" id="txExpenseAccountId" class="form-control" required onchange="updateTxPreview()" style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;">
-                            <?php foreach ($expenseAccounts as $exp): ?>
-                            <option value="<?= $exp['id'] ?>" data-name="<?= htmlspecialchars($exp['name']) ?>" <?= $exp['id'] == $defaultExpenseId ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($exp['code'] . ' - ' . $exp['name']) ?>
-                            </option>
-                            <?php endforeach; ?>
-                            <?php if (empty($expenseAccounts)): ?>
-                            <option value="0" data-name="Purchases / Expenses">Purchases / Expenses (Default)</option>
-                            <?php endif; ?>
-                        </select>
+                        <!-- Searchable account combo -->
+                        <div style="position: relative;">
+                            <input type="text" id="txAccSearch" class="form-control" autocomplete="off"
+                                style="font-size: 0.78rem; padding: 0.35rem 0.55rem; height: 32px;"
+                                placeholder="Search account..." oninput="filterAccList()" onfocus="showAccList()">
+                            <input type="hidden" name="expense_account_id" id="txExpenseAccountId" required>
+                            <div id="txAccDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--border-color); border-top:none; border-radius:0 0 6px 6px; max-height:180px; overflow-y:auto; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                                <?php foreach ($expenseAccounts as $exp): ?>
+                                <div class="acc-opt" data-id="<?= $exp['id'] ?>" data-name="<?= htmlspecialchars($exp['name']) ?>"
+                                    data-label="<?= htmlspecialchars(($exp['code'] ? $exp['code'] . ' - ' : '') . $exp['name']) ?>"
+                                    style="padding:5px 8px; cursor:pointer; font-size:0.78rem;"
+                                    onmousedown="selectAcc(this)">
+                                    <?= htmlspecialchars(($exp['code'] ? $exp['code'] . ' - ' : '') . $exp['name']) ?>
+                                </div>
+                                <?php endforeach; ?>
+                                <?php if (empty($expenseAccounts)): ?>
+                                <div class="acc-opt" data-id="0" data-name="Purchases / Expenses" data-label="Purchases / Expenses"
+                                    style="padding:5px 8px; cursor:pointer; font-size:0.78rem;" onmousedown="selectAcc(this)">
+                                    Purchases / Expenses (Default)
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                     </div>
                     <div class="form-group" style="flex: 1; margin-bottom: 0;">
                         <label class="form-label" style="font-size: 0.75rem; margin-bottom: 0.2rem;">Amount (₱) <span class="required">*</span></label>
@@ -814,12 +827,68 @@ function selectSupplier(el) {
     updateTxPreview();
 }
 document.getElementById('txSupplierSearch').addEventListener('blur', hideSupplierList);
+
+// Searchable Expense Account combo functions
+const _suppAccounts = <?php echo json_encode($expenseAccounts); ?>;
+const _suppDefaultAccId = <?php echo (int)$defaultExpenseId; ?>;
+
+function initAccCombo() {
+    // Pre-select the default
+    const def = _suppAccounts.find(a => a.id == _suppDefaultAccId);
+    if (def) {
+        const label = (def.code ? def.code + ' - ' : '') + def.name;
+        document.getElementById('txAccSearch').value = label;
+        const inp = document.getElementById('txExpenseAccountId');
+        inp.value = def.id;
+        inp.dataset.selectedName = def.name;
+    } else if (_suppAccounts.length > 0) {
+        const a = _suppAccounts[0];
+        const label = (a.code ? a.code + ' - ' : '') + a.name;
+        document.getElementById('txAccSearch').value = label;
+        const inp = document.getElementById('txExpenseAccountId');
+        inp.value = a.id;
+        inp.dataset.selectedName = a.name;
+    }
+}
+initAccCombo();
+
+function showAccList() {
+    filterAccList();
+    document.getElementById('txAccDropdown').style.display = 'block';
+}
+function hideAccList() {
+    setTimeout(() => { document.getElementById('txAccDropdown').style.display = 'none'; }, 150);
+}
+function filterAccList() {
+    const q = document.getElementById('txAccSearch').value.toLowerCase();
+    const opts = document.querySelectorAll('#txAccDropdown .acc-opt');
+    let any = false;
+    opts.forEach(opt => {
+        const match = opt.dataset.label.toLowerCase().includes(q);
+        opt.style.display = match ? 'block' : 'none';
+        if (match) any = true;
+    });
+    document.getElementById('txAccDropdown').style.display = any ? 'block' : 'none';
+    document.getElementById('txExpenseAccountId').value = '';
+    document.getElementById('txExpenseAccountId').dataset.selectedName = '';
+}
+function selectAcc(el) {
+    document.getElementById('txAccSearch').value = el.dataset.label;
+    const inp = document.getElementById('txExpenseAccountId');
+    inp.value = el.dataset.id;
+    inp.dataset.selectedName = el.dataset.name;
+    document.getElementById('txAccDropdown').style.display = 'none';
+    updateTxPreview();
+}
+document.getElementById('txAccSearch').addEventListener('blur', hideAccList);
 // Hover highlight
 document.addEventListener('mouseover', function(e) {
     if (e.target.classList.contains('sup-opt')) e.target.style.background = '#f1f5f9';
+    if (e.target.classList.contains('acc-opt')) e.target.style.background = '#f1f5f9';
 });
 document.addEventListener('mouseout', function(e) {
     if (e.target.classList.contains('sup-opt')) e.target.style.background = '';
+    if (e.target.classList.contains('acc-opt')) e.target.style.background = '';
 });
 
 function updateTxPreview() {
@@ -870,10 +939,11 @@ function updateTxPreview() {
     }
 
     // Expense / Supplies Account Title
-    const expSelect = document.getElementById('txExpenseAccountId');
-    let expName = 'Expense / Supplies';
-    if (expSelect && expSelect.options.length > 0 && expSelect.selectedIndex >= 0) {
-        expName = expSelect.options[expSelect.selectedIndex].text.replace(/^[0-9-]+\s*-\s*/, '').replace(/\s*\([^)]*\)$/, '') || 'Expense / Supplies';
+    const expInput = document.getElementById('txExpenseAccountId');
+    let expName = expInput.dataset.selectedName || 'Expense / Supplies';
+    if (!expName) {
+        const selectedOpt = document.querySelector('#txAccDropdown .acc-opt[data-id="' + expInput.value + '"]');
+        if (selectedOpt) expName = selectedOpt.dataset.name;
     }
 
     const linesBody = document.getElementById('txPreviewLines');
