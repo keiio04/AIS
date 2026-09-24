@@ -56,7 +56,6 @@ $pageNames = [
     'financial_statements' => 'Financial Statements',
     'chart_of_accounts' => 'Chart of Accounts',
     'company_setup' => 'Company Setup',
-    'trash_bin' => 'Trash Bin',
     'customers' => 'Customers',
     'suppliers' => 'Suppliers',
     'employees' => 'Employees',
@@ -302,15 +301,6 @@ $showTopSearch = !in_array($current_page, $hideTopSearchPages, true);
         <?php endif; ?>
 
 
-
-        <?php if (!defined('IS_ADMIN_PANEL') && ($userRole !== 'Instructor' || is_view_only())): ?>
-        <div style="padding: 0 0.75rem; padding-top: 0.5rem; pointer-events: <?= $activeCompanyId ? 'auto' : 'none' ?>; opacity: <?= $activeCompanyId ? '1' : '0.5' ?>;">
-            <a href="<?= BASE_URL ?>pages/trash_bin.php" class="nav-item <?= $current_page==='trash_bin'?'active':'' ?>" style="margin-bottom: 0;">
-                <i data-lucide="trash-2" style="width: 17px; height: 17px;"></i>
-                <span>Trash Bin</span>
-            </a>
-        </div>
-        <?php endif; ?>
 
         <div class="sidebar-footer">
             <div class="flex items-center justify-between">

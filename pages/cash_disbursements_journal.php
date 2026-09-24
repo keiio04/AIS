@@ -436,37 +436,7 @@ require_once '../includes/header.php';
                     </td>
                     <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
                     <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
-                    <td class="text-center" style="vertical-align: top;">
-                        <?php if ($isFirst): ?>
-                        <div class="flex gap-1" style="justify-content: center; padding-top: 2px;">
-                            <button type="button" style="background: none; border: none; cursor: pointer; color: var(--primary-color);" title="Edit Entry" onclick='openEditModal(<?= json_encode([
-                                "id" => $tx['id'],
-                                "date" => $tx['date'],
-                                "reference_no" => $tx['reference_no'],
-                                "description" => $tx['description'],
-                                "entity_id" => !empty($tx['employee_id']) ? $tx['employee_id'] : $tx['entity_id'],
-                                "entity_type" => !empty($tx['employee_id']) ? 'employee' : $tx['entity_type'],
-                                "entity_name" => $tx['entity_name'],
-                                "lines" => array_map(function($l) {
-                                    return [
-                                        "account_id" => $l['account_id'],
-                                        "debit" => $l['debit'],
-                                        "credit" => $l['credit'],
-                                    ];
-                                }, $lines)
-                            ]) ?>)'>
-                                <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
-                            </button>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('Move this entry to Trash Bin?');">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="id" value="<?= $tx['id'] ?>">
-                                <button type="submit" style="background: none; border: none; cursor: pointer; color: #ef4444;" title="Move to Trash">
-                                    <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
-                                </button>
-                            </form>
-                        </div>
-                        <?php endif; ?>
-                    </td>
+                    <td class="text-center" style="vertical-align: top;"></td>
                 </tr>
                 <?php endforeach; ?>
                 <?php endforeach; ?>

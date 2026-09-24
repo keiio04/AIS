@@ -81,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $credits = $_POST['credit'] ?? [];
 
         if ($action === 'edit_entry') {
-            $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND journal_id = 'GJ'");
+            $check = $db->prepare("SELECT id FROM journal_entries WHERE id = ? AND company_id = ? AND journal_id = 'GJ'");
             $check->bind_param('ii', $entry_id, $company_id);
             $check->execute();
             if (!$check->get_result()->fetch_assoc()) {
@@ -155,18 +155,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     } elseif ($_POST['action'] === 'delete') {
         $delete_id = (int)$_POST['id'];
-        $stmtDel = $db->prepare("UPDATE journal_entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ? AND journal_id = 'GJ'");
-        $stmtDel->bind_param('ii', $delete_id, $company_id);
-        $stmtDel->execute();
-        
-        $user_id = $_SESSION['user_id'];
-        $log_action = "Moved Journal Entry #$delete_id to Trash";
-        $stmtLog = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
-        $stmtLog->bind_param('iis', $company_id, $user_id, $log_action);
-        $stmtLog->execute();
-        
-        header("Location: journal_entries.php");
-        exit;
+
+        $db->begin_transaction();
+        try {
+            $stmtDelLines = $db->prepare("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?");
+            $stmtDelLines->bind_param('i', $delete_id);
+            $stmtDelLines->execute();
+
+            $stmtDel = $db->prepare("DELETE FROM journal_entries WHERE id = ? AND company_id = ? AND journal_id = 'GJ'");
+            $stmtDel->bind_param('ii', $delete_id, $company_id);
+            $stmtDel->execute();
+
+            $user_id = $_SESSION['user_id'];
+            $log_action = "Deleted Journal Entry #$delete_id";
+            $stmtLog = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
+            $stmtLog->bind_param('iis', $company_id, $user_id, $log_action);
+            $stmtLog->execute();
+
+            $db->commit();
+        } catch (Exception $e) {
+            $db->rollback();
+            $error = "Failed to delete entry: " . $e->getMessage();
+        }
+
+        if (!isset($error)) {
+            header("Location: journal_entries.php");
+            exit;
+        }
     }
 }
 
@@ -204,7 +219,7 @@ $query = "
     FROM journal_entries e
     LEFT JOIN customers c ON e.entity_id = c.id AND e.entity_type = 'customer'
     LEFT JOIN suppliers s ON e.entity_id = s.id AND e.entity_type = 'supplier'
-    WHERE e.company_id = ? AND e.deleted_at IS NULL AND e.journal_id = 'GJ' $searchSql
+    WHERE e.company_id = ? AND e.journal_id = 'GJ' $searchSql
     ORDER BY e.date DESC, e.id DESC
 ";
 $stmt = $db->prepare($query);
@@ -318,37 +333,7 @@ require_once '../includes/header.php';
                     </td>
                     <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['debit'] > 0 ? '₱'.number_format($line['debit'], 2) : '' ?></td>
                     <td class="text-right" style="white-space: nowrap; font-variant-numeric: tabular-nums;"><?= $line['credit'] > 0 ? '₱'.number_format($line['credit'], 2) : '' ?></td>
-                    <td class="text-center" style="vertical-align: top;">
-                        <?php if ($isFirst): ?>
-                        <div class="flex gap-1" style="justify-content: center; padding-top: 2px;">
-                            <button type="button" style="background: none; border: none; cursor: pointer; color: var(--primary-color);" title="Edit Entry" onclick='openEditModal(<?= json_encode([
-                                "id" => $tx['id'],
-                                "date" => $tx['date'],
-                                "reference_no" => $tx['reference_no'],
-                                "description" => $tx['description'],
-                                "entity_id" => $tx['entity_id'],
-                                "entity_type" => $tx['entity_type'],
-                                "entity_name" => $tx['entity_name'],
-                                "lines" => array_map(function($l) {
-                                    return [
-                                        "account_id" => $l['account_id'],
-                                        "debit" => $l['debit'],
-                                        "credit" => $l['credit'],
-                                    ];
-                                }, $lines)
-                            ]) ?>)'>
-                                <i data-lucide="edit-2" style="width:14px;height:14px;"></i>
-                            </button>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('Move this entry to Trash Bin?');">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="id" value="<?= $tx['id'] ?>">
-                                <button type="submit" style="background: none; border: none; cursor: pointer; color: #ef4444;" title="Move to Trash">
-                                    <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
-                                </button>
-                            </form>
-                        </div>
-                        <?php endif; ?>
-                    </td>
+                    <td class="text-center" style="vertical-align: top;"></td>
                 </tr>
                 <?php endforeach; ?>
                 <?php endforeach; ?>
