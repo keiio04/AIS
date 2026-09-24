@@ -537,7 +537,7 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
 <!-- Customer Transaction History Modal -->
 <div id="historyModal" class="modal-overlay hidden">
-    <div class="modal" style="width: 680px; max-width: 95vw;">
+    <div class="modal" style="width: 980px; max-width: 96vw;">
         <div class="modal-header" style="padding: 0.65rem 1rem;">
             <div>
                 <h2 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
@@ -566,7 +566,7 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     <i data-lucide="file-text" style="width: 13px; height: 13px; vertical-align: -2px;"></i> Sales Invoices
                 </h3>
                 <div class="table-container" style="margin-bottom: 1rem;">
-                    <table class="table compact-table">
+                    <table class="table compact-table" style="width: 100%;">
                         <thead>
                             <tr>
                                 <th style="min-width: 90px;">Date</th>
@@ -584,7 +584,7 @@ $customers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     <i data-lucide="banknote" style="width: 13px; height: 13px; vertical-align: -2px;"></i> Payments
                 </h3>
                 <div class="table-container">
-                    <table class="table compact-table">
+                    <table class="table compact-table" style="width: 100%;">
                         <thead>
                             <tr>
                                 <th style="min-width: 90px;">Date</th>
@@ -691,27 +691,52 @@ function openHistoryModal(customerId, customerLabel) {
     document.getElementById('historyLoading').style.display = 'block';
     document.getElementById('historyContent').style.display = 'none';
     document.getElementById('historyError').style.display = 'none';
+    document.getElementById('historyError').innerText = '';
     document.getElementById('historyBalance').innerText = '₱0.00';
 
-    fetch('customer_history_api.php?id=' + encodeURIComponent(customerId))
-        .then(r => r.json())
+    fetch('customer_history_api.php?id=' + encodeURIComponent(customerId), {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+    })
+        .then(async response => {
+            const raw = await response.text();
+            let data;
+
+            try {
+                data = JSON.parse(raw);
+            } catch (err) {
+                console.error('Invalid customer history response:', raw);
+                throw new Error('Customer history returned an invalid response.');
+            }
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Unable to load transaction history.');
+            }
+
+            return data;
+        })
         .then(data => {
             document.getElementById('historyLoading').style.display = 'none';
-            if (!data.success) {
-                document.getElementById('historyError').style.display = 'block';
-                document.getElementById('historyError').innerText = data.error || 'Unable to load transaction history.';
-                return;
-            }
             document.getElementById('historyContent').style.display = 'block';
-            document.getElementById('historyBalance').innerText = '₱' + Number(data.outstanding_balance).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            renderHistoryRows('historyInvoiceRows', data.invoices);
-            renderHistoryRows('historyPaymentRows', data.payments);
+
+            const balance = Number(data.outstanding_balance || 0);
+            document.getElementById('historyBalance').innerText = '₱' + balance.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+
+            renderHistoryRows('historyInvoiceRows', data.invoices || []);
+            renderHistoryRows('historyPaymentRows', data.payments || []);
+
             if (window.lucide) lucide.createIcons();
         })
-        .catch(() => {
+        .catch(error => {
+            console.error('Customer history error:', error);
             document.getElementById('historyLoading').style.display = 'none';
+            document.getElementById('historyContent').style.display = 'none';
             document.getElementById('historyError').style.display = 'block';
-            document.getElementById('historyError').innerText = 'Unable to load transaction history.';
+            document.getElementById('historyError').innerText = error.message || 'Unable to load transaction history.';
         });
 }
 

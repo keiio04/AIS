@@ -545,7 +545,7 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
 <!-- Supplier Transaction History Modal -->
 <div id="historyModal" class="modal-overlay hidden">
-    <div class="modal" style="width: 680px; max-width: 95vw;">
+    <div class="modal" style="width: 980px; max-width: 96vw;">
         <div class="modal-header" style="padding: 0.65rem 1rem;">
             <div>
                 <h2 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
@@ -574,7 +574,7 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     <i data-lucide="file-text" style="width: 13px; height: 13px; vertical-align: -2px;"></i> Purchases
                 </h3>
                 <div class="table-container" style="margin-bottom: 1rem;">
-                    <table class="table compact-table">
+                    <table class="table compact-table" style="width: 100%;">
                         <thead>
                             <tr>
                                 <th style="min-width: 90px;">Date</th>
@@ -592,7 +592,7 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     <i data-lucide="banknote" style="width: 13px; height: 13px; vertical-align: -2px;"></i> Payments
                 </h3>
                 <div class="table-container">
-                    <table class="table compact-table">
+                    <table class="table compact-table" style="width: 100%;">
                         <thead>
                             <tr>
                                 <th style="min-width: 90px;">Date</th>
