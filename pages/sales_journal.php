@@ -73,7 +73,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'auto_sale') {
         $date        = $_POST['date'] ?? date('Y-m-d');
         $description = trim($_POST['description'] ?? '');
-        $terms       = (($_POST['terms'] ?? 'Cash') === 'Credit') ? 'Credit' : 'Cash';
+        // All sales are initially recorded as credit sales (Dr. Accounts Receivable),
+        // regardless of when or how the customer eventually pays. Cash is only recorded
+        // once the customer actually pays the invoice (see Cash Receipts Journal).
+        $terms       = 'Credit';
         $amount      = round((float)str_replace(',', '', $_POST['amount'] ?? 0), 2);
         $rev_acc_id  = (int)($_POST['revenue_account_id'] ?? 0);
         $entity_id   = !empty($_POST['entity_id']) ? (int)$_POST['entity_id'] : null;
@@ -91,9 +94,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $output_vat = round($amount * 0.12, 2);
                 $total      = round($amount + $output_vat, 2);
             }
-            $debit_acct = ($terms === 'Cash') ? $stdAccts['cash'] : $stdAccts['ar'];
+            // Always debit Accounts Receivable on the sale itself — never Cash directly.
+            $debit_acct = $stdAccts['ar'];
             if (!$debit_acct) {
-                $error = "Could not find " . ($terms === 'Cash' ? 'Cash on Hand' : 'Accounts Receivable') . " account. Please add it to your Chart of Accounts.";
+                $error = "Could not find Accounts Receivable account. Please add it to your Chart of Accounts.";
             }
         }
 
@@ -111,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 $zero  = 0.0;
                 $stmtL = $db->prepare("INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)");
-                // Dr. Cash on Hand or Accounts Receivable
+                // Dr. Accounts Receivable (all sales start as credit sales)
                 $stmtL->bind_param('iidd', $entry_id, $debit_acct['id'], $total, $zero);
                 $stmtL->execute();
                 // Cr. Service Revenue (net amount)
@@ -125,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
 
                 $user_id    = $_SESSION['user_id'];
-                $log_action = "Auto-posted Sales Entry | Ref: {$ref_no} | {$terms} Sale | Revenue: ₱" . number_format($amount, 2) . " | Total: ₱" . number_format($total, 2);
+                $log_action = "Auto-posted Sales Entry | Ref: {$ref_no} | Credit Sale (A/R) | Revenue: ₱" . number_format($amount, 2) . " | Total: ₱" . number_format($total, 2);
                 $logStmt = $db->prepare("INSERT INTO activity_logs (company_id, user_id, action) VALUES (?, ?, ?)");
                 $logStmt->bind_param('iis', $company_id, $user_id, $log_action);
                 $logStmt->execute();
@@ -365,18 +369,15 @@ require_once '../includes/header.php';
                 <form id="auto-entry-form" method="POST">
                     <input type="hidden" name="action" value="auto_sale">
 
-                    <!-- Terms toggle -->
+                    <!-- All sales are recorded as credit sales (Dr. Accounts Receivable) at point of sale.
+                         Cash is only recorded once the customer actually pays — see Cash Receipts Journal. -->
                     <div style="margin-bottom:1.25rem;">
                         <label class="form-label" style="margin-bottom:0.5rem;">Terms</label>
-                        <div style="display:flex; gap:0.5rem;">
-                            <button type="button" id="termsCashBtn" class="btn btn-primary" onclick="setTerms('Cash')" style="flex:1; font-size:0.875rem;">
-                                <i data-lucide="banknote" style="width:14px;height:14px;"></i>&nbsp; Cash Sale
-                            </button>
-                            <button type="button" id="termsCreditBtn" class="btn btn-secondary" onclick="setTerms('Credit')" style="flex:1; font-size:0.875rem;">
-                                <i data-lucide="credit-card" style="width:14px;height:14px;"></i>&nbsp; Credit Sale
-                            </button>
+                        <div style="display:flex; align-items:center; gap:0.5rem; padding:0.55rem 0.75rem; border-radius:8px; background:var(--bg-secondary); border:1px solid var(--border-color); font-size:0.875rem; color:var(--text-secondary);">
+                            <i data-lucide="credit-card" style="width:14px;height:14px;flex-shrink:0;"></i>
+                            <span>Credit Sale &mdash; recorded to Accounts Receivable. Payment will be logged separately when received via Cash Receipts.</span>
                         </div>
-                        <input type="hidden" name="terms" id="termsInput" value="Cash">
+                        <input type="hidden" name="terms" id="termsInput" value="Credit">
                     </div>
 
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
@@ -430,7 +431,7 @@ require_once '../includes/header.php';
                             </tr></thead>
                             <tbody>
                                 <tr>
-                                    <td style="padding:0.4rem 0.5rem;font-weight:500;" id="prev-debit-name">Cash on Hand</td>
+                                    <td style="padding:0.4rem 0.5rem;font-weight:500;" id="prev-debit-name">Accounts Receivable</td>
                                     <td style="text-align:right;padding:0.4rem 0.5rem;font-weight:700;color:#22c55e;font-variant-numeric:tabular-nums;" id="prev-debit-amt">&#8369;0.00</td>
                                     <td style="text-align:right;padding:0.4rem 0.5rem;color:var(--text-muted);">—</td>
                                 </tr>
@@ -1097,7 +1098,6 @@ function openModal() {
     document.getElementById('autoEntitySearch').value = '';
     document.getElementById('autoEntityId').value = '';
     document.getElementById('autoEntityType').value = 'customer';
-    setTerms('Cash');
     computePreview();
     const modal = document.getElementById('entryModal');
     modal.classList.remove('hidden');
@@ -1137,21 +1137,6 @@ document.getElementById('entryModal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
 });
 
-// ── Terms toggle ─────────────────────────────────────────────────
-function setTerms(terms) {
-    document.getElementById('termsInput').value = terms;
-    const cashBtn   = document.getElementById('termsCashBtn');
-    const creditBtn = document.getElementById('termsCreditBtn');
-    if (terms === 'Cash') {
-        cashBtn.className = 'btn btn-primary';
-        creditBtn.className = 'btn btn-secondary';
-    } else {
-        cashBtn.className = 'btn btn-secondary';
-        creditBtn.className = 'btn btn-primary';
-    }
-    computePreview();
-}
-
 // ── Live auto-entry preview ─────────────────────────────────────
 const SJ_IS_TAX = <?= $companyIsTaxRegistered ? 'true' : 'false' ?>;
 
@@ -1160,7 +1145,6 @@ function fmtPeso(n) {
 }
 
 function computePreview() {
-    const terms  = document.getElementById('termsInput').value;
     const amount = parseFloat(document.getElementById('autoAmount').value) || 0;
     const revSel = document.getElementById('revenueAccountId');
     const revName = revSel.selectedIndex > 0
@@ -1170,7 +1154,7 @@ function computePreview() {
     const vat   = (SJ_IS_TAX && amount > 0) ? Math.round(amount * 0.12 * 100) / 100 : 0;
     const total = Math.round((amount + vat) * 100) / 100;
 
-    document.getElementById('prev-debit-name').innerText = terms === 'Cash' ? 'Cash on Hand' : 'Accounts Receivable';
+    document.getElementById('prev-debit-name').innerText = 'Accounts Receivable';
     document.getElementById('prev-debit-amt').innerText  = total > 0 ? fmtPeso(total) : '\u20b10.00';
     document.getElementById('prev-rev-name').innerText   = revName;
     document.getElementById('prev-rev-amt').innerText    = amount > 0 ? fmtPeso(amount) : '\u20b10.00';
@@ -1215,10 +1199,6 @@ function selectAutoEntity(id, type, name, terms) {
     document.getElementById('autoEntityType').value = type;
     document.getElementById('autoEntitySearch').value = name;
     document.getElementById('auto-entity-dd').style.display = 'none';
-    // Auto-set Cash/Credit toggle from the customer's saved Payment Terms
-    if (type === 'customer' && (terms === 'Cash' || terms === 'Credit')) {
-        setTerms(terms);
-    }
 }
 function onAutoEntityKeydown(e) {
     if (e.key === 'Escape') document.getElementById('auto-entity-dd').style.display = 'none';
