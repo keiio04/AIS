@@ -283,8 +283,12 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 <tr><td colspan="10" class="text-center text-secondary" style="padding: 2rem; font-size: 0.8125rem;">No suppliers found.</td></tr>
                 <?php else: foreach($suppliers as $s): ?>
                 <tr>
-                    <td style="font-family: monospace; font-size: 0.78rem; color: var(--primary-color);"><?= htmlspecialchars($s['code'] ?: '—') ?></td>
-                    <td style="font-size: 0.8125rem;"><?= htmlspecialchars($s['name']) ?></td>
+                    <td style="font-family: monospace; font-size: 0.78rem; color: var(--text-primary);"><?= htmlspecialchars($s['code'] ?: '—') ?></td>
+                    <td style="font-size: 0.8125rem;">
+                        <a href="javascript:void(0)" onclick="openHistoryModal(<?= (int)$s['id'] ?>, <?= htmlspecialchars(json_encode(($s['code'] ? '[' . $s['code'] . '] ' : '') . $s['name']), ENT_QUOTES, 'UTF-8') ?>)" title="View transaction history" style="color: var(--primary-color); text-decoration: none; font-weight: 500;">
+                            <?= htmlspecialchars($s['name']) ?>
+                        </a>
+                    </td>
                     <td style="font-size: 0.8125rem; color: var(--text-secondary);"><?= htmlspecialchars($s['contact_person'] ?: '—') ?></td>
                     <td style="font-size: 0.78rem; line-height: 1.3;">
                         <?= htmlspecialchars($s['email'] ?: '—') ?><br>
@@ -539,6 +543,78 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     </div>
 </div>
 
+<!-- Supplier Transaction History Modal -->
+<div id="historyModal" class="modal-overlay hidden">
+    <div class="modal" style="width: 680px; max-width: 95vw;">
+        <div class="modal-header" style="padding: 0.65rem 1rem;">
+            <div>
+                <h2 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
+                    <i data-lucide="history" style="width: 16px; height: 16px; color: var(--primary-color);"></i>
+                    <span id="historySupName">Transaction History</span>
+                </h2>
+                <p class="text-xs text-muted mt-1">Purchases, payments, and running balance for this supplier.</p>
+            </div>
+            <button class="icon-btn" onclick="closeHistoryModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+        </div>
+        <div class="modal-body" style="padding: 0.75rem 1rem; max-height: 65vh; overflow-y: auto;">
+
+            <div style="display: flex; gap: 0.6rem; margin-bottom: 0.75rem;">
+                <div style="flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem 0.75rem;">
+                    <div style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Outstanding Balance</div>
+                    <div id="historyBalance" style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">₱0.00</div>
+                </div>
+            </div>
+
+            <div id="historyLoading" style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
+                Loading transaction history…
+            </div>
+
+            <div id="historyContent" style="display: none;">
+                <h3 style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary); margin: 0 0 0.4rem;">
+                    <i data-lucide="file-text" style="width: 13px; height: 13px; vertical-align: -2px;"></i> Purchases
+                </h3>
+                <div class="table-container" style="margin-bottom: 1rem;">
+                    <table class="table compact-table">
+                        <thead>
+                            <tr>
+                                <th style="min-width: 90px;">Date</th>
+                                <th style="min-width: 130px;">Reference No.</th>
+                                <th>Description</th>
+                                <th class="text-right" style="min-width: 100px;">Amount</th>
+                                <th class="text-center" style="min-width: 90px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyPurchaseRows"></tbody>
+                    </table>
+                </div>
+
+                <h3 style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary); margin: 0 0 0.4rem;">
+                    <i data-lucide="banknote" style="width: 13px; height: 13px; vertical-align: -2px;"></i> Payments
+                </h3>
+                <div class="table-container">
+                    <table class="table compact-table">
+                        <thead>
+                            <tr>
+                                <th style="min-width: 90px;">Date</th>
+                                <th style="min-width: 130px;">Reference No.</th>
+                                <th>Description</th>
+                                <th class="text-right" style="min-width: 100px;">Amount</th>
+                                <th class="text-center" style="min-width: 90px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyPaymentRows"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="historyError" style="display: none; background: #fee2e2; color: #991b1b; padding: 0.75rem; border-radius: 6px; font-size: 0.8125rem;"></div>
+        </div>
+        <div class="modal-footer" style="padding: 0.55rem 1rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeHistoryModal()" style="font-size: 0.78rem; padding: 0.3rem 0.75rem;">Close</button>
+        </div>
+    </div>
+</div>
+
 <script>
 function openModal(s = null) {
     const modal = document.getElementById('supModal');
@@ -580,6 +656,77 @@ function closeModal() {
 }
 document.getElementById('supModal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
+});
+
+// Supplier Transaction History Modal
+function statusBadge(status) {
+    const colors = {
+        'Outstanding': ['#fef9c3', '#a16207'],
+        'Paid':        ['#dcfce7', '#15803d'],
+        'Voided':      ['#f1f5f9', '#64748b']
+    };
+    const [bg, fg] = colors[status] || ['#f1f5f9', '#64748b'];
+    return `<span class="badge" style="font-size: 0.65rem; padding: 2px 7px; background:${bg}; color:${fg};">${status}</span>`;
+}
+
+function renderHistoryRows(tbodyId, rows) {
+    const tbody = document.getElementById(tbodyId);
+    if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary" style="padding: 1rem; font-size: 0.8125rem;">None recorded.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => `
+        <tr>
+            <td style="font-size: 0.78rem;">${r.date}</td>
+            <td style="font-family: monospace; font-size: 0.75rem;">${r.reference_no}</td>
+            <td style="font-size: 0.78rem; color: var(--text-secondary);">${r.description ? r.description.replace(/</g, '&lt;') : '—'}</td>
+            <td class="text-right" style="font-weight: 600; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱${Number(r.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+            <td class="text-center">${statusBadge(r.status)}</td>
+        </tr>
+    `).join('');
+}
+
+function openHistoryModal(supplierId, supplierLabel) {
+    const modal = document.getElementById('historyModal');
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+
+    document.getElementById('historySupName').innerText = supplierLabel || 'Transaction History';
+    document.getElementById('historyLoading').style.display = 'block';
+    document.getElementById('historyContent').style.display = 'none';
+    document.getElementById('historyError').style.display = 'none';
+    document.getElementById('historyBalance').innerText = '₱0.00';
+
+    fetch('supplier_history_api.php?id=' + encodeURIComponent(supplierId))
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('historyLoading').style.display = 'none';
+            if (!data.success) {
+                document.getElementById('historyError').style.display = 'block';
+                document.getElementById('historyError').innerText = data.error || 'Unable to load transaction history.';
+                return;
+            }
+            document.getElementById('historyContent').style.display = 'block';
+            document.getElementById('historyBalance').innerText = '₱' + Number(data.outstanding_balance).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            renderHistoryRows('historyPurchaseRows', data.purchases);
+            renderHistoryRows('historyPaymentRows', data.payments);
+            if (window.lucide) lucide.createIcons();
+        })
+        .catch(() => {
+            document.getElementById('historyLoading').style.display = 'none';
+            document.getElementById('historyError').style.display = 'block';
+            document.getElementById('historyError').innerText = 'Unable to load transaction history.';
+        });
+}
+
+function closeHistoryModal() {
+    const modal = document.getElementById('historyModal');
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+}
+document.getElementById('historyModal').addEventListener('click', function(e) {
+    if (e.target === this) closeHistoryModal();
 });
 
 // Transaction Modal Handlers for Suppliers
