@@ -558,61 +558,61 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
 <!-- Supplier Transaction History Modal -->
 <div id="historyModal" class="modal-overlay hidden">
-    <div class="modal" style="width: 680px; max-width: 95vw;">
-        <div class="modal-header" style="padding: 0.65rem 1rem;">
+    <div class="modal" style="width: 960px; max-width: 95vw;">
+        <div class="modal-header" style="padding: 0.75rem 1.25rem;">
             <div>
-                <h2 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
-                    <i data-lucide="history" style="width: 16px; height: 16px; color: var(--primary-color);"></i>
+                <h2 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
+                    <i data-lucide="history" style="width: 18px; height: 18px; color: var(--primary-color);"></i>
                     <span id="historySupName">Transaction History</span>
                 </h2>
                 <p class="text-xs text-muted mt-1">Purchases, payments, and running balance for this supplier.</p>
             </div>
-            <button class="icon-btn" onclick="closeHistoryModal()"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+            <button class="icon-btn" onclick="closeHistoryModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
         </div>
-        <div class="modal-body" style="padding: 0.75rem 1rem; max-height: 65vh; overflow-y: auto;">
+        <div class="modal-body" style="padding: 1rem 1.25rem; max-height: 72vh; overflow-y: auto;">
 
-            <div style="display: flex; gap: 0.6rem; margin-bottom: 0.75rem;">
-                <div style="flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem 0.75rem;">
-                    <div style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Outstanding Balance</div>
-                    <div id="historyBalance" style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">₱0.00</div>
+            <div style="display: flex; gap: 0.6rem; margin-bottom: 0.85rem;">
+                <div style="flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem 1rem;">
+                    <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;">Outstanding Balance</div>
+                    <div id="historyBalance" style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin-top: 0.25rem;">₱0.00</div>
                 </div>
             </div>
 
-            <div id="historyLoading" style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
+            <div id="historyLoading" style="text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem;">
                 Loading transaction history…
             </div>
 
             <div id="historyContent" style="display: none;">
-                <h3 style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary); margin: 0 0 0.4rem;">
-                    <i data-lucide="file-text" style="width: 13px; height: 13px; vertical-align: -2px;"></i> Purchases
+                <h3 style="font-size: 0.85rem; font-weight: 700; color: var(--text-primary); margin: 0 0 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+                    <i data-lucide="file-text" style="width: 14px; height: 14px; color: var(--primary-color);"></i> Purchases
                 </h3>
-                <div class="table-container" style="margin-bottom: 1rem;">
-                    <table class="table compact-table">
+                <div class="table-container" style="margin-bottom: 1.25rem; overflow-x: auto;">
+                    <table class="table compact-table" style="min-width: 100%; width: 100%;">
                         <thead>
                             <tr>
-                                <th style="min-width: 90px;">Date</th>
-                                <th style="min-width: 130px;">Reference No.</th>
+                                <th style="width: 110px;">Date</th>
+                                <th style="width: 140px;">Reference No.</th>
                                 <th>Description</th>
-                                <th class="text-right" style="min-width: 100px;">Amount</th>
-                                <th class="text-center" style="min-width: 90px;">Status</th>
+                                <th class="text-right" style="width: 130px;">Amount</th>
+                                <th class="text-center" style="width: 120px;">Status</th>
                             </tr>
                         </thead>
                         <tbody id="historyPurchaseRows"></tbody>
                     </table>
                 </div>
 
-                <h3 style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary); margin: 0 0 0.4rem;">
-                    <i data-lucide="banknote" style="width: 13px; height: 13px; vertical-align: -2px;"></i> Payments
+                <h3 style="font-size: 0.85rem; font-weight: 700; color: var(--text-primary); margin: 0 0 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+                    <i data-lucide="banknote" style="width: 14px; height: 14px; color: #16a34a;"></i> Payments
                 </h3>
-                <div class="table-container">
-                    <table class="table compact-table">
+                <div class="table-container" style="overflow-x: auto;">
+                    <table class="table compact-table" style="min-width: 100%; width: 100%;">
                         <thead>
                             <tr>
-                                <th style="min-width: 90px;">Date</th>
-                                <th style="min-width: 130px;">Reference No.</th>
+                                <th style="width: 110px;">Date</th>
+                                <th style="width: 140px;">Reference No.</th>
                                 <th>Description</th>
-                                <th class="text-right" style="min-width: 100px;">Amount</th>
-                                <th class="text-center" style="min-width: 90px;">Status</th>
+                                <th class="text-right" style="width: 130px;">Amount</th>
+                                <th class="text-center" style="width: 120px;">Status</th>
                             </tr>
                         </thead>
                         <tbody id="historyPaymentRows"></tbody>
@@ -622,8 +622,8 @@ $suppliers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
             <div id="historyError" style="display: none; background: #fee2e2; color: #991b1b; padding: 0.75rem; border-radius: 6px; font-size: 0.8125rem;"></div>
         </div>
-        <div class="modal-footer" style="padding: 0.55rem 1rem;">
-            <button type="button" class="btn btn-secondary" onclick="closeHistoryModal()" style="font-size: 0.78rem; padding: 0.3rem 0.75rem;">Close</button>
+        <div class="modal-footer" style="padding: 0.65rem 1.25rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeHistoryModal()" style="font-size: 0.8125rem; padding: 0.35rem 1rem;">Close</button>
         </div>
     </div>
 </div>
@@ -672,17 +672,23 @@ document.getElementById('supModal').addEventListener('click', function(e) {
 });
 
 // Supplier Transaction History Modal
-function statusBadge(status) {
+function statusBadge(status, isPayment = false) {
+    let displayStatus = status;
+    if (!isPayment && (status === 'Paid' || status === 'Fully Paid')) {
+        displayStatus = 'Fully Paid';
+    }
     const colors = {
-        'Outstanding': ['#fef9c3', '#a16207'],
-        'Paid':        ['#dcfce7', '#15803d'],
-        'Voided':      ['#f1f5f9', '#64748b']
+        'Outstanding':    ['#fef9c3', '#a16207'],
+        'Partially Paid': ['#e0f2fe', '#0369a1'],
+        'Paid':           ['#dcfce7', '#15803d'],
+        'Fully Paid':     ['#dcfce7', '#15803d'],
+        'Voided':         ['#f1f5f9', '#64748b']
     };
-    const [bg, fg] = colors[status] || ['#f1f5f9', '#64748b'];
-    return `<span class="badge" style="font-size: 0.65rem; padding: 2px 7px; background:${bg}; color:${fg};">${status}</span>`;
+    const [bg, fg] = colors[displayStatus] || colors[status] || ['#f1f5f9', '#64748b'];
+    return `<span class="badge" style="font-size: 0.68rem; padding: 2px 8px; background:${bg}; color:${fg}; font-weight: 700; white-space: nowrap; border-radius: 99px;">${displayStatus}</span>`;
 }
 
-function renderHistoryRows(tbodyId, rows) {
+function renderHistoryRows(tbodyId, rows, isPayment = false) {
     const tbody = document.getElementById(tbodyId);
     if (!rows || rows.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary" style="padding: 1rem; font-size: 0.8125rem;">None recorded.</td></tr>';
@@ -690,11 +696,11 @@ function renderHistoryRows(tbodyId, rows) {
     }
     tbody.innerHTML = rows.map(r => `
         <tr>
-            <td style="font-size: 0.78rem;">${r.date}</td>
-            <td style="font-family: monospace; font-size: 0.75rem;">${r.reference_no}</td>
+            <td style="font-size: 0.78rem; white-space: nowrap;">${r.date}</td>
+            <td style="font-family: monospace; font-size: 0.75rem; white-space: nowrap;">${r.reference_no}</td>
             <td style="font-size: 0.78rem; color: var(--text-secondary);">${r.description ? r.description.replace(/</g, '&lt;') : '—'}</td>
-            <td class="text-right" style="font-weight: 600; font-size: 0.8125rem; font-variant-numeric: tabular-nums;">₱${Number(r.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-            <td class="text-center">${statusBadge(r.status)}</td>
+            <td class="text-right" style="font-weight: 600; font-size: 0.8125rem; font-variant-numeric: tabular-nums; white-space: nowrap;">₱${Number(r.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+            <td class="text-center" style="white-space: nowrap;">${statusBadge(r.status, isPayment)}</td>
         </tr>
     `).join('');
 }

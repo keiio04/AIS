@@ -791,10 +791,6 @@ require_once '../includes/header.php';
 
                     <!-- Auto-Generated Entry Preview -->
                     <div style="border:1px solid var(--border-color);border-radius:10px;padding:1rem;background:var(--bg-secondary);">
-                        <div style="font-size:0.71rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#0284c7;margin-bottom:0.7rem;display:flex;align-items:center;gap:0.4rem;">
-                            <i data-lucide="zap" style="width:13px;height:13px;"></i>
-                            Auto-Generated Journal Entry &mdash; Debits Accounts Receivable &amp; Credits Revenue
-                        </div>
                         <table style="width:100%;font-size:0.875rem;border-collapse:collapse;">
                             <thead><tr style="border-bottom:1px solid var(--border-color);">
                                 <th style="text-align:left;padding:0.3rem 0.5rem;font-size:0.72rem;font-weight:700;color:var(--text-muted);">Account</th>
@@ -1050,10 +1046,6 @@ require_once '../includes/header.php';
 
                 <!-- Live Accounting Entry Preview -->
                 <div style="border:1px solid #bbf7d0; border-radius:8px; padding:0.85rem; background:#f0fdf4;">
-                    <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#15803d; margin-bottom:0.5rem; display:flex; align-items:center; gap:0.4rem;">
-                        <i data-lucide="zap" style="width:13px;height:13px;"></i>
-                        Accounting Entry Preview (Posts to Cash Receipts Journal):
-                    </div>
                     <div style="font-size:0.84rem; font-family:monospace; line-height:1.6;">
                         <div style="display:flex; justify-content:space-between;">
                             <span><strong>Dr.</strong> <span id="payPrevDrName">Cash on Hand</span></span>

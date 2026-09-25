@@ -532,10 +532,6 @@ require_once '../includes/header.php';
 
                     <!-- Auto-Generated Entry Preview -->
                     <div style="border:1px solid var(--border-color);border-radius:10px;padding:1rem;background:var(--bg-secondary);">
-                        <div style="font-size:0.71rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#e11d48;margin-bottom:0.7rem;display:flex;align-items:center;gap:0.4rem;">
-                            <i data-lucide="zap" style="width:13px;height:13px;"></i>
-                            Auto-Generated Journal Entry &mdash; Posts to Cash Disbursements Journal (CDJ)
-                        </div>
                         <table style="width:100%;font-size:0.875rem;border-collapse:collapse;">
                             <thead><tr style="border-bottom:1px solid var(--border-color);">
                                 <th style="text-align:left;padding:0.3rem 0.5rem;font-size:0.72rem;font-weight:700;color:var(--text-muted);">Account</th>

@@ -72,6 +72,7 @@ $invoicesRes = $stmtInv->get_result()->fetch_all(MYSQLI_ASSOC);
 
 foreach ($invoicesRes as $inv) {
     $status = !empty($inv['deleted_at']) ? 'Voided' : $inv['status'];
+    $bal = max(0, round((float)$inv['amount'] - (float)$inv['amount_paid'], 2));
     $desc = $inv['description'] ?: 'Sales Invoice';
     if ($status === 'Cancelled') {
         if (!empty($inv['cancellation_reason'])) {
@@ -80,8 +81,11 @@ foreach ($invoicesRes as $inv) {
             $desc .= ' [Cancelled]';
         }
     } elseif ($status === 'Partially Paid') {
-        $bal = round((float)$inv['amount'] - (float)$inv['amount_paid'], 2);
         $desc .= ' (Bal: ₱' . number_format($bal, 2) . ')';
+    }
+
+    if ($status === 'Paid' || ($status !== 'Cancelled' && $status !== 'Voided' && (float)$inv['amount'] > 0 && $bal <= 0.0001)) {
+        $status = 'Fully Paid';
     }
 
     $invoices[] = [
@@ -90,7 +94,7 @@ foreach ($invoicesRes as $inv) {
         'description'   => $desc,
         'amount'        => (float)$inv['amount'],
         'amount_paid'   => (float)$inv['amount_paid'],
-        'remaining'     => max(0, round((float)$inv['amount'] - (float)$inv['amount_paid'], 2)),
+        'remaining'     => $bal,
         'status'        => $status,
     ];
 }

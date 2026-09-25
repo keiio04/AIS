@@ -320,21 +320,22 @@ function sl_render_ar_ledger_table($customerName, $customerCode, $controlAccount
                     <td style="padding: 0.5rem 0.65rem; text-align: center; white-space: nowrap;">
                         <?php if (!empty($line['inv_status'])): 
                             $status = $line['inv_status'];
+                            $displayStatus = ($status === 'Paid') ? 'Fully Paid' : $status;
                             $bg = match($status) {
                                 'Open'           => '#fef9c3',
                                 'Partially Paid' => '#dbeafe',
-                                'Paid'           => '#dcfce7',
+                                'Paid', 'Fully Paid' => '#dcfce7',
                                 default          => '#f1f5f9'
                             };
                             $color = match($status) {
                                 'Open'           => '#92400e',
                                 'Partially Paid' => '#1d4ed8',
-                                'Paid'           => '#15803d',
+                                'Paid', 'Fully Paid' => '#15803d',
                                 default          => '#475569'
                             };
                         ?>
                             <span style="background: <?= $bg ?>; color: <?= $color ?>; padding: 2px 7px; border-radius: 99px; font-size: 0.68rem; font-weight: 700;">
-                                <?= htmlspecialchars($status) ?>
+                                <?= htmlspecialchars($displayStatus) ?>
                             </span>
                             <?php if ($status !== 'Paid' && isset($line['inv_remaining']) && (float)$line['inv_remaining'] > 0): ?>
                                 <div style="font-size: 0.68rem; color: #b45309; margin-top: 1px;">
