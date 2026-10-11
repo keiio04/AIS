@@ -12,6 +12,8 @@ $companies_count = $db->query("SELECT COUNT(*) FROM companies")->fetch_row()[0];
 $logs_count      = $db->query("SELECT COUNT(*) FROM activity_logs WHERE module='Authentication'")->fetch_row()[0];
 $admin_count     = $db->query("SELECT COUNT(*) FROM users WHERE role='Admin'")->fetch_row()[0];
 $instructor_count= $db->query("SELECT COUNT(*) FROM users WHERE role='Instructor'")->fetch_row()[0];
+$instructor_approved = $db->query("SELECT COUNT(*) FROM users WHERE role='Instructor' AND (status='approved' OR status IS NULL)")->fetch_row()[0];
+$instructor_pending  = $db->query("SELECT COUNT(*) FROM users WHERE role='Instructor' AND status='pending'")->fetch_row()[0];
 $student_count   = $db->query("SELECT COUNT(*) FROM users WHERE role='Student'")->fetch_row()[0];
 
 // --- Today's logins ---
@@ -268,6 +270,23 @@ $latest_users = $db->query("SELECT name, email, role, created_at FROM users ORDE
         </div>
     </div>
 
+    <?php if ($instructor_pending > 0): ?>
+    <div style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.1)); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 14px; padding: 1.25rem 1.5rem; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+        <div class="flex items-center gap-3">
+            <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(245, 158, 11, 0.2); color: #f59e0b; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <i data-lucide="shield-alert" style="width: 22px; height: 22px;"></i>
+            </div>
+            <div>
+                <div style="font-weight: 700; color: #fbbf24; font-size: 1rem;">Pending Faculty Verifications (<?= $instructor_pending ?>)</div>
+                <div style="color: #cbd5e1; font-size: 0.85rem;">One or more instructor accounts require administrator verification and approval before gaining dashboard access.</div>
+            </div>
+        </div>
+        <a href="users.php" class="btn btn-sm" style="background: #f59e0b; color: #000; font-weight: 700; text-decoration: none; padding: 0.5rem 1rem; border-radius: 8px;">
+            Review &amp; Approve &rarr;
+        </a>
+    </div>
+    <?php endif; ?>
+
     <!-- STAT CARDS -->
     <div class="adm-stats">
         <div class="adm-stat-card">
@@ -276,7 +295,7 @@ $latest_users = $db->query("SELECT name, email, role, created_at FROM users ORDE
             </div>
             <div class="adm-stat-label">Total Users</div>
             <div class="adm-stat-value"><?= $users_count ?></div>
-            <div class="adm-stat-sub"><?= $admin_count ?> Admin · <?= $instructor_count ?> Instructor · <?= $student_count ?> Student</div>
+            <div class="adm-stat-sub"><?= $admin_count ?> Admin · <?= $instructor_approved ?> Faculty<?= $instructor_pending > 0 ? ' (<span style="color:#fbbf24;font-weight:700;">'.$instructor_pending.' Pending</span>)' : '' ?> · <?= $student_count ?> Student</div>
             <div class="adm-stat-glow" style="background:#6366f1;"></div>
         </div>
         <div class="adm-stat-card">

@@ -1,5 +1,9 @@
 <?php
 require_once '../config.php';
+require_once '../includes/auth.php';
+
+// Enforce approved instructor role before accessing instructor dashboard
+require_instructor();
 
 // Redirect to unified dashboard
 $queryString = !empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '';

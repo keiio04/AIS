@@ -9,12 +9,10 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 $isLoggedIn = !empty($_SESSION['user_id']);
-$targetUrl = $isLoggedIn
-    ? BASE_URL . 'pages/dashboard.php'
-    : BASE_URL . 'auth/login.php';
-$registerUrl = $isLoggedIn
-    ? BASE_URL . 'pages/dashboard.php'
-    : BASE_URL . 'auth/login.php?mode=register';
+$userRole   = $_SESSION['user_role'] ?? '';
+$dashUrl    = ($userRole === 'Admin') ? BASE_URL . 'admin/dashboard.php' : BASE_URL . 'pages/dashboard.php';
+$targetUrl  = $isLoggedIn ? $dashUrl : BASE_URL . 'auth/login.php';
+$registerUrl = $isLoggedIn ? $dashUrl : BASE_URL . 'auth/login.php?mode=register';
 ?>
 <!DOCTYPE html>
 <html lang="en">

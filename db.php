@@ -66,6 +66,12 @@ function get_db(): mysqli {
                 `email` VARCHAR(150) NOT NULL UNIQUE,
                 `password` VARCHAR(255) NOT NULL,
                 `role` ENUM('Admin','Instructor','Student') NOT NULL DEFAULT 'Student',
+                `status` ENUM('approved','pending','rejected') NOT NULL DEFAULT 'approved',
+                `faculty_id` VARCHAR(50) NULL DEFAULT NULL,
+                `department` VARCHAR(100) NULL DEFAULT NULL,
+                `verification_notes` TEXT NULL DEFAULT NULL,
+                `verified_by` INT NULL DEFAULT NULL,
+                `verified_at` DATETIME NULL DEFAULT NULL,
                 `active_company_id` INT NULL DEFAULT NULL,
                 `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB",
@@ -270,6 +276,12 @@ function get_db(): mysqli {
         }
 
         // Auto-migrations for dynamic customer/vendor and is_taxable
+        try { $conn->query("ALTER TABLE users ADD COLUMN status ENUM('approved','pending','rejected') NOT NULL DEFAULT 'approved' AFTER role"); } catch (Exception $e) {}
+        try { $conn->query("ALTER TABLE users ADD COLUMN faculty_id VARCHAR(50) NULL AFTER status"); } catch (Exception $e) {}
+        try { $conn->query("ALTER TABLE users ADD COLUMN department VARCHAR(100) NULL AFTER faculty_id"); } catch (Exception $e) {}
+        try { $conn->query("ALTER TABLE users ADD COLUMN verification_notes TEXT NULL AFTER department"); } catch (Exception $e) {}
+        try { $conn->query("ALTER TABLE users ADD COLUMN verified_by INT NULL AFTER verification_notes"); } catch (Exception $e) {}
+        try { $conn->query("ALTER TABLE users ADD COLUMN verified_at DATETIME NULL AFTER verified_by"); } catch (Exception $e) {}
         try { $conn->query("ALTER TABLE journal_entries ADD COLUMN is_taxable TINYINT(1) NOT NULL DEFAULT 0 AFTER description"); } catch (Exception $e) {}
         try { $conn->query("ALTER TABLE journal_entries ADD COLUMN entity_id INT NULL AFTER journal_id"); } catch (Exception $e) {}
         try { $conn->query("ALTER TABLE journal_entries ADD COLUMN entity_type ENUM('customer', 'supplier') NULL AFTER entity_id"); } catch (Exception $e) {}

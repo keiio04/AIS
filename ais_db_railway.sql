@@ -6,6 +6,12 @@ CREATE TABLE IF NOT EXISTS `users` (
     `email` VARCHAR(150) NOT NULL UNIQUE,
     `password` VARCHAR(255) NOT NULL,
     `role` ENUM('Admin','Instructor','Student') NOT NULL DEFAULT 'Student',
+    `status` ENUM('approved','pending','rejected') NOT NULL DEFAULT 'approved',
+    `faculty_id` VARCHAR(50) NULL DEFAULT NULL,
+    `department` VARCHAR(100) NULL DEFAULT NULL,
+    `verification_notes` TEXT NULL DEFAULT NULL,
+    `verified_by` INT NULL DEFAULT NULL,
+    `verified_at` DATETIME NULL DEFAULT NULL,
     `active_company_id` INT NULL DEFAULT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

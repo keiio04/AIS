@@ -358,6 +358,208 @@ HTML;
     return send_smtp_mail($recipientEmail, $recipientName, $subject, $html);
 }
 
+/**
+ * Send Account Credentials Email — used when Admin creates a new user account.
+ * Sends login URL, email, temporary password, and role info.
+ */
+function send_account_credentials_email(string $recipientEmail, string $recipientName, string $plainPassword, string $role, string $status = 'approved'): array {
+    $subject = "Your TALA-AIS {$role} Account Has Been Created";
+
+    $nameDisplay = !empty($recipientName) ? htmlspecialchars($recipientName) : 'User';
+    $roleDisplay = htmlspecialchars($role);
+    $loginUrl    = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+                 . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')
+                 . rtrim(BASE_URL, '/') . '/auth/login.php';
+
+    $statusNote = '';
+    if ($role === 'Instructor' && $status === 'pending') {
+        $statusNote = '
+              <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 12px; padding: 14px 18px; margin-bottom: 20px;">
+                <div style="color: #fbbf24; font-weight: 700; font-size: 14px; margin-bottom: 4px;">⏳ Pending Faculty Verification</div>
+                <div style="color: #94a3b8; font-size: 13px; line-height: 1.5;">Your instructor account requires faculty verification by an administrator before you can access the Instructor Dashboard. You will receive another email once your account has been approved.</div>
+              </div>';
+    } elseif ($role === 'Instructor' && $status === 'approved') {
+        $statusNote = '
+              <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 12px; padding: 14px 18px; margin-bottom: 20px;">
+                <div style="color: #34d399; font-weight: 700; font-size: 14px; margin-bottom: 4px;">✅ Faculty Verified & Approved</div>
+                <div style="color: #94a3b8; font-size: 13px; line-height: 1.5;">Your faculty credentials have been verified by an administrator. You have full access to the Instructor Dashboard.</div>
+              </div>';
+    }
+
+    $html = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your TALA-AIS Account</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0b1329; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e2e8f0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0b1329; padding: 40px 15px;">
+    <tr>
+      <td align="center">
+        <table width="100%" max-width="540px" cellpadding="0" cellspacing="0" style="max-width: 540px; background: #0f1c3f; border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 30px 30px 20px; text-align: center; background: linear-gradient(180deg, rgba(37, 99, 235, 0.2) 0%, transparent 100%);">
+              <div style="display: inline-block; padding: 10px 18px; border-radius: 9999px; background: rgba(37, 99, 235, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); margin-bottom: 12px;">
+                <span style="color: #60a5fa; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">TALA – Accounting Information System</span>
+              </div>
+              <h1 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 800; letter-spacing: -0.02em;">Your {$roleDisplay} Account is Ready</h1>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 20px 35px 35px;">
+              <p style="margin: 0 0 16px; font-size: 15px; line-height: 1.6; color: #cbd5e1;">
+                Hello <strong>{$nameDisplay}</strong>,
+              </p>
+              <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #94a3b8;">
+                An administrator has created a <strong style="color: #60a5fa;">{$roleDisplay}</strong> account for you on <strong>TALA-AIS</strong>. Below are your login credentials:
+              </p>
+
+              {$statusNote}
+
+              <!-- Credentials Card -->
+              <div style="background: rgba(6, 10, 18, 0.85); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 14px; padding: 20px 22px; margin-bottom: 22px;">
+                <table cellpadding="0" cellspacing="0" style="width: 100%;">
+                  <tr>
+                    <td style="padding: 6px 0; color: #64748b; font-size: 13px; font-weight: 600; width: 110px;">Email:</td>
+                    <td style="padding: 6px 0; color: #f1f5f9; font-size: 14px; font-weight: 600;">{$recipientEmail}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #64748b; font-size: 13px; font-weight: 600;">Password:</td>
+                    <td style="padding: 6px 0;">
+                      <code style="font-family: 'Courier New', monospace; font-size: 16px; font-weight: 800; color: #38bdf8; letter-spacing: 2px; background: rgba(56, 189, 248, 0.08); padding: 4px 12px; border-radius: 8px; border: 1px dashed rgba(56, 189, 248, 0.3);">{$plainPassword}</code>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #64748b; font-size: 13px; font-weight: 600;">Role:</td>
+                    <td style="padding: 6px 0; color: #f1f5f9; font-size: 14px;">{$roleDisplay}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- Login Button -->
+              <div style="text-align: center; margin-bottom: 22px;">
+                <a href="{$loginUrl}" style="display: inline-block; padding: 12px 32px; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #ffffff; text-decoration: none; border-radius: 9999px; font-weight: 700; font-size: 14px; box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);">Sign In to TALA-AIS →</a>
+              </div>
+
+              <p style="margin: 0 0 18px; font-size: 13px; line-height: 1.6; color: #94a3b8;">
+                ⚠️ <strong>Security Reminder:</strong> Please change your password after your first login. Never share your login credentials with anyone.
+              </p>
+
+              <hr style="border: none; border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 25px 0;">
+
+              <p style="margin: 0; font-size: 12px; color: #64748b; text-align: center;">
+                &copy; 2026 TALA-AIS &mdash; Laguna State Polytechnic University. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+HTML;
+
+    return send_smtp_mail($recipientEmail, $recipientName, $subject, $html);
+}
+
+/**
+ * Send Faculty Approval Notification Email — when Admin approves a pending instructor.
+ */
+function send_faculty_approved_email(string $recipientEmail, string $recipientName, string $department = ''): array {
+    $subject = "🎉 Your TALA-AIS Instructor Account Has Been Approved!";
+
+    $nameDisplay = !empty($recipientName) ? htmlspecialchars($recipientName) : 'Instructor';
+    $deptDisplay = !empty($department) ? htmlspecialchars($department) : 'N/A';
+    $loginUrl    = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+                 . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')
+                 . rtrim(BASE_URL, '/') . '/auth/login.php';
+
+    $html = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faculty Account Approved</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0b1329; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e2e8f0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0b1329; padding: 40px 15px;">
+    <tr>
+      <td align="center">
+        <table width="100%" max-width="540px" cellpadding="0" cellspacing="0" style="max-width: 540px; background: #0f1c3f; border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 30px 30px 20px; text-align: center; background: linear-gradient(180deg, rgba(16, 185, 129, 0.15) 0%, transparent 100%);">
+              <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); color: #34d399; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px; font-size: 28px;">✅</div>
+              <h1 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 800; letter-spacing: -0.02em;">Faculty Account Approved!</h1>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 20px 35px 35px;">
+              <p style="margin: 0 0 16px; font-size: 15px; line-height: 1.6; color: #cbd5e1;">
+                Hello <strong>{$nameDisplay}</strong>,
+              </p>
+              <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #94a3b8;">
+                Great news! Your <strong style="color: #34d399;">Instructor</strong> account on <strong>TALA-AIS</strong> has been reviewed and <strong style="color: #34d399;">approved</strong> by an administrator. You now have full access to the Instructor Dashboard.
+              </p>
+
+              <!-- Info Card -->
+              <div style="background: rgba(6, 10, 18, 0.85); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 14px; padding: 18px 22px; margin-bottom: 22px;">
+                <table cellpadding="0" cellspacing="0" style="width: 100%;">
+                  <tr>
+                    <td style="padding: 5px 0; color: #64748b; font-size: 13px; font-weight: 600; width: 110px;">Name:</td>
+                    <td style="padding: 5px 0; color: #f1f5f9; font-size: 14px;">{$nameDisplay}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 5px 0; color: #64748b; font-size: 13px; font-weight: 600;">Email:</td>
+                    <td style="padding: 5px 0; color: #f1f5f9; font-size: 14px;">{$recipientEmail}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 5px 0; color: #64748b; font-size: 13px; font-weight: 600;">Department:</td>
+                    <td style="padding: 5px 0; color: #f1f5f9; font-size: 14px;">{$deptDisplay}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 5px 0; color: #64748b; font-size: 13px; font-weight: 600;">Status:</td>
+                    <td style="padding: 5px 0;"><span style="background: rgba(16, 185, 129, 0.15); color: #34d399; padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 12px;">✓ Verified Faculty</span></td>
+                  </tr>
+                </table>
+              </div>
+
+              <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #94a3b8;">
+                You can now log in and access the <strong>Instructor Dashboard</strong> to manage your students, sections, and view their accounting simulation progress.
+              </p>
+
+              <!-- Login Button -->
+              <div style="text-align: center; margin-bottom: 22px;">
+                <a href="{$loginUrl}" style="display: inline-block; padding: 12px 32px; background: linear-gradient(135deg, #059669, #047857); color: #ffffff; text-decoration: none; border-radius: 9999px; font-weight: 700; font-size: 14px; box-shadow: 0 6px 20px rgba(5, 150, 105, 0.4);">Open Instructor Dashboard →</a>
+              </div>
+
+              <hr style="border: none; border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 25px 0;">
+
+              <p style="margin: 0; font-size: 12px; color: #64748b; text-align: center;">
+                &copy; 2026 TALA-AIS &mdash; Laguna State Polytechnic University. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+HTML;
+
+    return send_smtp_mail($recipientEmail, $recipientName, $subject, $html);
+}
+
 // ── Low-Level SMTP Helpers ──────────────────────────────────────────
 
 function smtp_write($socket, string $data): void {

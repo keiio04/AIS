@@ -31,11 +31,11 @@ if (file_exists(__DIR__ . '/config.local.php')) {
 // ============================================================
 // Brevo REST API & SMTP Email Configuration
 // ============================================================
-define('BREVO_API_KEY', getenv('BREVO_API_KEY') ?: (getenv('BREVO_APT_KEY') ?: ''));
-define('SMTP_HOST', getenv('SMTP_HOST') ?: 'smtp-relay.brevo.com');
-define('SMTP_PORT', getenv('SMTP_PORT') ? (int)getenv('SMTP_PORT') : 587);
-define('SMTP_USER', getenv('SMTP_USER') ?: '');
-define('SMTP_PASS', getenv('SMTP_PASS') ?: '');
-define('SMTP_SECURE', getenv('SMTP_SECURE') ?: 'tls');
-define('SMTP_FROM_EMAIL', getenv('SMTP_FROM_EMAIL') ?: '');
-define('SMTP_FROM_NAME', getenv('SMTP_FROM_NAME') ?: 'TALA-AIS Security');
+if (!defined('BREVO_API_KEY')) define('BREVO_API_KEY', getenv('BREVO_API_KEY') ?: (getenv('BREVO_APT_KEY') ?: ''));
+if (!defined('SMTP_HOST')) define('SMTP_HOST', getenv('SMTP_HOST') ?: 'smtp-relay.brevo.com');
+if (!defined('SMTP_PORT')) define('SMTP_PORT', getenv('SMTP_PORT') ? (int)getenv('SMTP_PORT') : 587);
+if (!defined('SMTP_USER')) define('SMTP_USER', getenv('SMTP_USER') ?: '');
+if (!defined('SMTP_PASS')) define('SMTP_PASS', getenv('SMTP_PASS') ?: '');
+if (!defined('SMTP_SECURE')) define('SMTP_SECURE', getenv('SMTP_SECURE') ?: 'tls');
+if (!defined('SMTP_FROM_EMAIL')) define('SMTP_FROM_EMAIL', getenv('SMTP_FROM_EMAIL') ?: '');
+if (!defined('SMTP_FROM_NAME')) define('SMTP_FROM_NAME', getenv('SMTP_FROM_NAME') ?: 'TALA-AIS Security');

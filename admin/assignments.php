@@ -2,12 +2,16 @@
 require_once '../config.php';
 require_once '../db.php';
 require_once '../includes/admin_auth.php';
+require_once '../includes/csrf.php';
 require_once '../includes/header.php';
 
 $db = get_db();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    if ($_POST['action'] === 'unassign') {
+    if (!csrf_verify()) {
+        $error = "Security validation failed (CSRF token expired or invalid).";
+    } else {
+        if ($_POST['action'] === 'unassign') {
         $id = (int)$_POST['id'];
         $stmt = $db->prepare("DELETE FROM instructor_students WHERE id = ?");
         $stmt->bind_param('i', $id);
@@ -46,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 }
+}
 
 $assignments = $db->query("
     SELECT ins.id, ins.section, ins.created_at,
@@ -57,7 +62,7 @@ $assignments = $db->query("
     ORDER BY i.name ASC, s.name ASC
 ")->fetch_all(MYSQLI_ASSOC);
 
-$instructors = $db->query("SELECT id, name, email FROM users WHERE role = 'Instructor' ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+$instructors = $db->query("SELECT id, name, email FROM users WHERE role = 'Instructor' AND (status = 'approved' OR status IS NULL) ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
 $unassignedStudents = $db->query("
     SELECT id, name, email FROM users
     WHERE role = 'Student' AND id NOT IN (SELECT student_id FROM instructor_students)
@@ -127,6 +132,7 @@ $allStudents = $db->query("SELECT id, name, email FROM users WHERE role = 'Stude
                                 <i data-lucide="repeat" style="width:16px;height:16px;"></i>
                             </button>
                             <form method="POST" onsubmit="return confirm('Remove this assignment? The instructor will no longer be able to monitor this student.');" style="display:inline;">
+                                <?= csrf_input() ?>
                                 <input type="hidden" name="action" value="unassign">
                                 <input type="hidden" name="id" value="<?= $a['id'] ?>">
                                 <button type="submit" class="icon-btn text-danger" title="Unassign">
@@ -170,6 +176,7 @@ $allStudents = $db->query("SELECT id, name, email FROM users WHERE role = 'Stude
         </div>
         <div class="modal-body">
             <form id="assign-form" method="POST">
+                <?= csrf_input() ?>
                 <input type="hidden" name="action" value="assign_new">
                 <div class="form-group">
                     <label class="form-label">Instructor</label>
@@ -212,6 +219,7 @@ $allStudents = $db->query("SELECT id, name, email FROM users WHERE role = 'Stude
         <div class="modal-body">
             <div class="text-muted" style="font-size: 0.85rem; margin-bottom: 1rem;">Student: <strong id="reassignStudentName"></strong></div>
             <form id="reassign-form" method="POST">
+                <?= csrf_input() ?>
                 <input type="hidden" name="action" value="reassign">
                 <input type="hidden" name="id" id="reassignId">
                 <div class="form-group">

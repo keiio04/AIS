@@ -5,7 +5,8 @@ require_once '../includes/access_control.php';
 
 // Handle GET actions for instructors (start_view / exit_view) — BEFORE header
 $_userRole_early = $_SESSION['user_role'] ?? 'Student';
-$_isInstructor_early = in_array($_userRole_early, ['Instructor', 'Admin']);
+$_userStatus_early = $_SESSION['user_status'] ?? 'approved';
+$_isInstructor_early = in_array($_userRole_early, ['Instructor', 'Admin']) && ($_userRole_early === 'Admin' || $_userStatus_early === 'approved');
 
 if ($_isInstructor_early && isset($_GET['action'])) {
     $db_early = get_db();
@@ -35,19 +36,50 @@ require_once '../includes/header.php';
 $db = get_db();
 $company_id = $_SESSION['active_company_id'] ?? null;
 $userRole = $_SESSION['user_role'] ?? 'Student';
-$isInstructorRole = in_array($userRole, ['Instructor', 'Admin']);
+$userStatus = $_SESSION['user_status'] ?? 'approved';
+$isInstructorRole = in_array($userRole, ['Instructor', 'Admin']) && ($userRole === 'Admin' || $userStatus === 'approved');
 $instructorId = (int)$_SESSION['user_id'];
+
+// If instructor account is NOT approved, block access to Instructor Dashboard immediately!
+if ($userRole === 'Instructor' && $userStatus !== 'approved') {
+    ?>
+    <div style="max-width: 650px; margin: 3rem auto; padding: 2.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.25);">
+        <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(245, 158, 11, 0.15); color: #f59e0b; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+            <i data-lucide="clock" style="width: 32px; height: 32px;"></i>
+        </div>
+        <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.75rem;">Account Pending Faculty Verification</h2>
+        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem;">
+            Your Instructor account has been registered, but faculty privileges require administrative approval before you can access the Instructor Dashboard. An authorized administrator must verify that you are a legitimate faculty member.
+        </p>
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 12px; padding: 1rem 1.25rem; text-align: left; margin-bottom: 1.5rem; font-size: 0.875rem;">
+            <div style="color: #94a3b8; margin-bottom: 0.35rem;"><strong>Faculty Member:</strong> <span style="color: #f1f5f9;"><?= htmlspecialchars($_SESSION['user_name'] ?? '') ?></span></div>
+            <div style="color: #94a3b8; margin-bottom: 0.35rem;"><strong>Email:</strong> <span style="color: #f1f5f9;"><?= htmlspecialchars($_SESSION['user_email'] ?? '') ?></span></div>
+            <div style="color: #94a3b8;"><strong>Status:</strong> <span class="badge" style="background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 6px; font-weight: 600;">Pending Faculty Verification</span></div>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.85rem;">If you need expedited approval, please contact the TALA-AIS system administrator or your department chair.</p>
+        <div style="margin-top: 1.75rem;">
+            <a href="<?= BASE_URL ?>auth/logout.php" class="btn btn-secondary">Sign Out</a>
+        </div>
+    </div>
+    <?php
+    require_once '../includes/footer.php';
+    exit;
+}
 
 $instructorMsg = '';
 $instructorMsgType = 'success';
 
 // Handle instructor assignment POST actions if submitted from dashboard
 if ($isInstructorRole && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $instAction = $_POST['action'] ?? '';
-    if ($instAction === 'assign_student') {
-        $studentId = (int)($_POST['student_id'] ?? 0);
-        $section = trim($_POST['section'] ?? 'Section 1');
-        if ($section === '') $section = 'Section 1';
+    if (!csrf_verify()) {
+        $instructorMsg = 'Security validation failed (CSRF). Please refresh and try again.';
+        $instructorMsgType = 'danger';
+    } else {
+        $instAction = $_POST['action'] ?? '';
+        if ($instAction === 'assign_student') {
+            $studentId = (int)($_POST['student_id'] ?? 0);
+            $section = trim($_POST['section'] ?? 'Section 1');
+            if ($section === '') $section = 'Section 1';
         if ($studentId > 0) {
             $stmtIns = $db->prepare("INSERT INTO instructor_students (instructor_id, student_id, section) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE section = VALUES(section)");
             $stmtIns->bind_param('iis', $instructorId, $studentId, $section);
@@ -79,6 +111,7 @@ if ($isInstructorRole && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $instructorMsg = "Enrolled {$count} student(s) into {$section}!";
         $instructorMsgType = 'success';
+    }
     }
 }
 
@@ -558,6 +591,7 @@ $userName = htmlspecialchars($_SESSION['user_name'] ?? 'User');
                                 <i data-lucide="external-link" style="width: 13px; height: 13px;"></i>
                             </a>
                             <form method="POST" style="display: inline;" onsubmit="return confirm('Remove this student from your roster?');">
+                                <?= csrf_input() ?>
                                 <input type="hidden" name="action" value="unassign_student">
                                 <input type="hidden" name="student_id" value="<?= $st['student_id'] ?>">
                                 <button type="submit" class="icon-btn text-danger" title="Unassign Student" style="padding: 4px;">
@@ -588,6 +622,7 @@ $userName = htmlspecialchars($_SESSION['user_name'] ?? 'User');
             <button type="button" class="icon-btn" onclick="closeModal('assignModalDash')"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
         </div>
         <form method="POST">
+            <?= csrf_input() ?>
             <input type="hidden" name="action" value="assign_student">
             
             <div class="form-group mb-3">
@@ -631,6 +666,7 @@ $userName = htmlspecialchars($_SESSION['user_name'] ?? 'User');
             <button type="button" class="icon-btn" onclick="closeModal('bulkAssignModalDash')"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
         </div>
         <form method="POST">
+            <?= csrf_input() ?>
             <input type="hidden" name="action" value="bulk_assign_all">
             <div class="form-group mb-4">
                 <label class="form-label">Assign to Section</label>

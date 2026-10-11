@@ -3,10 +3,14 @@ error_reporting(E_ALL);
 ini_set('display_errors', '1');
 require_once '../config.php';
 require_once '../db.php';
-if (session_status() === PHP_SESSION_NONE) session_start();
+require_once '../includes/csrf.php';
 
 if (!empty($_SESSION['user_id'])) {
-    header('Location: ' . BASE_URL . 'pages/dashboard.php');
+    if (($_SESSION['user_role'] ?? '') === 'Admin') {
+        header('Location: ' . BASE_URL . 'admin/dashboard.php');
+    } else {
+        header('Location: ' . BASE_URL . 'pages/dashboard.php');
+    }
     exit;
 }
 
@@ -19,73 +23,100 @@ $mode    = $_GET['mode'] ?? 'login';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'login') {
-        $email = trim($_POST['email'] ?? '');
-        $pass  = $_POST['password'] ?? '';
-        if (!$email || !$pass) {
-            $error = 'Please fill in all fields.';
+        // Enforce CSRF protection
+        if (!csrf_verify()) {
+            $error = 'Security session expired or invalid token. Please refresh the page and try again.';
         } else {
-            $db   = get_db();
-            $stmt = $db->prepare("SELECT id, name, email, role, password FROM users WHERE email = ?");
-            $stmt->bind_param('s', $email);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $user   = $result->fetch_assoc();
-            if ($user && password_verify($pass, $user['password'])) {
-                session_regenerate_id(true);
-                $_SESSION['user_id']   = $user['id'];
-                $_SESSION['user_name'] = $user['name'];
-                $_SESSION['user_email']= $user['email'];
-                $_SESSION['user_role'] = $user['role'];
-
-                $stmtCo = $db->prepare("SELECT active_company_id FROM users WHERE id = ?");
-                $stmtCo->bind_param('i', $user['id']);
-                $stmtCo->execute();
-                $coRow = $stmtCo->get_result()->fetch_assoc();
-                if ($coRow && $coRow['active_company_id']) {
-                    $_SESSION['active_company_id'] = $coRow['active_company_id'];
-                }
-
-                $stmtLog = $db->prepare("INSERT INTO activity_logs (user_id, action, module, description) VALUES (?, 'Login', 'Authentication', 'User successfully logged in')");
-                $stmtLog->execute([$user['id']]);
-
-                if ($user['role'] === 'Admin') {
-                    header('Location: ' . BASE_URL . 'admin/dashboard.php');
-                } else {
-                    header('Location: ' . BASE_URL . 'pages/dashboard.php');
-                }
-                exit;
+            $email = trim($_POST['email'] ?? '');
+            $pass  = $_POST['password'] ?? '';
+            if (!$email || !$pass) {
+                $error = 'Please fill in all fields.';
             } else {
-                $error = 'Invalid email or password.';
+                $db   = get_db();
+                $stmt = $db->prepare("SELECT id, name, email, role, password, status FROM users WHERE email = ?");
+                $stmt->bind_param('s', $email);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                $user   = $result->fetch_assoc();
+
+                if ($user && password_verify($pass, $user['password'])) {
+                    $userStatus = $user['status'] ?? 'approved';
+                    if ($userStatus === 'rejected') {
+                        $error = 'Your account has been deactivated or rejected by an administrator. Please contact support.';
+                    } else {
+                        session_regenerate_id(true);
+                        $_SESSION['user_id']     = $user['id'];
+                        $_SESSION['user_name']   = $user['name'];
+                        $_SESSION['user_email']  = $user['email'];
+                        $_SESSION['user_role']   = $user['role'];
+                        $_SESSION['user_status'] = $userStatus;
+
+                        $stmtCo = $db->prepare("SELECT active_company_id FROM users WHERE id = ?");
+                        $stmtCo->bind_param('i', $user['id']);
+                        $stmtCo->execute();
+                        $coRow = $stmtCo->get_result()->fetch_assoc();
+                        if ($coRow && $coRow['active_company_id']) {
+                            $_SESSION['active_company_id'] = $coRow['active_company_id'];
+                        }
+
+                        $stmtLog = $db->prepare("INSERT INTO activity_logs (user_id, action, module, description) VALUES (?, 'Login', 'Authentication', 'User successfully logged in')");
+                        $stmtLog->execute([$user['id']]);
+
+                        // Redirect based on verified database role
+                        if ($user['role'] === 'Admin') {
+                            header('Location: ' . BASE_URL . 'admin/dashboard.php');
+                        } else {
+                            header('Location: ' . BASE_URL . 'pages/dashboard.php');
+                        }
+                        exit;
+                    }
+                } else {
+                    $error = 'Invalid email or password.';
+                }
             }
         }
     } elseif ($_POST['action'] === 'register') {
-        $name    = trim($_POST['name']    ?? '');
-        $email   = trim($_POST['email']   ?? '');
-        $pass    = $_POST['password']     ?? '';
-        $confirm = $_POST['confirm_pass'] ?? '';
-        $role    = $_POST['role']         ?? 'Student';
-        if (!$name || !$email || !$pass || !$confirm) {
-            $error = 'Please fill in all fields.'; $mode = 'register';
-        } elseif ($pass !== $confirm) {
-            $error = 'Passwords do not match.'; $mode = 'register';
-        } elseif (strlen($pass) < 6) {
-            $error = 'Password must be at least 6 characters.'; $mode = 'register';
+        // Enforce CSRF protection
+        if (!csrf_verify()) {
+            $error = 'Security session expired or invalid token. Please refresh the page and try again.';
+            $mode = 'register';
         } else {
-            $db   = get_db();
-            $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
-            $stmt->bind_param('s', $email);
-            $stmt->execute();
-            $stmt->store_result();
-            if ($stmt->num_rows > 0) {
-                $error = 'Email is already registered.'; $mode = 'register';
+            $name    = trim($_POST['name']    ?? '');
+            $email   = trim($_POST['email']   ?? '');
+            $pass    = $_POST['password']     ?? '';
+            $confirm = $_POST['confirm_pass'] ?? '';
+
+            // Public registration is strictly for Students. Never trust user-submitted role!
+            $safeRole   = 'Student';
+            $safeStatus = 'approved';
+
+            if (!$name || !$email || !$pass || !$confirm) {
+                $error = 'Please fill in all fields.'; $mode = 'register';
+            } elseif ($pass !== $confirm) {
+                $error = 'Passwords do not match.'; $mode = 'register';
+            } elseif (strlen($pass) < 6) {
+                $error = 'Password must be at least 6 characters.'; $mode = 'register';
             } else {
-                $hashed   = password_hash($pass, PASSWORD_BCRYPT);
-                $safeRole = in_array($role, ['Student','Instructor']) ? $role : 'Student';
-                $ins = $db->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)");
-                $ins->bind_param('ssss', $name, $email, $hashed, $safeRole);
-                $ins->execute();
-                $success = 'Account created successfully! You can now log in.';
-                $mode    = 'login';
+                $db   = get_db();
+                $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
+                $stmt->bind_param('s', $email);
+                $stmt->execute();
+                $stmt->store_result();
+                if ($stmt->num_rows > 0) {
+                    $error = 'Email is already registered.'; $mode = 'register';
+                } else {
+                    $hashed = password_hash($pass, PASSWORD_BCRYPT);
+                    $ins = $db->prepare("INSERT INTO users (name, email, password, role, status) VALUES (?, ?, ?, ?, ?)");
+                    $ins->bind_param('sssss', $name, $email, $hashed, $safeRole, $safeStatus);
+                    $ins->execute();
+                    $newId = $ins->insert_id;
+
+                    $stmtLog = $db->prepare("INSERT INTO activity_logs (user_id, action, module, description) VALUES (?, 'Register', 'Authentication', 'New student registered')");
+                    $stmtLog->execute([$newId]);
+
+                    $success = 'Account created successfully! You can now log in.';
+                    $mode    = 'login';
+                }
             }
         }
     } elseif ($_POST['action'] === 'google_login') {
@@ -108,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $error = 'Google authentication failed: Email address not provided.';
         } else {
             $db = get_db();
-            $stmt = $db->prepare("SELECT id, name, email, role, password, active_company_id FROM users WHERE email = ?");
+            $stmt = $db->prepare("SELECT id, name, email, role, password, status, active_company_id FROM users WHERE email = ?");
             $stmt->bind_param('s', $email);
             $stmt->execute();
             $user = $stmt->get_result()->fetch_assoc();
@@ -116,7 +147,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if (!$user) {
                 $safeName = !empty($name) ? $name : explode('@', $email)[0];
                 $randomPass = password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT);
-                $ins = $db->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'Student')");
+                // Public Google signup is strictly Student
+                $ins = $db->prepare("INSERT INTO users (name, email, password, role, status) VALUES (?, ?, ?, 'Student', 'approved')");
                 $ins->bind_param('sss', $safeName, $email, $randomPass);
                 $ins->execute();
                 $newUserId = $ins->insert_id;
@@ -126,28 +158,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     'name' => $safeName,
                     'email' => $email,
                     'role' => 'Student',
+                    'status' => 'approved',
                     'active_company_id' => null
                 ];
             }
 
-            session_regenerate_id(true);
-            $_SESSION['user_id']    = $user['id'];
-            $_SESSION['user_name']  = $user['name'];
-            $_SESSION['user_email'] = $user['email'];
-            $_SESSION['user_role']  = $user['role'];
-            if (!empty($user['active_company_id'])) {
-                $_SESSION['active_company_id'] = $user['active_company_id'];
-            }
-
-            $stmtLog = $db->prepare("INSERT INTO activity_logs (user_id, action, module, description) VALUES (?, 'Google Login', 'Authentication', 'User signed in with Google')");
-            $stmtLog->execute([$user['id']]);
-
-            if ($user['role'] === 'Admin') {
-                header('Location: ' . BASE_URL . 'admin/dashboard.php');
+            if (($user['status'] ?? 'approved') === 'rejected') {
+                $error = 'Your account has been deactivated or rejected by an administrator.';
             } else {
-                header('Location: ' . BASE_URL . 'pages/dashboard.php');
+                session_regenerate_id(true);
+                $_SESSION['user_id']     = $user['id'];
+                $_SESSION['user_name']   = $user['name'];
+                $_SESSION['user_email']  = $user['email'];
+                $_SESSION['user_role']   = $user['role'];
+                $_SESSION['user_status'] = $user['status'] ?? 'approved';
+                if (!empty($user['active_company_id'])) {
+                    $_SESSION['active_company_id'] = $user['active_company_id'];
+                }
+
+                $stmtLog = $db->prepare("INSERT INTO activity_logs (user_id, action, module, description) VALUES (?, 'Google Login', 'Authentication', 'User signed in with Google')");
+                $stmtLog->execute([$user['id']]);
+
+                if ($user['role'] === 'Admin') {
+                    header('Location: ' . BASE_URL . 'admin/dashboard.php');
+                } else {
+                    header('Location: ' . BASE_URL . 'pages/dashboard.php');
+                }
+                exit;
             }
-            exit;
         }
     }
 }
@@ -854,6 +892,7 @@ select.auth-input option {
 
       <!-- Hidden Google Auth Form -->
       <form id="google-auth-form" method="POST" style="display:none;">
+        <?= csrf_input() ?>
         <input type="hidden" name="action" value="google_login">
         <input type="hidden" name="credential" id="google-credential">
         <input type="hidden" name="google_email" id="google-email-input">
@@ -862,6 +901,7 @@ select.auth-input option {
 
       <!-- ── LOGIN FORM ── -->
       <form method="POST" id="lf" style="display:<?= $mode==='login' ? 'block' : 'none' ?>">
+        <?= csrf_input() ?>
         <input type="hidden" name="action" value="login">
 
         <div class="auth-field">
@@ -900,9 +940,17 @@ select.auth-input option {
         <button type="submit" id="btn-signin" class="auth-submit">Sign In →</button>
       </form>
 
-      <!-- ── REGISTER FORM ── -->
+      <!-- ── REGISTER FORM (STUDENT ONLY) ── -->
       <form method="POST" id="rf" style="display:<?= $mode==='register' ? 'block' : 'none' ?>">
+        <?= csrf_input() ?>
         <input type="hidden" name="action" value="register">
+
+        <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 12px; padding: 0.65rem 0.9rem; margin-bottom: 1.1rem; display: flex; align-items: center; gap: 0.65rem;">
+          <div style="width: 26px; height: 26px; border-radius: 8px; background: rgba(59, 130, 246, 0.2); display: flex; align-items: center; justify-content: center; color: #60a5fa; flex-shrink: 0;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+          </div>
+          <span style="font-size: 0.8rem; color: #cbd5e1; line-height: 1.35;">Registering as <strong style="color: #93c5fd;">Student</strong>. Faculty/Instructor accounts must be created or approved by an Administrator.</span>
+        </div>
 
         <div class="auth-field">
           <label for="reg-name">Full Name</label>
@@ -926,14 +974,6 @@ select.auth-input option {
               placeholder="Enter your email"
               value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
           </div>
-        </div>
-
-        <div class="auth-field">
-          <label for="reg-role">I am a...</label>
-          <select id="reg-role" name="role" class="auth-input no-icon" required>
-            <option value="Student"    <?= (isset($_POST['role']) && $_POST['role']==='Student')    ? 'selected' : '' ?>>Student</option>
-            <option value="Instructor" <?= (isset($_POST['role']) && $_POST['role']==='Instructor') ? 'selected' : '' ?>>Instructor</option>
-          </select>
         </div>
 
         <div class="auth-field">
@@ -995,6 +1035,7 @@ select.auth-input option {
 
 <!-- Hidden Google Auth Form -->
 <form id="google-auth-form" method="POST" style="display:none;">
+  <?= csrf_input() ?>
   <input type="hidden" name="action" value="google_login">
   <input type="hidden" name="credential" id="google-credential">
   <input type="hidden" name="google_email" id="google-email-input">

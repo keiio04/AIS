@@ -11,7 +11,11 @@ $msgType = 'success';
 
 // Handle Profile and Password Updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
+    if (!csrf_verify()) {
+        $message = "Security validation failed (CSRF token expired or invalid).";
+        $msgType = "danger";
+    } else {
+        $action = $_POST['action'] ?? '';
 
     if ($action === 'update_profile') {
         $name = trim($_POST['name'] ?? '');
@@ -66,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+}
 }
 
 // Fetch current user data
@@ -290,6 +295,7 @@ $registeredDate = !empty($user['created_at']) ? date('M d, Y', strtotime($user['
             </h3>
 
             <form method="POST">
+                <?= csrf_input() ?>
                 <input type="hidden" name="action" value="update_profile">
                 
                 <div class="form-group" style="margin-bottom: 1rem;">
@@ -321,6 +327,7 @@ $registeredDate = !empty($user['created_at']) ? date('M d, Y', strtotime($user['
             </h3>
 
             <form method="POST">
+                <?= csrf_input() ?>
                 <input type="hidden" name="action" value="update_password">
                 
                 <div class="form-group" style="margin-bottom: 1rem;">
