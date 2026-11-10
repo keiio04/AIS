@@ -436,6 +436,14 @@ body {
   justify-content: center;
   gap: 1.25rem;
   flex-wrap: wrap;
+  margin: 0 auto;
+  text-align: center;
+  width: 100%;
+}
+
+.hero-actions .btn-pill {
+  min-width: 175px;
+  justify-content: center;
 }
 
 /* ============================================================
@@ -1912,12 +1920,17 @@ body {
     padding: 0 0.25rem;
   }
   .hero-actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     gap: 0.75rem;
     width: 100%;
+    max-width: 360px;
+    margin: 0 auto;
   }
   .hero-actions .btn-pill {
     flex: 1;
-    min-width: 135px;
+    min-width: 130px;
     padding: 0.75rem 1rem;
     font-size: 0.88rem;
     justify-content: center;
