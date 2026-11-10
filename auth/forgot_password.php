@@ -184,6 +184,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $upd->bind_param('ss', $hashed, $email);
                     $upd->execute();
 
+                    // Clear any lockout / failed attempts for this email
+                    try {
+                        $db->query("DELETE FROM login_attempts WHERE email = " . $db->real_escape_string($email));
+                        $clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
+                        if ($clientIp) {
+                            $db->query("DELETE FROM login_attempts WHERE ip_address = " . $db->real_escape_string($clientIp));
+                        }
+                    } catch (Exception $e) {}
+
                     // Delete OTP from password_resets
                     $del = $db->prepare("DELETE FROM password_resets WHERE email = ?");
                     $del->bind_param('s', $email);
