@@ -79,11 +79,21 @@ if (file_exists(__DIR__ . '/config.local.php')) {
 // ============================================================
 // Brevo REST API & SMTP Email Configuration
 // ============================================================
-if (!defined('BREVO_API_KEY')) define('BREVO_API_KEY', getenv('BREVO_API_KEY') ?: (getenv('BREVO_APT_KEY') ?: ''));
-if (!defined('SMTP_HOST')) define('SMTP_HOST', getenv('SMTP_HOST') ?: 'smtp-relay.brevo.com');
-if (!defined('SMTP_PORT')) define('SMTP_PORT', getenv('SMTP_PORT') ? (int)getenv('SMTP_PORT') : 587);
-if (!defined('SMTP_USER')) define('SMTP_USER', getenv('SMTP_USER') ?: '');
-if (!defined('SMTP_PASS')) define('SMTP_PASS', getenv('SMTP_PASS') ?: '');
-if (!defined('SMTP_SECURE')) define('SMTP_SECURE', getenv('SMTP_SECURE') ?: 'tls');
-if (!defined('SMTP_FROM_EMAIL')) define('SMTP_FROM_EMAIL', getenv('SMTP_FROM_EMAIL') ?: '');
-if (!defined('SMTP_FROM_NAME')) define('SMTP_FROM_NAME', getenv('SMTP_FROM_NAME') ?: 'TALA-AIS Security');
+if (!function_exists('app_env')) {
+    function app_env(string $key, $default = '') {
+        $val = getenv($key);
+        if ($val !== false && $val !== '') return $val;
+        if (isset($_ENV[$key]) && $_ENV[$key] !== '') return $_ENV[$key];   
+        if (isset($_SERVER[$key]) && $_SERVER[$key] !== '') return $_SERVER[$key];
+        return $default;
+    }
+}
+
+if (!defined('BREVO_API_KEY')) define('BREVO_API_KEY', trim((string)app_env('BREVO_API_KEY', app_env('BREVO_APT_KEY', ''))));
+if (!defined('SMTP_HOST')) define('SMTP_HOST', app_env('SMTP_HOST', 'smtp-relay.brevo.com'));
+if (!defined('SMTP_PORT')) define('SMTP_PORT', (int)app_env('SMTP_PORT', 587));
+if (!defined('SMTP_USER')) define('SMTP_USER', app_env('SMTP_USER', ''));
+if (!defined('SMTP_PASS')) define('SMTP_PASS', app_env('SMTP_PASS', ''));
+if (!defined('SMTP_SECURE')) define('SMTP_SECURE', app_env('SMTP_SECURE', 'tls'));
+if (!defined('SMTP_FROM_EMAIL')) define('SMTP_FROM_EMAIL', app_env('SMTP_FROM_EMAIL', ''));
+if (!defined('SMTP_FROM_NAME')) define('SMTP_FROM_NAME', app_env('SMTP_FROM_NAME', 'TALA-AIS Security'));
