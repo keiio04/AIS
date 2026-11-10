@@ -215,8 +215,29 @@ CREATE TABLE IF NOT EXISTS `notifications` (
         REFERENCES `system_notices`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+
+-- Login attempts table (Brute-force protection)
+CREATE TABLE IF NOT EXISTS `login_attempts` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `ip_address` VARCHAR(45) NOT NULL,
+    `email` VARCHAR(150) NULL,
+    `attempted_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `expires_at` TIMESTAMP NOT NULL,
+    INDEX idx_ip_expires (`ip_address`, `expires_at`)
+) ENGINE=InnoDB;
+
+-- Two-Factor OTPs table
+CREATE TABLE IF NOT EXISTS `two_factor_otps` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT NOT NULL,
+    `otp` VARCHAR(6) NOT NULL,
+    `expires_at` DATETIME NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_2fa_user (`user_id`)
+) ENGINE=InnoDB;
+
 -- Default admin user (password: password)
 INSERT INTO `users` (`name`, `email`, `password`, `role`)
-SELECT 'Administrator', 'admin@ais.com',
+SELECT 'Administrator', 'catrinaguevarra19@gmail.com',
     '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Admin'
 WHERE NOT EXISTS (SELECT 1 FROM `users`);

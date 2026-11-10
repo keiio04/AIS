@@ -263,10 +263,19 @@ function get_db(): mysqli {
                 FOREIGN KEY (`notice_id`) REFERENCES `system_notices`(`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
+                        "CREATE TABLE IF NOT EXISTS `login_attempts` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `ip_address` VARCHAR(45) NOT NULL,
+                `email` VARCHAR(150) NULL,
+                `attempted_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `expires_at` TIMESTAMP NOT NULL,
+                INDEX idx_ip_expires (`ip_address`, `expires_at`)
+            ) ENGINE=InnoDB",
+
             "INSERT INTO `users` (`name`, `email`, `password`, `role`)
-            SELECT 'Administrator', 'admin@ais.com',
+            SELECT 'Administrator', 'catrinaguevarra19@gmail.com',
                 '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Admin'
-            WHERE NOT EXISTS (SELECT 1 FROM `users` WHERE `email` = 'admin@ais.com')"
+            WHERE NOT EXISTS (SELECT 1 FROM `users` WHERE `email` = 'catrinaguevarra19@gmail.com')"
         ];
 
         foreach ($initQueries as $query) {
