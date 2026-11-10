@@ -25,11 +25,11 @@ if ($database_url) {
     }
 }
 
-define('DB_HOST', $db_host);
-define('DB_USER', $db_user);
-define('DB_PASS', $db_pass);
-define('DB_NAME', $db_name);
-define('DB_PORT', (int)$db_port);
+if (!defined('DB_HOST')) define('DB_HOST', $db_host);
+if (!defined('DB_USER')) define('DB_USER', $db_user);
+if (!defined('DB_PASS')) define('DB_PASS', $db_pass);
+if (!defined('DB_NAME')) define('DB_NAME', $db_name);
+if (!defined('DB_PORT')) define('DB_PORT', (int)$db_port);
 
 
 function get_db(): mysqli {
@@ -40,14 +40,16 @@ function get_db(): mysqli {
         
         $conn = @new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
         if ($conn->connect_error) {
+            error_log("Database connection failed: " . $conn->connect_error);
             http_response_code(500);
-            $padding = str_repeat('<!-- Chrome padding to disable friendly error pages -->', 20);
-            $errorDetails = "Database connection failed!<br>";
-            $errorDetails .= "Error: " . $conn->connect_error . "<br>";
-            $errorDetails .= "Host: " . DB_HOST . ":" . DB_PORT . "<br>";
-            $errorDetails .= "User: " . DB_USER . "<br>";
-            $errorDetails .= "Database: " . DB_NAME . "<br>";
-            die("<html><body><h1>500 Internal Server Error</h1><p>{$errorDetails}</p>{$padding}</body></html>");
+            $is_production = (bool)(getenv('RAILWAY_ENVIRONMENT') || getenv('RAILWAY_PUBLIC_DOMAIN') || (getenv('APP_ENV') === 'production'));
+            
+            if ($is_production) {
+                die("<!DOCTYPE html><html><head><title>System Unavailable</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;} .card{background:#1e293b;padding:2.5rem;border-radius:14px;max-width:480px;text-align:center;border:1px solid #334155;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);} h1{color:#f87171;font-size:1.4rem;margin-bottom:0.75rem;} p{color:#94a3b8;font-size:0.95rem;line-height:1.6;}</style></head><body><div class='card'><h1>500 Internal Server Error</h1><p>Our secure database service is momentarily unavailable. An incident record has been securely logged. Please try again shortly or contact system support.</p></div></body></html>");
+            } else {
+                // Development mode: clean error output without disclosing passwords
+                die("<!DOCTYPE html><html><head><title>Database Connection Error</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;} .card{background:#1e293b;padding:2rem;border-radius:12px;max-width:540px;border:1px solid #334155;} h2{color:#f87171;margin-top:0;} code{color:#38bdf8;background:#0f172a;padding:2px 6px;border-radius:4px;}</style></head><body><div class='card'><h2>Database Connection Failed</h2><p><b>Error:</b> " . htmlspecialchars($conn->connect_error) . "</p><p><b>Target Host:</b> <code>" . htmlspecialchars(DB_HOST . ":" . DB_PORT) . "</code></p><p><b>Database:</b> <code>" . htmlspecialchars(DB_NAME) . "</code></p><p style='color:#94a3b8;font-size:0.875rem;'>Make sure MySQL is started in XAMPP or verify your <code>config.local.php</code> file.</p></div></body></html>");
+            }
         }
         
         // Enable exceptions for queries so we can see what's actually failing in Railway
@@ -288,6 +290,18 @@ function get_db(): mysqli {
         try { $conn->query("ALTER TABLE customers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
         try { $conn->query("ALTER TABLE suppliers ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
         try { $conn->query("ALTER TABLE employees ADD COLUMN code VARCHAR(20) NULL AFTER company_id"); } catch (Exception $e) {}
+        try { $conn->query("ALTER TABLE users ADD COLUMN two_factor_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER active_company_id"); } catch (Exception $e) {}
+        try { $conn->query("UPDATE users SET two_factor_enabled = 1"); } catch (Exception $e) {}
+        try {
+            $conn->query("CREATE TABLE IF NOT EXISTS `two_factor_otps` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `user_id` INT NOT NULL,
+                `otp` VARCHAR(6) NOT NULL,
+                `expires_at` DATETIME NOT NULL,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_2fa_user (`user_id`)
+            ) ENGINE=InnoDB");
+        } catch (Exception $e) {}
     }
     return $conn;
 }

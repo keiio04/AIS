@@ -205,83 +205,269 @@ foreach ($users as $u) {
 }
 ?>
 
-<div class="page-header flex justify-between items-center" style="margin-bottom: 1.5rem;">
-    <div class="page-header-text">
-        <h1 class="page-title">User Management &amp; Role Security</h1>
-        <p class="page-subtitle">Manage system users, student accounts, and verify faculty instructor credentials.</p>
-    </div>
-    <div class="flex items-center gap-2">
-        <button class="btn btn-primary" onclick="openAddModal()">
-            <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Add User / Faculty
-        </button>
-    </div>
-</div>
+<style>
+.adm-container {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 1.5rem 1.75rem 3rem;
+    color: #0f172a;
+}
+.adm-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+.adm-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.25rem 0;
+}
+.adm-subtitle {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin: 0;
+}
+.adm-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #166534;
+    color: #ffffff !important;
+    font-size: 0.84rem;
+    font-weight: 600;
+    padding: 0.5rem 0.95rem;
+    border-radius: 8px;
+    text-decoration: none;
+    border: 1px solid #166534;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.adm-btn-primary:hover {
+    background: #14532d;
+}
+.adm-alert-pending {
+    background: #fffbeb;
+    border: 1px solid #fef3c7;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    padding: 0.9rem 1.25rem;
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.adm-filter-bar {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 1.25rem;
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.adm-search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 240px;
+}
+.adm-search-input {
+    width: 100%;
+    padding: 0.5rem 0.85rem 0.5rem 2.2rem;
+    font-size: 0.85rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #0f172a;
+    outline: none;
+}
+.adm-search-input:focus {
+    border-color: #94a3b8;
+}
+.adm-select-filter {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.85rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #334155;
+    outline: none;
+    min-width: 150px;
+}
+.adm-table-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+.adm-clean-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
+    text-align: left;
+}
+.adm-clean-table th {
+    background: #fafafa;
+    color: #64748b;
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+.adm-clean-table td {
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    vertical-align: middle;
+}
+.adm-clean-table tr:last-child td {
+    border-bottom: none;
+}
+.adm-clean-table tr:hover td {
+    background: #f8fafc;
+}
+.adm-badge-tag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+.adm-badge-verified {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+.adm-badge-pending {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: #fffbeb;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+.adm-icon-btn {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.adm-icon-btn:hover {
+    color: #0f172a;
+    background: #f1f5f9;
+}
+</style>
 
-<?php if ($pendingCount > 0): ?>
-    <div style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.1)); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
-        <div class="flex items-center gap-3">
-            <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(245, 158, 11, 0.2); color: #f59e0b; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                <i data-lucide="shield-alert" style="width: 20px; height: 20px;"></i>
-            </div>
-            <div>
-                <div style="font-weight: 700; color: #fbbf24; font-size: 0.95rem;">Action Required: <?= $pendingCount ?> Pending Instructor Account(s)</div>
-                <div style="color: #cbd5e1; font-size: 0.825rem;">Only authorized faculty with verified credentials can be approved to access the Instructor Dashboard.</div>
-            </div>
+<div class="adm-container">
+
+    <div class="adm-header">
+        <div>
+            <h1 class="adm-title">User Accounts &amp; Access Control</h1>
+            <p class="adm-subtitle">Manage user permissions, student enrollment, and faculty instructor verifications.</p>
         </div>
-        <button class="btn btn-sm" onclick="filterByPending()" style="background: #f59e0b; color: #000; font-weight: 700; border: none; padding: 0.4rem 0.9rem; border-radius: 8px;">
-            Filter Pending Faculty
-        </button>
+        <div>
+            <button class="adm-btn-primary" onclick="openAddModal()">
+                <i data-lucide="user-plus" style="width:14px;height:14px;"></i> Add New User
+            </button>
+        </div>
     </div>
-<?php endif; ?>
 
-<?php if ($success): ?>
-    <div style="background: #d1fae5; color: #065f46; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #a7f3d0;">
-        <?= htmlspecialchars($success) ?>
-        <?php if ($generatedPassword): ?>
-            <div style="margin-top: 0.5rem; font-weight: 600;">
-                Temporary password: <code style="background: #fff; padding: 2px 8px; border-radius: 6px; border: 1px solid #a7f3d0;"><?= htmlspecialchars($generatedPassword) ?></code>
-                <div style="font-weight: 400; font-size: 0.8rem; margin-top: 0.25rem;">Please copy and share this securely — it will not be shown again.</div>
+    <?php if ($pendingCount > 0): ?>
+        <div class="adm-alert-pending">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <i data-lucide="shield-alert" style="width: 20px; height: 20px; color: #d97706; flex-shrink: 0;"></i>
+                <div>
+                    <div style="font-weight: 600; color: #92400e; font-size: 0.875rem;">Action Required: <?= $pendingCount ?> Pending Faculty Instructor(s)</div>
+                    <div style="color: #b45309; font-size: 0.78rem;">Faculty registrations must be verified before instructor dashboard access is granted.</div>
+                </div>
             </div>
-        <?php endif; ?>
-    </div>
-<?php endif; ?>
+            <button onclick="filterByPending()" style="background: #ffffff; color: #b45309; border: 1px solid #fde68a; padding: 0.4rem 0.85rem; border-radius: 6px; font-weight: 600; font-size: 0.78rem; cursor: pointer;">
+                Filter Pending &rarr;
+            </button>
+        </div>
+    <?php endif; ?>
 
-<?php if ($error): ?>
-    <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #fca5a5;">
-        <?= htmlspecialchars($error) ?>
-    </div>
-<?php endif; ?>
+    <?php if ($success): ?>
+        <div style="background: #f0fdf4; color: #166534; padding: 0.85rem 1.25rem; border-radius: 8px; margin-bottom: 1.25rem; border: 1px solid #bbf7d0; font-size: 0.85rem;">
+            <?= htmlspecialchars($success) ?>
+            <?php if ($generatedPassword): ?>
+                <div style="margin-top: 0.5rem; font-weight: 600;">
+                    Generated password: <code style="background: #ffffff; padding: 2px 8px; border-radius: 4px; border: 1px solid #bbf7d0;"><?= htmlspecialchars($generatedPassword) ?></code>
+                    <div style="font-weight: 400; font-size: 0.78rem; color: #166534; margin-top: 0.25rem;">Please copy and share this credentials securely.</div>
+                </div>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
 
-<div class="card" style="padding: 1rem; margin-bottom: 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
-    <div style="position: relative; flex: 1; min-width: 220px;">
-        <i data-lucide="search" style="width:15px;height:15px; position:absolute; left:10px; top:50%; transform:translateY(-50%); color: var(--text-muted);"></i>
-        <input type="text" id="userSearch" class="form-control" style="padding-left: 32px;" placeholder="Search by name, email, or faculty ID..." onkeyup="filterUsers()">
-    </div>
-    <select id="roleFilter" class="form-control" style="max-width: 180px;" onchange="filterUsers()">
-        <option value="">All Roles</option>
-        <option value="Admin">Admin</option>
-        <option value="Instructor">Instructor</option>
-        <option value="Student">Student</option>
-    </select>
-    <select id="statusFilter" class="form-control" style="max-width: 190px;" onchange="filterUsers()">
-        <option value="">All Statuses</option>
-        <option value="approved">Approved / Verified</option>
-        <option value="pending">Pending Approval</option>
-        <option value="rejected">Rejected / Inactive</option>
-    </select>
-</div>
+    <?php if ($error): ?>
+        <div style="background: #fef2f2; color: #991b1b; padding: 0.85rem 1.25rem; border-radius: 8px; margin-bottom: 1.25rem; border: 1px solid #fecaca; font-size: 0.85rem;">
+            <?= htmlspecialchars($error) ?>
+        </div>
+    <?php endif; ?>
 
-<div class="card" style="padding: 0; overflow: hidden;">
-    <div class="table-container">
-        <table class="table">
+    <!-- FILTER BAR -->
+    <div class="adm-filter-bar">
+        <div class="adm-search-wrap">
+            <i data-lucide="search" style="width:14px;height:14px; position:absolute; left:10px; top:50%; transform:translateY(-50%); color: #94a3b8;"></i>
+            <input type="text" id="userSearch" class="adm-search-input" placeholder="Search by name, email, or faculty ID..." onkeyup="filterUsers()">
+        </div>
+        <select id="roleFilter" class="adm-select-filter" onchange="filterUsers()">
+            <option value="">All Roles</option>
+            <option value="Admin">Admin</option>
+            <option value="Instructor">Instructor</option>
+            <option value="Student">Student</option>
+        </select>
+        <select id="statusFilter" class="adm-select-filter" onchange="filterUsers()">
+            <option value="">All Statuses</option>
+            <option value="approved">Approved</option>
+            <option value="pending">Pending</option>
+            <option value="rejected">Rejected</option>
+        </select>
+    </div>
+
+    <!-- TABLE -->
+    <div class="adm-table-card">
+        <table class="adm-clean-table">
             <thead>
                 <tr>
                     <th>User / Faculty</th>
                     <th>Email Address</th>
-                    <th>Role</th>
-                    <th>Account Status &amp; Credentials</th>
+                    <th>Assigned Role</th>
+                    <th>Verification Status</th>
                     <th>Joined Date</th>
-                    <th class="text-center">Actions</th>
+                    <th style="text-align: center; width: 100px;">Actions</th>
                 </tr>
             </thead>
             <tbody id="userTableBody">
@@ -292,76 +478,75 @@ foreach ($users as $u) {
                 <tr data-search="<?= htmlspecialchars(strtolower($u['name'] . ' ' . $u['email'] . ' ' . ($u['faculty_id'] ?? '') . ' ' . ($u['department'] ?? ''))) ?>" 
                     data-role="<?= htmlspecialchars($u['role']) ?>"
                     data-status="<?= htmlspecialchars($uStatus) ?>"
-                    style="<?= $isPendingInst ? 'background: rgba(245, 158, 11, 0.05);' : '' ?>">
+                    style="<?= $isPendingInst ? 'background: #fffdf5;' : '' ?>">
                     <td>
-                        <div style="font-weight: 600; color: var(--text-primary);"><?= htmlspecialchars($u['name']) ?></div>
+                        <div style="font-weight: 600; color: #0f172a;"><?= htmlspecialchars($u['name']) ?></div>
                         <?php if ($u['role'] === 'Instructor' && !empty($u['faculty_id'])): ?>
-                            <div style="font-size: 0.75rem; color: #38bdf8; font-weight: 600;">Faculty ID: <?= htmlspecialchars($u['faculty_id']) ?></div>
+                            <div style="font-size: 0.75rem; color: #64748b; font-weight: 500;">Faculty ID: <?= htmlspecialchars($u['faculty_id']) ?></div>
                         <?php endif; ?>
                     </td>
-                    <td class="text-muted"><?= htmlspecialchars($u['email']) ?></td>
+                    <td style="color: #64748b;"><?= htmlspecialchars($u['email']) ?></td>
                     <td>
-                        <span class="badge badge-<?= $roleBadge[$u['role']] ?? 'neutral' ?>">
-                            <?= htmlspecialchars($u['role']) ?>
-                        </span>
+                        <span class="adm-badge-tag"><?= htmlspecialchars($u['role']) ?></span>
                     </td>
                     <td>
                         <?php if ($uStatus === 'approved'): ?>
-                            <span class="badge" style="background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); font-weight: 600; font-size: 0.75rem;">
-                                <i data-lucide="check-circle" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i> Verified
+                            <span class="adm-badge-verified">
+                                <i data-lucide="check" style="width: 11px; height: 11px;"></i> Approved
                             </span>
                             <?php if (!empty($u['department'])): ?>
-                                <span style="font-size: 0.75rem; color: #94a3b8; display: block; margin-top: 2px;">Dept: <?= htmlspecialchars($u['department']) ?></span>
+                                <span style="font-size: 0.72rem; color: #94a3b8; display: block; margin-top: 2px;"><?= htmlspecialchars($u['department']) ?></span>
                             <?php endif; ?>
                         <?php elseif ($uStatus === 'pending'): ?>
-                            <span class="badge" style="background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.4); font-weight: 700; font-size: 0.75rem;">
-                                <i data-lucide="clock" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i> Pending Verification
+                            <span class="adm-badge-pending">
+                                <i data-lucide="clock" style="width: 11px; height: 11px;"></i> Pending Review
                             </span>
                         <?php else: ?>
-                            <span class="badge" style="background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); font-weight: 600; font-size: 0.75rem;">
+                            <span class="adm-badge-tag" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">
                                 Rejected
                             </span>
                         <?php endif; ?>
                     </td>
-                    <td style="font-size: 0.8125rem; color: var(--text-muted);"><?= date('M j, Y', strtotime($u['created_at'])) ?></td>
-                    <td>
-                        <div class="flex justify-center items-center gap-2">
+                    <td style="font-size: 0.78rem; color: #64748b;"><?= date('M j, Y', strtotime($u['created_at'])) ?></td>
+                    <td style="text-align: center;">
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
                             <?php if ($isPendingInst): ?>
-                                <button type="button" class="btn btn-sm btn-success" style="padding: 4px 10px; font-size: 0.75rem; font-weight: 700; background: #10b981; border: none; color: #fff; display: inline-flex; align-items: center; gap: 4px;"
-                                    title="Verify and Approve Faculty Member"
+                                <button type="button" class="adm-btn-primary" style="padding: 3px 8px; font-size: 0.72rem;"
+                                    title="Verify and Approve"
                                     onclick='openApproveModal(<?= (int)$u['id'] ?>, <?= json_encode($u['name']) ?>, <?= json_encode($u['email']) ?>, <?= json_encode($u['faculty_id'] ?? '') ?>, <?= json_encode($u['department'] ?? '') ?>)'>
-                                    <i data-lucide="user-check" style="width: 13px; height: 13px;"></i> Approve
+                                    Approve
                                 </button>
                             <?php endif; ?>
 
-                            <button type="button" class="icon-btn" title="Edit User"
+                            <button type="button" class="adm-icon-btn" title="Edit User"
                                 onclick='openEditModal(<?= (int)$u['id'] ?>, <?= json_encode($u['name']) ?>, <?= json_encode($u['email']) ?>, <?= json_encode($u['role']) ?>, <?= json_encode($uStatus) ?>, <?= json_encode($u['faculty_id'] ?? '') ?>, <?= json_encode($u['department'] ?? '') ?>, <?= json_encode($u['verification_notes'] ?? '') ?>)'>
-                                <i data-lucide="pencil" style="width:16px;height:16px;"></i>
+                                <i data-lucide="pencil" style="width:14px;height:14px;"></i>
                             </button>
 
                             <?php if ((int)$u['id'] !== (int)$_SESSION['user_id']): ?>
-                            <form method="POST" onsubmit="return confirm('Are you sure you want to delete this user? This cannot be undone.');" style="display:inline;">
+                            <form method="POST" onsubmit="return confirm('Permanently delete this user account?');" style="display:inline;">
                                 <?= csrf_input() ?>
                                 <input type="hidden" name="action" value="delete_user">
                                 <input type="hidden" name="id" value="<?= $u['id'] ?>">
-                                <button type="submit" class="icon-btn text-danger" title="Delete User">
-                                    <i data-lucide="trash-2" style="width:16px;height:16px;"></i>
+                                <button type="submit" class="adm-icon-btn" style="color: #94a3b8;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'" title="Delete User">
+                                    <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
                                 </button>
                             </form>
                             <?php else: ?>
-                            <span class="text-muted text-xs">You</span>
+                            <span style="font-size: 0.72rem; color: #94a3b8;">(You)</span>
                             <?php endif; ?>
                         </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
                 <?php if (count($users) === 0): ?>
-                <tr><td colspan="6" class="text-center text-muted" style="padding: 2rem;">No users found.</td></tr>
+                <tr><td colspan="6" style="text-align: center; color: #94a3b8; padding: 2.5rem;">No user accounts found.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
-        <div id="noResultsRow" class="text-center text-muted hidden" style="padding: 2rem;">No users match your filter criteria.</div>
+        <div id="noResultsRow" class="hidden" style="text-align: center; color: #94a3b8; padding: 2rem;">No users match your filter criteria.</div>
     </div>
+
 </div>
 
 <!-- Add User / Faculty Modal -->

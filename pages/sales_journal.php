@@ -415,7 +415,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt = $db->prepare("UPDATE journal_entries SET reference_no=?, date=?, description=?, is_taxable=?, entity_id=?, entity_type=? WHERE id=? AND company_id=?");
                 $stmt->bind_param('sssiisii', $ref_no, $date, $description, $is_taxable, $entity_id, $entity_type, $entry_id, $company_id);
                 $stmt->execute();
-                $db->query("DELETE FROM journal_entry_lines WHERE journal_entry_id = $entry_id");
+                $stmtDelLines = $db->prepare("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?");
+                $stmtDelLines->bind_param('i', $entry_id);
+                $stmtDelLines->execute();
 
                 $final_lines = [];
                 for ($i = 0; $i < count($account_ids); $i++) {

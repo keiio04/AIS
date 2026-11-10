@@ -88,8 +88,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Auto-create VAT accounts if tax_registered
             if ($tax_registered) {
-                $db->query("INSERT IGNORE INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES ($newId, '1-160', 'Input VAT', 'Assets', 'Current Assets', 'Value-added tax on purchases', 0)");
-                $db->query("INSERT IGNORE INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES ($newId, '2-150', 'Output VAT', 'Liabilities', 'Current Liabilities', 'Value-added tax on sales', 0)");
+                $vatStmt = $db->prepare("INSERT IGNORE INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES (?, ?, ?, ?, ?, ?, 0)");
+                if ($vatStmt) {
+                    $code1 = '1-160'; $name1 = 'Input VAT'; $cat1 = 'Assets'; $sub1 = 'Current Assets'; $desc1 = 'Value-added tax on purchases';
+                    $vatStmt->bind_param('isssss', $newId, $code1, $name1, $cat1, $sub1, $desc1);
+                    $vatStmt->execute();
+                    $code2 = '2-150'; $name2 = 'Output VAT'; $cat2 = 'Liabilities'; $sub2 = 'Current Liabilities'; $desc2 = 'Value-added tax on sales';
+                    $vatStmt->bind_param('isssss', $newId, $code2, $name2, $cat2, $sub2, $desc2);
+                    $vatStmt->execute();
+                }
             }
 
             $message = "Company \"$name\" created successfully! Chart of Accounts has been loaded.";
@@ -141,13 +148,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             // Auto-create VAT accounts if tax_registered
             if ($tax_registered) {
-                $chkIn = $db->query("SELECT id FROM accounts WHERE company_id = $cid AND LOWER(name) = 'input vat'");
-                if ($chkIn->num_rows === 0) {
-                    $db->query("INSERT INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES ($cid, '1-160', 'Input VAT', 'Assets', 'Current Assets', 'Value-added tax on purchases', 0)");
+                $chkIn = $db->prepare("SELECT id FROM accounts WHERE company_id = ? AND LOWER(name) = 'input vat'");
+                $chkIn->bind_param('i', $cid);
+                $chkIn->execute();
+                if ($chkIn->get_result()->num_rows === 0) {
+                    $insVat = $db->prepare("INSERT INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES (?, '1-160', 'Input VAT', 'Assets', 'Current Assets', 'Value-added tax on purchases', 0)");
+                    $insVat->bind_param('i', $cid);
+                    $insVat->execute();
                 }
-                $chkOut = $db->query("SELECT id FROM accounts WHERE company_id = $cid AND LOWER(name) = 'output vat'");
-                if ($chkOut->num_rows === 0) {
-                    $db->query("INSERT INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES ($cid, '2-150', 'Output VAT', 'Liabilities', 'Current Liabilities', 'Value-added tax on sales', 0)");
+                $chkOut = $db->prepare("SELECT id FROM accounts WHERE company_id = ? AND LOWER(name) = 'output vat'");
+                $chkOut->bind_param('i', $cid);
+                $chkOut->execute();
+                if ($chkOut->get_result()->num_rows === 0) {
+                    $insVat2 = $db->prepare("INSERT INTO accounts (company_id, code, name, category, sub_category, description, opening_balance) VALUES (?, '2-150', 'Output VAT', 'Liabilities', 'Current Liabilities', 'Value-added tax on sales', 0)");
+                    $insVat2->bind_param('i', $cid);
+                    $insVat2->execute();
                 }
             }
 
@@ -190,15 +205,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->begin_transaction();
             try {
                 // 1. Delete journal_entry_lines (references accounts & journal_entries)
-                $db->query("DELETE jel FROM journal_entry_lines jel
-                            JOIN journal_entries je ON jel.journal_entry_id = je.id
-                            WHERE je.company_id = $cid");
+                $delJel = $db->prepare("DELETE jel FROM journal_entry_lines jel JOIN journal_entries je ON jel.journal_entry_id = je.id WHERE je.company_id = ?");
+                $delJel->bind_param('i', $cid);
+                $delJel->execute();
 
                 // 2. Delete journal_entries
-                $db->query("DELETE FROM journal_entries WHERE company_id = $cid");
+                $delJe = $db->prepare("DELETE FROM journal_entries WHERE company_id = ?");
+                $delJe->bind_param('i', $cid);
+                $delJe->execute();
 
                 // 3. Delete accounts
-                $db->query("DELETE FROM accounts WHERE company_id = $cid");
+                $delAcc = $db->prepare("DELETE FROM accounts WHERE company_id = ?");
+                $delAcc->bind_param('i', $cid);
+                $delAcc->execute();
 
                 // 4. Delete the company itself
                 $del = $db->prepare("DELETE FROM companies WHERE id=? AND user_id=?");

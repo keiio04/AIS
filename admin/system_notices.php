@@ -146,6 +146,51 @@ try {
 ?>
 
 <style>
+.adm-container {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 1.5rem 1.75rem 3rem;
+    color: #0f172a;
+}
+.adm-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+.adm-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.25rem 0;
+}
+.adm-subtitle {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin: 0;
+}
+.adm-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #166534;
+    color: #ffffff !important;
+    font-size: 0.84rem;
+    font-weight: 600;
+    padding: 0.55rem 1.1rem;
+    border-radius: 8px;
+    text-decoration: none;
+    border: 1px solid #166534;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.adm-btn-primary:hover {
+    background: #14532d;
+}
 .sn-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 1.25rem; margin-bottom: 1.5rem; align-items: start; }
 @media (max-width: 960px) { .sn-grid { grid-template-columns: 1fr; } }
 .sn-types { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
@@ -154,51 +199,52 @@ try {
 .sn-type input { position: absolute; opacity: 0; pointer-events: none; }
 .sn-type-body {
     display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.75rem;
-    border: 1px solid var(--border-color); border-radius: var(--radius-md);
-    font-size: 0.8125rem; font-weight: 500; color: var(--text-primary);
+    border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff;
+    font-size: 0.8125rem; font-weight: 500; color: #334155;
     transition: border-color 0.15s, background 0.15s;
 }
-.sn-type:hover .sn-type-body { border-color: var(--c); }
-.sn-type input:checked + .sn-type-body { border-color: var(--c); background: var(--tint); font-weight: 600; }
-.sn-type input:focus-visible + .sn-type-body { outline: 2px solid var(--c); outline-offset: 2px; }
-.sn-type-body svg { color: var(--c); flex-shrink: 0; }
-.sn-templates { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.sn-type:hover .sn-type-body { border-color: #cbd5e1; }
+.sn-type input:checked + .sn-type-body { border-color: #166534; background: #f0fdf4; color: #166534; font-weight: 600; }
+.sn-type-body svg { color: inherit; flex-shrink: 0; }
+.sn-templates { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .sn-chip {
-    background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);
-    border-radius: 99px; padding: 0.3rem 0.8rem; font-size: 0.78rem; cursor: pointer;
+    background: #f8fafc; border: 1px solid #e2e8f0; color: #475569;
+    border-radius: 6px; padding: 0.3rem 0.75rem; font-size: 0.75rem; font-weight: 500; cursor: pointer;
 }
-.sn-chip:hover { border-color: var(--primary-color); color: var(--primary-color); }
+.sn-chip:hover { border-color: #94a3b8; color: #0f172a; }
 .sn-preview {
-    display: flex; gap: 0.7rem; padding: 0.85rem 1rem; border: 1px solid var(--border-color);
-    border-radius: var(--radius-md); background: var(--bg-primary, var(--bg-secondary));
-    border-left: 3px solid #3b82f6;
+    display: flex; gap: 0.75rem; padding: 0.85rem 1rem; border: 1px solid #e2e8f0;
+    border-radius: 8px; background: #fafafa;
+    border-left: 3px solid #166534;
 }
-.sn-pill { display: inline-flex; align-items: center; gap: 0.3rem; padding: 2px 9px; border-radius: 99px; font-size: 0.72rem; font-weight: 600; }
+.sn-pill { display: inline-flex; align-items: center; gap: 0.3rem; padding: 2px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 600; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
 .sn-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 </style>
 
-<div class="page-header">
-    <div class="page-header-text">
-        <h1 class="page-title">System Notices</h1>
-        <p class="page-subtitle">Send maintenance alerts and system-wide messages. They appear in each user's notification bell.</p>
-    </div>
-</div>
+<div class="adm-container">
 
-<?php if (isset($success)): ?>
-    <div style="background: #d1fae5; color: #065f46; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-        <?= htmlspecialchars($success) ?>
+    <div class="adm-header">
+        <div>
+            <h1 class="adm-title">System Announcements &amp; Notices</h1>
+            <p class="adm-subtitle">Broadcast scheduled maintenance notices and platform updates directly to user notification centers.</p>
+        </div>
     </div>
-<?php endif; ?>
-<?php if (isset($error)): ?>
-    <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-        <?= htmlspecialchars($error) ?>
-    </div>
-<?php endif; ?>
-<?php if (!$tablesReady): ?>
-    <div style="background: #fef3c7; color: #92400e; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-        The notification tables don't exist yet. Import <strong>sql/notifications.sql</strong> in phpMyAdmin, then reload this page.
-    </div>
-<?php endif; ?>
+
+    <?php if (isset($success)): ?>
+        <div style="background: #f0fdf4; color: #166534; padding: 0.85rem 1.25rem; border-radius: 8px; margin-bottom: 1.25rem; border: 1px solid #bbf7d0; font-size: 0.85rem;">
+            <?= htmlspecialchars($success) ?>
+        </div>
+    <?php endif; ?>
+    <?php if (isset($error)): ?>
+        <div style="background: #fef2f2; color: #991b1b; padding: 0.85rem 1.25rem; border-radius: 8px; margin-bottom: 1.25rem; border: 1px solid #fecaca; font-size: 0.85rem;">
+            <?= htmlspecialchars($error) ?>
+        </div>
+    <?php endif; ?>
+    <?php if (!$tablesReady): ?>
+        <div style="background: #fffbeb; color: #92400e; padding: 0.85rem 1.25rem; border-radius: 8px; margin-bottom: 1.25rem; border: 1px solid #fde68a; font-size: 0.85rem;">
+            The notification tables have not been initialized. Please import <strong>sql/notifications.sql</strong>.
+        </div>
+    <?php endif; ?>
 
 <div class="sn-grid">
 
@@ -340,6 +386,7 @@ try {
             </tbody>
         </table>
     </div>
+</div>
 </div>
 
 <script>

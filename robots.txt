@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /includes/
+Disallow: /auth/
+Disallow: /api/
+Disallow: /setup_db.php
+Disallow: /config.local.php
+Disallow: /*.sql
+Disallow: /*.log

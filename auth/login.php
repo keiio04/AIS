@@ -1,9 +1,90 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
 require_once '../config.php';
 require_once '../db.php';
 require_once '../includes/csrf.php';
+
+// ============================================================
+// STEP B — Brute-Force Protection & Strong Password Policy
+// ============================================================
+
+/**
+ * Returns the real client IP address.
+ */
+function get_client_ip(): string {
+    foreach (['HTTP_CF_CONNECTING_IP','HTTP_X_FORWARDED_FOR','REMOTE_ADDR'] as $key) {
+        if (!empty($_SERVER[$key])) {
+            $ip = trim(explode(',', $_SERVER[$key])[0]);
+            if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
+        }
+    }
+    return '0.0.0.0';
+}
+
+/**
+ * Check if an IP is currently locked out.
+ * Returns ['locked'=>bool, 'remaining_minutes'=>int, 'attempts'=>int]
+ */
+function check_brute_force(mysqli $db, string $ip): array {
+    $maxAttempts = 5;
+    $lockWindow  = 15; // minutes
+    $now = date('Y-m-d H:i:s');
+
+    // Count recent failed attempts that haven't expired
+    $stmt = $db->prepare("SELECT COUNT(*) AS cnt FROM login_attempts WHERE ip_address = ? AND expires_at > ?");
+    $stmt->bind_param('ss', $ip, $now);
+    $stmt->execute();
+    $attempts = (int)($stmt->get_result()->fetch_assoc()['cnt'] ?? 0);
+
+    if ($attempts >= $maxAttempts) {
+        $stmt2 = $db->prepare("SELECT MAX(expires_at) AS max_exp FROM login_attempts WHERE ip_address = ? AND expires_at > ?");
+        $stmt2->bind_param('ss', $ip, $now);
+        $stmt2->execute();
+        $maxExp = $stmt2->get_result()->fetch_assoc()['max_exp'] ?? $now;
+        $remaining = max(1, (int)ceil((strtotime($maxExp) - time()) / 60));
+        return ['locked' => true, 'remaining_minutes' => $remaining, 'attempts' => $attempts];
+    }
+    return ['locked' => false, 'remaining_minutes' => 0, 'attempts' => $attempts];
+}
+
+/**
+ * Record a failed login attempt for an IP.
+ */
+function record_failed_attempt(mysqli $db, string $ip, string $email): void {
+    $lockWindow = 15; // minutes
+    $expires = date('Y-m-d H:i:s', time() + ($lockWindow * 60));
+    $stmt = $db->prepare("INSERT INTO login_attempts (ip_address, email, expires_at) VALUES (?, ?, ?)");
+    $stmt->bind_param('sss', $ip, $email, $expires);
+    $stmt->execute();
+}
+
+/**
+ * Clear all login attempts for an IP on successful login.
+ */
+function clear_login_attempts(mysqli $db, string $ip): void {
+    $stmt = $db->prepare("DELETE FROM login_attempts WHERE ip_address = ?");
+    $stmt->bind_param('s', $ip);
+    $stmt->execute();
+}
+
+/**
+ * Validate password strength.
+ * Returns null on pass, or an error string.
+ */
+function validate_password_strength(string $pass): ?string {
+    if (strlen($pass) < 8) {
+        return 'Password must be at least 8 characters.';
+    }
+    if (!preg_match('/[A-Z]/', $pass)) {
+        return 'Password must contain at least one uppercase letter.';
+    }
+    if (!preg_match('/[0-9]/', $pass)) {
+        return 'Password must contain at least one number.';
+    }
+    if (!preg_match('/[\W_]/', $pass)) {
+        return 'Password must contain at least one special character (e.g. !@#$%).';
+    }
+    return null;
+}
 
 if (!empty($_SESSION['user_id'])) {
     if (($_SESSION['user_role'] ?? '') === 'Admin') {
@@ -16,62 +97,130 @@ if (!empty($_SESSION['user_id'])) {
 
 $error   = '';
 $success = '';
-if (isset($_GET['msg']) && $_GET['msg'] === 'pw_reset_success') {
-    $success = 'Your password has been reset successfully! You can now log in with your new password.';
+
+// Step C: Session expired message
+if (isset($_GET['msg'])) {
+    if ($_GET['msg'] === 'session_expired') {
+        $error = '⏱️ Your session expired due to inactivity. Please sign in again.';
+    } elseif ($_GET['msg'] === 'pw_reset_success') {
+        $success = 'Your password has been reset successfully! You can now log in with your new password.';
+    }
 }
-$mode    = $_GET['mode'] ?? 'login';
+$mode = $_GET['mode'] ?? 'login';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'login') {
         // Enforce CSRF protection
         if (!csrf_verify()) {
             $error = 'Security session expired or invalid token. Please refresh the page and try again.';
+        } elseif (empty($_POST['terms_consent'])) {
+            $error = 'You must accept the Terms & Conditions and Privacy Policy before signing in.';
         } else {
             $email = trim($_POST['email'] ?? '');
             $pass  = $_POST['password'] ?? '';
             if (!$email || !$pass) {
                 $error = 'Please fill in all fields.';
             } else {
-                $db   = get_db();
-                $stmt = $db->prepare("SELECT id, name, email, role, password, status FROM users WHERE email = ?");
-                $stmt->bind_param('s', $email);
-                $stmt->execute();
-                $result = $stmt->get_result();
-                $user   = $result->fetch_assoc();
+                $db  = get_db();
+                $ip  = get_client_ip();
 
-                if ($user && password_verify($pass, $user['password'])) {
-                    $userStatus = $user['status'] ?? 'approved';
-                    if ($userStatus === 'rejected') {
-                        $error = 'Your account has been deactivated or rejected by an administrator. Please contact support.';
-                    } else {
-                        session_regenerate_id(true);
-                        $_SESSION['user_id']     = $user['id'];
-                        $_SESSION['user_name']   = $user['name'];
-                        $_SESSION['user_email']  = $user['email'];
-                        $_SESSION['user_role']   = $user['role'];
-                        $_SESSION['user_status'] = $userStatus;
-
-                        $stmtCo = $db->prepare("SELECT active_company_id FROM users WHERE id = ?");
-                        $stmtCo->bind_param('i', $user['id']);
-                        $stmtCo->execute();
-                        $coRow = $stmtCo->get_result()->fetch_assoc();
-                        if ($coRow && $coRow['active_company_id']) {
-                            $_SESSION['active_company_id'] = $coRow['active_company_id'];
-                        }
-
-                        $stmtLog = $db->prepare("INSERT INTO activity_logs (user_id, action, module, description) VALUES (?, 'Login', 'Authentication', 'User successfully logged in')");
-                        $stmtLog->execute([$user['id']]);
-
-                        // Redirect based on verified database role
-                        if ($user['role'] === 'Admin') {
-                            header('Location: ' . BASE_URL . 'admin/dashboard.php');
-                        } else {
-                            header('Location: ' . BASE_URL . 'pages/dashboard.php');
-                        }
-                        exit;
-                    }
+                // ── Brute-Force Check ──────────────────────────────
+                $bf = check_brute_force($db, $ip);
+                if ($bf['locked']) {
+                    $error = "Too many failed login attempts. Your IP has been temporarily locked out. Please wait {$bf['remaining_minutes']} minute(s) before trying again.";
                 } else {
-                    $error = 'Invalid email or password.';
+                    $stmt = $db->prepare("SELECT id, name, email, role, password, status, two_factor_enabled FROM users WHERE email = ?");
+                    $stmt->bind_param('s', $email);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $user   = $result->fetch_assoc();
+
+                    if ($user && password_verify($pass, $user['password'])) {
+                        $userStatus = $user['status'] ?? 'approved';
+                        if ($userStatus === 'rejected') {
+                            $error = 'Your account has been deactivated or rejected by an administrator. Please contact support.';
+                            record_failed_attempt($db, $ip, $email);
+                        } else {
+                            // ── Two-Factor Authentication (2FA / MFA) Enforced System-Wide ──
+                            require_once __DIR__ . '/../includes/mailer.php';
+                            clear_login_attempts($db, $ip);
+
+                            $otp = str_pad((string)random_int(100000, 999999), 6, '0', STR_PAD_LEFT);
+                            $expiresAt = date('Y-m-d H:i:s', time() + 600);
+
+                            try {
+                                $stmt2faDel = $db->prepare("DELETE FROM two_factor_otps WHERE user_id = ?");
+                                $stmt2faDel->bind_param('i', $user['id']);
+                                $stmt2faDel->execute();
+
+                                $stmt2fa = $db->prepare("INSERT INTO two_factor_otps (user_id, otp, expires_at) VALUES (?, ?, ?)");
+                                $stmt2fa->bind_param('iss', $user['id'], $otp, $expiresAt);
+                                $stmt2fa->execute();
+                            } catch (Exception $e) {
+                                // Session fallback active
+                            }
+
+                            $_SESSION['2fa_pending']   = true;
+                            $_SESSION['2fa_user_id']   = (int)$user['id'];
+                            $_SESSION['2fa_user_name'] = $user['name'];
+                            $_SESSION['2fa_email']     = $user['email'];
+                            $_SESSION['2fa_role']      = $user['role'];
+                            $_SESSION['2fa_status']    = $userStatus;
+                            $_SESSION['2fa_otp']       = $otp;
+                            $_SESSION['2fa_expires']   = time() + 600;
+
+                            // Dispatch 2FA OTP verification code to user's registered email
+                            $mailRes = send_2fa_otp_email($user['email'], $user['name'], $otp);
+                            if (!$mailRes['success']) {
+                                error_log("Failed to send 2FA OTP email to {$user['email']}: " . $mailRes['error']);
+                            }
+
+                            header('Location: ' . BASE_URL . 'auth/verify_2fa.php');
+                            exit;
+
+                            // ── Successful login: clear lockout & set session ──
+                            clear_login_attempts($db, $ip);
+                            session_regenerate_id(true);
+                            $_SESSION['user_id']        = $user['id'];
+                            $_SESSION['user_name']      = $user['name'];
+                            $_SESSION['user_email']     = $user['email'];
+                            $_SESSION['user_role']      = $user['role'];
+                            $_SESSION['user_status']    = $userStatus;
+                            $_SESSION['last_activity']  = time(); // Step C: reset idle timer
+
+                            $stmtCo = $db->prepare("SELECT active_company_id FROM users WHERE id = ?");
+                            $stmtCo->bind_param('i', $user['id']);
+                            $stmtCo->execute();
+                            $coRow = $stmtCo->get_result()->fetch_assoc();
+                            if ($coRow && $coRow['active_company_id']) {
+                                $_SESSION['active_company_id'] = $coRow['active_company_id'];
+                            }
+
+                            $stmtLog = $db->prepare("INSERT INTO activity_logs (user_id, action, module, description) VALUES (?, 'Login', 'Authentication', 'User successfully logged in')");
+                            $stmtLog->execute([$user['id']]);
+
+                            // Redirect based on verified database role
+                            if ($user['role'] === 'Admin') {
+                                header('Location: ' . BASE_URL . 'admin/dashboard.php');
+                            } else {
+                                header('Location: ' . BASE_URL . 'pages/dashboard.php');
+                            }
+                            exit;
+                        }
+                    } else {
+                        // ── Failed attempt: record and warn ───────────────
+                        record_failed_attempt($db, $ip, $email);
+                        $remaining = max(0, 5 - ($bf['attempts'] + 1));
+                        $stmtLog2 = $db->prepare("INSERT INTO activity_logs (user_id, action, module, description) VALUES (NULL, 'Failed Login', 'Authentication', ?)");
+                        $desc = "Failed login attempt for email: $email (IP: $ip)";
+                        $stmtLog2->bind_param('s', $desc);
+                        $stmtLog2->execute();
+                        if ($remaining > 0) {
+                            $error = "Invalid email or password. {$remaining} attempt(s) remaining before your IP is locked out for 15 minutes.";
+                        } else {
+                            $error = 'Invalid email or password. Your IP has been locked out for 15 minutes due to too many failed attempts.';
+                        }
+                    }
                 }
             }
         }
@@ -90,12 +239,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $safeRole   = 'Student';
             $safeStatus = 'approved';
 
-            if (!$name || !$email || !$pass || !$confirm) {
+            if (empty($_POST['data_privacy_consent'])) {
+                $error = 'You must accept the Data Privacy Notice and Consent pursuant to RA 10173 to create an account.'; $mode = 'register';
+            } elseif (!$name || !$email || !$pass || !$confirm) {
                 $error = 'Please fill in all fields.'; $mode = 'register';
             } elseif ($pass !== $confirm) {
                 $error = 'Passwords do not match.'; $mode = 'register';
-            } elseif (strlen($pass) < 6) {
-                $error = 'Password must be at least 6 characters.'; $mode = 'register';
+            } elseif (($pwErr = validate_password_strength($pass)) !== null) {
+                $error = $pwErr; $mode = 'register';
             } else {
                 $db   = get_db();
                 $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
@@ -127,7 +278,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (!empty($credential)) {
             $parts = explode('.', $credential);
             if (count($parts) >= 2) {
-                $payload = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
+                $b64 = strtr($parts[1], '-_', '+/');
+                $rem = strlen($b64) % 4;
+                if ($rem) {
+                    $b64 .= str_repeat('=', 4 - $rem);
+                }
+                $payload = json_decode(base64_decode($b64), true);
                 if (!empty($payload['email'])) {
                     $email = $payload['email'];
                     $name  = $payload['name'] ?? ($payload['given_name'] ?? explode('@', $email)[0]);
@@ -167,11 +323,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $error = 'Your account has been deactivated or rejected by an administrator.';
             } else {
                 session_regenerate_id(true);
-                $_SESSION['user_id']     = $user['id'];
-                $_SESSION['user_name']   = $user['name'];
-                $_SESSION['user_email']  = $user['email'];
-                $_SESSION['user_role']   = $user['role'];
-                $_SESSION['user_status'] = $user['status'] ?? 'approved';
+                $_SESSION['user_id']        = $user['id'];
+                $_SESSION['user_name']      = $user['name'];
+                $_SESSION['user_email']     = $user['email'];
+                $_SESSION['user_role']      = $user['role'];
+                $_SESSION['user_status']    = $user['status'] ?? 'approved';
+                $_SESSION['last_activity']  = time(); // Step C: reset idle timer
                 if (!empty($user['active_company_id'])) {
                     $_SESSION['active_company_id'] = $user['active_company_id'];
                 }
@@ -937,6 +1094,7 @@ select.auth-input option {
           <a href="forgot_password.php" class="forgot-link">Forgot password?</a>
         </div>
 
+        <input type="hidden" name="terms_consent" id="hidden-lf-terms" value="0">
         <button type="submit" id="btn-signin" class="auth-submit">Sign In →</button>
       </form>
 
@@ -989,10 +1147,10 @@ select.auth-input option {
             </button>
           </div>
           <div class="pw-criteria-wrap" id="reg-pw-criteria">
-            <span class="pw-criterion" id="reg-crit-len">6 letters</span>
+            <span class="pw-criterion" id="reg-crit-len">8+ chars</span>
             <span class="pw-criterion" id="reg-crit-cap">Capital</span>
-            <span class="pw-criterion" id="reg-crit-num">numbers</span>
-            <span class="pw-criterion" id="reg-crit-sym">special</span>
+            <span class="pw-criterion" id="reg-crit-num">Number</span>
+            <span class="pw-criterion" id="reg-crit-sym">Special (!@#$)</span>
           </div>
         </div>
 
@@ -1007,6 +1165,15 @@ select.auth-input option {
               <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
+        </div>
+
+        <div style="margin: 0.9rem 0 1.15rem; display: flex; align-items: flex-start; gap: 0.6rem; text-align: left;">
+          <input type="checkbox" id="dpa-consent" name="data_privacy_consent" value="1" required style="margin-top: 3px; accent-color: #3b82f6; cursor: pointer; flex-shrink: 0;">
+          <label for="dpa-consent" style="font-size: 0.76rem; color: #94a3b8; line-height: 1.45; cursor: pointer;">
+            I agree to the <a href="<?= BASE_URL ?>privacy_policy.php" target="_blank" style="color: #60a5fa; text-decoration: underline;">Terms &amp; Conditions</a> and the collection/processing of my academic profile pursuant to the 
+            <a href="<?= BASE_URL ?>privacy_policy.php" target="_blank" style="color: #60a5fa; text-decoration: underline;">Privacy Policy</a> 
+            under the <strong>Philippine Data Privacy Act of 2012 (RA 10173)</strong>.
+          </label>
         </div>
 
         <button type="submit" id="btn-register" class="auth-submit">Create Account →</button>
@@ -1028,19 +1195,19 @@ select.auth-input option {
         </button>
       </div>
 
+      <div id="login-terms-wrap" style="margin-top: 1.35rem; display: <?= $mode === 'register' ? 'none' : 'flex' ?>; align-items: flex-start; justify-content: center; gap: 0.55rem; text-align: left; padding: 0 0.25rem;">
+        <input type="checkbox" id="login-terms" form="lf" name="terms_consent" value="1" <?= $mode === 'register' ? '' : 'required' ?> style="margin-top: 3px; accent-color: #3b82f6; cursor: pointer; flex-shrink: 0; width: 16px; height: 16px;">
+        <label for="login-terms" style="font-size: 0.77rem; color: #94a3b8; line-height: 1.45; cursor: pointer;">
+          I agree to the <a href="<?= BASE_URL ?>privacy_policy.php" target="_blank" style="color: #60a5fa; text-decoration: underline;">Terms &amp; Conditions</a> and <a href="<?= BASE_URL ?>privacy_policy.php" target="_blank" style="color: #60a5fa; text-decoration: underline;">Privacy Policy</a> (RA 10173).
+        </label>
+      </div>
+
     </div>
   </div><!-- /auth-right -->
 
 </div><!-- /page-wrap -->
 
-<!-- Hidden Google Auth Form -->
-<form id="google-auth-form" method="POST" style="display:none;">
-  <?= csrf_input() ?>
-  <input type="hidden" name="action" value="google_login">
-  <input type="hidden" name="credential" id="google-credential">
-  <input type="hidden" name="google_email" id="google-email-input">
-  <input type="hidden" name="google_name" id="google-name-input">
-</form>
+
 
 <!-- Google Quick Login Modal (Fallback) -->
 <div class="g-modal-backdrop" id="google-modal" onclick="closeGoogleModal(event)">
@@ -1058,7 +1225,7 @@ select.auth-input option {
     
     <div style="margin-bottom: 1rem; text-align: left;">
       <label style="font-size: 0.8rem; font-weight: 600; color: #cbd5e1; display: block; margin-bottom: 0.4rem;">Gmail / Google Account</label>
-      <input type="email" id="modal-g-email" class="auth-input" placeholder="example@gmail.com" style="width: 100%; border-radius: 12px; padding: 0.75rem 1rem; background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(59, 130, 246, 0.3); color: #fff;">
+      <input type="email" id="modal-g-email" class="auth-input" placeholder="example@gmail.com" onkeydown="if(event.key==='Enter'){event.preventDefault();submitGoogleModal();}" style="width: 100%; border-radius: 12px; padding: 0.75rem 1rem; background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(59, 130, 246, 0.3); color: #fff;">
     </div>
 
     <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
@@ -1086,28 +1253,39 @@ function initGoogleAuth() {
 
     // 2. Initialize Google OAuth2 Token Client for full popup login & password verification
     if (google.accounts.oauth2) {
-      googleTokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: 'email profile openid',
-        callback: async (tokenResponse) => {
-          if (tokenResponse && tokenResponse.access_token) {
-            try {
-              const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-              });
-              const profile = await res.json();
-              if (profile && profile.email) {
-                document.getElementById('google-email-input').value = profile.email;
-                document.getElementById('google-name-input').value = profile.name || profile.given_name || profile.email.split('@')[0];
-                document.getElementById('google-auth-form').submit();
-                return;
+      try {
+        googleTokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: 'email profile openid',
+          callback: async (tokenResponse) => {
+            if (tokenResponse && tokenResponse.access_token) {
+              try {
+                const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                  headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+                });
+                const profile = await res.json();
+                if (profile && profile.email) {
+                  document.getElementById('google-email-input').value = profile.email;
+                  document.getElementById('google-name-input').value = profile.name || profile.given_name || profile.email.split('@')[0];
+                  document.getElementById('google-auth-form').submit();
+                  return;
+                }
+              } catch (err) {
+                console.error('Google profile fetch error:', err);
+                openGoogleModal();
               }
-            } catch (err) {
-              console.error('Google profile fetch error:', err);
+            } else {
+              openGoogleModal();
             }
+          },
+          error_callback: (err) => {
+            console.warn('Google Token Client error:', err);
+            openGoogleModal();
           }
-        }
-      });
+        });
+      } catch (e) {
+        console.warn('initTokenClient init error:', e);
+      }
     }
   }
 }
@@ -1125,19 +1303,36 @@ function handleGoogleCredentialResponse(response) {
 }
 
 function handleGoogleSignIn() {
+  const isRegisterTab = document.getElementById('rf') && document.getElementById('rf').style.display === 'block';
+  const consentBox = isRegisterTab ? document.getElementById('dpa-consent') : document.getElementById('login-terms');
+  if (consentBox && !consentBox.checked) {
+    alert('Please check and accept the Terms & Conditions and Privacy Policy before continuing.');
+    consentBox.focus();
+    return;
+  }
+
   if (!googleTokenClient && typeof google !== 'undefined' && google.accounts) {
     initGoogleAuth();
   }
 
   // If OAuth2 Token Client is ready, launch official Google popup window
   if (googleTokenClient) {
-    googleTokenClient.requestAccessToken({ prompt: 'select_account' });
+    try {
+      googleTokenClient.requestAccessToken({ prompt: 'select_account' });
+    } catch (e) {
+      console.warn('requestAccessToken error:', e);
+      openGoogleModal();
+    }
   } else if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-    google.accounts.id.prompt((notification) => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        openGoogleModal();
-      }
-    });
+    try {
+      google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          openGoogleModal();
+        }
+      });
+    } catch (e) {
+      openGoogleModal();
+    }
   } else {
     openGoogleModal();
   }
@@ -1169,6 +1364,7 @@ function submitGoogleModal() {
     return;
   }
   document.getElementById('google-email-input').value = email;
+  document.getElementById('google-name-input').value = email.split('@')[0];
   document.getElementById('google-auth-form').submit();
 }
 
@@ -1180,6 +1376,8 @@ function switchTab(tab) {
   const ft = document.getElementById('form-title');
   const gBtnText = document.getElementById('google-btn-text');
   const authDividerText = document.getElementById('auth-divider-text');
+  const loginTermsWrap = document.getElementById('login-terms-wrap');
+  const loginTermsInput = document.getElementById('login-terms');
 
   if (tab === 'login') {
     lf.style.display = 'block'; rf.style.display = 'none';
@@ -1187,12 +1385,16 @@ function switchTab(tab) {
     if (ft) ft.textContent = 'Sign In';
     if (gBtnText) gBtnText.textContent = 'Sign in with Google';
     if (authDividerText) authDividerText.textContent = 'or sign in with';
+    if (loginTermsWrap) loginTermsWrap.style.display = 'flex';
+    if (loginTermsInput) loginTermsInput.required = true;
   } else {
     rf.style.display = 'block'; lf.style.display = 'none';
     tr.classList.add('active'); tl.classList.remove('active');
     if (ft) ft.textContent = 'Create Account';
     if (gBtnText) gBtnText.textContent = 'Sign up with Google';
     if (authDividerText) authDividerText.textContent = 'or sign up with';
+    if (loginTermsWrap) loginTermsWrap.style.display = 'none';
+    if (loginTermsInput) loginTermsInput.required = false;
   }
 }
 
@@ -1204,10 +1406,10 @@ function togglePw(id, btn) {
 }
 
 function strengthCheck(pw) {
-  const hasLen = pw.length >= 6;
+  const hasLen = pw.length >= 8;
   const hasCap = /[A-Z]/.test(pw);
   const hasNum = /[0-9]/.test(pw);
-  const hasSym = /[^a-zA-Z0-9]/.test(pw);
+  const hasSym = /[\W_]/.test(pw);
 
   setRegCrit('reg-crit-len', hasLen);
   setRegCrit('reg-crit-cap', hasCap);
@@ -1224,6 +1426,41 @@ function setRegCrit(id, valid) {
     el.classList.remove('valid');
   }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const lf = document.getElementById('lf');
+  const loginTerms = document.getElementById('login-terms');
+  const hiddenLfTerms = document.getElementById('hidden-lf-terms');
+  const dpaConsent = document.getElementById('dpa-consent');
+
+  if (loginTerms && hiddenLfTerms) {
+    loginTerms.addEventListener('change', () => {
+      hiddenLfTerms.value = loginTerms.checked ? '1' : '0';
+      if (dpaConsent) dpaConsent.checked = loginTerms.checked;
+    });
+  }
+
+  if (dpaConsent && loginTerms) {
+    dpaConsent.addEventListener('change', () => {
+      loginTerms.checked = dpaConsent.checked;
+      if (hiddenLfTerms) hiddenLfTerms.value = dpaConsent.checked ? '1' : '0';
+    });
+  }
+
+  if (lf) {
+    lf.addEventListener('submit', (e) => {
+      if (!loginTerms || !loginTerms.checked) {
+        e.preventDefault();
+        alert('Please agree to the Terms & Conditions and Privacy Policy (RA 10173) before signing in.');
+        if (loginTerms) loginTerms.focus();
+        return false;
+      }
+      if (hiddenLfTerms) {
+        hiddenLfTerms.value = '1';
+      }
+    });
+  }
+});
 </script>
 </body>
 </html>

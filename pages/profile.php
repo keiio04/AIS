@@ -69,12 +69,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $msgType = "danger";
             }
         }
+    } elseif ($action === 'toggle_2fa') {
+        $enable = (int)($_POST['enable'] ?? 0);
+        $update2fa = $db->prepare("UPDATE users SET two_factor_enabled = ? WHERE id = ?");
+        $update2fa->bind_param('ii', $enable, $user_id);
+        if ($update2fa->execute()) {
+            if ($enable === 1) {
+                $message = "Two-Factor Authentication (2FA) is now ENABLED. A 6-digit OTP code will be sent to your email on your next sign-in.";
+                $msgType = "success";
+                log_activity($db, $user_id, 'Update', 'Security', 'Enabled Two-Factor Authentication');
+            } else {
+                $message = "Two-Factor Authentication (2FA) has been disabled.";
+                $msgType = "info";
+                log_activity($db, $user_id, 'Update', 'Security', 'Disabled Two-Factor Authentication');
+            }
+        } else {
+            $message = "Failed to update 2FA setting.";
+            $msgType = "danger";
+        }
     }
 }
 }
 
 // Fetch current user data
-$stmt = $db->prepare("SELECT id, name, email, role, created_at, active_company_id FROM users WHERE id = ?");
+$stmt = $db->prepare("SELECT id, name, email, role, created_at, active_company_id, two_factor_enabled FROM users WHERE id = ?");
 $stmt->bind_param('i', $user_id);
 $stmt->execute();
 $user = $stmt->get_result()->fetch_assoc();
@@ -349,6 +367,26 @@ $registeredDate = !empty($user['created_at']) ? date('M d, Y', strtotime($user['
                     <i data-lucide="key" style="width: 15px; height: 15px;"></i> Update Password
                 </button>
             </form>
+        </div>
+
+        <!-- Two-Factor Authentication (2FA / MFA) Card -->
+        <div class="card" style="padding: 1.5rem; border-radius: 16px; background: var(--bg-card); border: 1px solid var(--border-color); grid-column: 1 / -1;">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+                        <i data-lucide="shield-check" style="width: 18px; height: 18px; color: #10b981;"></i>
+                        <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0;">Two-Factor Authentication (2FA / MFA)</h3>
+                    </div>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; max-width: 600px; line-height: 1.5;">
+                        Multi-Factor Authentication is automatically enforced across the entire system. On every sign-in attempt, a secure 6-digit One-Time PIN (OTP) is sent to <strong style="color: var(--text-primary);"><?= htmlspecialchars($user['email'] ?? '') ?></strong>.
+                    </p>
+                </div>
+                <div>
+                    <span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 0.45rem 0.95rem; border-radius: 9999px; font-weight: 700; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.4rem;">
+                        <i data-lucide="lock" style="width: 14px; height: 14px;"></i> Always Active &bull; Mandatory Policy
+                    </span>
+                </div>
+            </div>
         </div>
 
     </div>

@@ -5,6 +5,23 @@
 require_once 'config.php';
 require_once 'db.php';
 
+// ── Security Hardening (Area E): Access Authorization Guard ───
+$is_cli   = php_sapi_name() === 'cli';
+$is_local = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1', 'localhost'], true) || !$is_production;
+$setup_key = getenv('DB_SETUP_KEY') ?: 'tala-secure-setup-2025';
+$has_key   = isset($_GET['key']) && hash_equals($setup_key, (string)$_GET['key']);
+$is_admin  = (session_status() === PHP_SESSION_ACTIVE || !empty($_SESSION['user_role'])) && (($_SESSION['user_role'] ?? '') === 'Admin');
+
+if (!$is_cli && !$is_local && !$has_key && !$is_admin) {
+    http_response_code(403);
+    die('<!DOCTYPE html><html><body style="font-family:sans-serif;background:#0f172a;color:#fff;padding:3rem;text-align:center;">
+        <div style="max-width:480px;margin:auto;background:#1e293b;padding:2rem;border-radius:12px;border:1px solid #ef4444;">
+            <h2 style="color:#ef4444;margin-top:0;">⛔ Access Denied</h2>
+            <p style="color:#94a3b8;font-size:0.95rem;">Database migration script is locked in production to prevent unauthorized restructuring. CLI execution or authorization key required.</p>
+        </div>
+    </body></html>');
+}
+
 header('Content-Type: text/html; charset=utf-8');
 
 try {
@@ -117,6 +134,15 @@ try {
             FOREIGN KEY (`student_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB",
 
+        "CREATE TABLE IF NOT EXISTS `login_attempts` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `ip_address` VARCHAR(45) NOT NULL,
+            `email` VARCHAR(150) DEFAULT NULL,
+            `attempted_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `expires_at` DATETIME NOT NULL,
+            INDEX `idx_ip_expires` (`ip_address`, `expires_at`)
+        ) ENGINE=InnoDB",
+
         "INSERT INTO `users` (`name`, `email`, `password`, `role`)
         SELECT 'Administrator', 'admin@ais.com',
             '\$2y\$10\$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Admin'
@@ -132,7 +158,11 @@ try {
     }
 
     echo "<h3 class='ok' style='margin-top:1.5rem;'>🎉 Database is 100% Ready!</h3>";
-    echo "<p>Admin user created:<br><b>Email:</b> admin@ais.com<br><b>Password:</b> password</p>";
+    if (!$is_production) {
+        echo "<p>Admin user created:<br><b>Email:</b> admin@ais.com<br><b>Password:</b> password</p>";
+    } else {
+        echo "<p style='color:#94a3b8;'>Admin user provisioned. Check deployment logs for initial credentials.</p>";
+    }
     echo "<a href='" . BASE_URL . "auth/login.php'>Go to Login Page →</a>";
     echo "</div></body></html>";
 

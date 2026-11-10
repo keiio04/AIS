@@ -1,0 +1,31 @@
+# ============================================================
+# TALA-AIS Apache Security Configuration (Area E)
+# ============================================================
+
+# 1. Disable Directory Browsing / Index Listing
+Options -Indexes
+
+# 2. Block direct web access to hidden files (.git, .env, etc.)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# 3. Block direct web access to sensitive config, sql, and lock files
+<FilesMatch "(^config\.local\.php|\.sql$|\.log$|composer\.(json|lock)$)">
+    Require all denied
+</FilesMatch>
+
+# 4. Restrict direct HTTP requests to backend include files
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^includes/.*\.php$ - [F,L]
+</IfModule>
+
+# 5. Security Headers (Static Assets & Server-level fallback)
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>

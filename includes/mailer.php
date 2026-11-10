@@ -362,6 +362,69 @@ HTML;
  * Send Account Credentials Email — used when Admin creates a new user account.
  * Sends login URL, email, temporary password, and role info.
  */
+/**
+ * Send Two-Factor Authentication (2FA / MFA) OTP Email.
+ */
+function send_2fa_otp_email(string $recipientEmail, string $recipientName, string $otpCode): array {
+    $subject = "Your Two-Factor Authentication (2FA) Code: {$otpCode} - TALA-AIS";
+
+    $nameDisplay = !empty($recipientName) ? htmlspecialchars($recipientName) : 'User';
+
+    $html = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2FA Verification Code</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0b1329; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e2e8f0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0b1329; padding: 40px 15px;">
+    <tr>
+      <td align="center">
+        <table width="100%" max-width="540px" cellpadding="0" cellspacing="0" style="max-width: 540px; background: #0f1c3f; border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+          <tr>
+            <td style="padding: 30px 30px 20px; text-align: center; background: linear-gradient(180deg, rgba(37, 99, 235, 0.2) 0%, transparent 100%);">
+              <div style="display: inline-block; padding: 10px 18px; border-radius: 9999px; background: rgba(37, 99, 235, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); margin-bottom: 12px;">
+                <span style="color: #60a5fa; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Two-Factor Authentication</span>
+              </div>
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 800; letter-spacing: -0.02em;">Login Verification Code</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 20px 35px 35px;">
+              <p style="margin: 0 0 16px; font-size: 15px; line-height: 1.6; color: #cbd5e1;">
+                Hello <strong>{$nameDisplay}</strong>,
+              </p>
+              <p style="margin: 0 0 24px; font-size: 14px; line-height: 1.6; color: #94a3b8;">
+                A sign-in request was received for your <strong>TALA-AIS</strong> account. Use the 6-digit One-Time PIN (OTP) below to complete your authentication:
+              </p>
+              <div style="background: rgba(6, 10, 18, 0.85); border: 2px dashed #3b82f6; border-radius: 14px; padding: 22px; text-align: center; margin-bottom: 24px;">
+                <span style="font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 800; letter-spacing: 12px; color: #38bdf8; display: inline-block; padding-left: 12px;">{$otpCode}</span>
+                <div style="margin-top: 8px; font-size: 12px; color: #94a3b8; letter-spacing: 0.05em;">
+                  This code expires in <strong style="color: #f59e0b;">10 minutes</strong>.
+                </div>
+              </div>
+              <p style="margin: 0 0 20px; font-size: 13px; line-height: 1.6; color: #94a3b8;">
+                ⚠️ <strong>Security Notice:</strong> Never share this code with anyone. If you did not initiate this sign-in attempt, someone may know your password. Change your password immediately.
+              </p>
+              <hr style="border: none; border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 25px 0;">
+              <p style="margin: 0; font-size: 12px; color: #64748b; text-align: center;">
+                &copy; 2026 TALA-AIS. All rights reserved. Automated security notification.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+HTML;
+
+    return send_smtp_mail($recipientEmail, $recipientName, $subject, $html);
+}
+
 function send_account_credentials_email(string $recipientEmail, string $recipientName, string $plainPassword, string $role, string $status = 'approved'): array {
     $subject = "Your TALA-AIS {$role} Account Has Been Created";
 

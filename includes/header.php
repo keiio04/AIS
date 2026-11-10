@@ -61,6 +61,7 @@ $pageNames = [
     'employees' => 'Employees',
     'student_output' => 'Student Output Review',
     'system_notices' => 'System Notices',
+    'security_test' => 'Security Audit & Evidence',
 ];
 $pageTitle = $pageNames[$current_page] ?? ucfirst($current_page);
 
@@ -80,7 +81,7 @@ $searchPlaceholder = $searchPlaceholders[$current_page]
         ? 'Search ref no., name, account, amount…' : 'Search accounts, entries…');
 
 // Pages where the top search bar is hidden (these pages use their own in-page search, or none at all).
-$hideTopSearchPages = ['dashboard', 'chart_of_accounts', 'trial_balance', 'financial_statements', 'employees', 'customers', 'suppliers', 'system_notices', 'instructor_dashboard', 'student_output', 'users', 'assignments', 'companies'];
+$hideTopSearchPages = ['dashboard', 'chart_of_accounts', 'trial_balance', 'financial_statements', 'employees', 'customers', 'suppliers', 'system_notices', 'instructor_dashboard', 'student_output', 'users', 'assignments', 'companies', 'security_test'];
 $showTopSearch = !in_array($current_page, $hideTopSearchPages, true);
 ?>
 <!DOCTYPE html>
@@ -99,8 +100,174 @@ $showTopSearch = !in_array($current_page, $hideTopSearchPages, true);
 <?php endif; ?>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest"></script>
+
+<!-- ── Step C: Session Timeout Warning Toast ── -->
+<style>
+#session-timeout-toast {
+    display: none;
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 99999;
+    background: #1e293b;
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    border-radius: 16px;
+    padding: 1.1rem 1.35rem;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 20px rgba(239,68,68,0.15);
+    min-width: 280px;
+    max-width: 320px;
+    animation: toastSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    color: #f1f5f9;
+    font-family: 'Inter', sans-serif;
+}
+@keyframes toastSlideIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+#session-timeout-toast .toast-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.35rem;
+}
+#session-timeout-toast .toast-body {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin-bottom: 0.85rem;
+}
+#session-timeout-toast .toast-countdown {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #ef4444;
+    font-variant-numeric: tabular-nums;
+}
+#session-timeout-toast .toast-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+#btn-session-extend {
+    flex: 1;
+    padding: 0.55rem 0.75rem;
+    background: linear-gradient(135deg, #0070f3, #0051cc);
+    border: none;
+    border-radius: 99px;
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+#btn-session-extend:hover { background: linear-gradient(135deg, #1a82ff, #0060e6); }
+#btn-session-logout {
+    flex: 1;
+    padding: 0.55rem 0.75rem;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 99px;
+    color: #94a3b8;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+#btn-session-logout:hover { color: #fff; border-color: rgba(255,255,255,0.35); }
+</style>
+
+<script>
+(function() {
+    const IDLE_TIMEOUT_MS  = <?= SESSION_IDLE_TIMEOUT ?? 300 ?> * 1000; // 5 min
+    const WARN_BEFORE_MS   = 60 * 1000;   // warn 1 min before
+    const LOGOUT_URL       = '<?= BASE_URL ?>auth/logout.php';
+    const KEEPALIVE_URL    = '<?= BASE_URL ?>auth/keepalive.php';
+
+    let idleTimer, warnTimer, countdownInterval;
+    let lastActivity = Date.now();
+
+    function resetIdleTimer() {
+        lastActivity = Date.now();
+        clearTimeout(idleTimer);
+        clearTimeout(warnTimer);
+        hideToast();
+
+        // Show warning 1 min before timeout
+        warnTimer = setTimeout(showWarningToast, IDLE_TIMEOUT_MS - WARN_BEFORE_MS);
+        // Hard logout when timeout reached
+        idleTimer = setTimeout(() => { window.location.href = LOGOUT_URL + '?auto=1'; }, IDLE_TIMEOUT_MS);
+    }
+
+    function showWarningToast() {
+        const toast = document.getElementById('session-timeout-toast');
+        if (!toast) return;
+        toast.style.display = 'block';
+        let secs = 60;
+        const cdEl = document.getElementById('session-cd');
+        if (cdEl) cdEl.textContent = '1:00';
+        clearInterval(countdownInterval);
+        countdownInterval = setInterval(() => {
+            secs--;
+            if (cdEl) {
+                const m = Math.floor(secs / 60);
+                const s = String(secs % 60).padStart(2, '0');
+                cdEl.textContent = m + ':' + s;
+            }
+            if (secs <= 0) {
+                clearInterval(countdownInterval);
+                window.location.href = LOGOUT_URL + '?auto=1';
+            }
+        }, 1000);
+    }
+
+    function hideToast() {
+        const toast = document.getElementById('session-timeout-toast');
+        if (toast) toast.style.display = 'none';
+        clearInterval(countdownInterval);
+    }
+
+    // Reset timer on any user interaction
+    ['mousemove','keydown','click','scroll','touchstart'].forEach(evt =>
+        document.addEventListener(evt, resetIdleTimer, { passive: true })
+    );
+
+    // Extend session button
+    document.addEventListener('DOMContentLoaded', function() {
+        const btn = document.getElementById('btn-session-extend');
+        if (btn) {
+            btn.addEventListener('click', function() {
+                // Ping keepalive to refresh server-side last_activity
+                fetch(KEEPALIVE_URL, { method: 'POST', credentials: 'same-origin' })
+                    .catch(() => {}); // silent fallback
+                resetIdleTimer();
+            });
+        }
+    });
+
+    resetIdleTimer();
+})();
+</script>
 </head>
 <body>
+
+<!-- ── Step C: Session Timeout Warning Toast HTML ── -->
+<div id="session-timeout-toast" role="alert" aria-live="assertive">
+    <div class="toast-title">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Session Expiring Soon
+    </div>
+    <div class="toast-body">You'll be signed out in</div>
+    <div class="toast-countdown" id="session-cd">1:00</div>
+    <div class="toast-actions">
+        <button id="btn-session-extend" type="button">Stay Logged In</button>
+        <a id="btn-session-logout" href="<?= BASE_URL ?>auth/logout.php">Sign Out</a>
+    </div>
+</div>
 
 <div class="layout">
     <!-- SIDEBAR -->
