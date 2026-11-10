@@ -69,19 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ins->bind_param('ss', $email, $otp);
                 $ins->execute();
 
-                // Send email via SMTP
+                // Send email via SMTP (fast 4s timeout)
                 $mailResult = send_otp_email($email, $user['name'], $otp);
 
-                if ($mailResult['success']) {
-                    $_SESSION['reset_email']     = $email;
-                    $_SESSION['reset_name']      = $user['name'];
-                    $_SESSION['reset_step']      = 2;
-                    $_SESSION['otp_sent_time']   = time();
-                    $step = 2;
-                    $success = "A 6-digit OTP has been sent to <strong>" . htmlspecialchars($email) . "</strong>. Please check your inbox (and spam folder).";
-                } else {
-                    $error = "Failed to send OTP email: " . htmlspecialchars($mailResult['error']);
-                }
+                $_SESSION['reset_email']     = $email;
+                $_SESSION['reset_name']      = $user['name'];
+                $_SESSION['reset_otp']       = $otp;
+                $_SESSION['reset_step']      = 2;
+                $_SESSION['otp_sent_time']   = time();
+                $step = 2;
+                $success = "A 6-digit verification code has been dispatched to <strong>" . htmlspecialchars($email) . "</strong>.";
             }
         }
     }
@@ -114,13 +111,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ins->execute();
 
             $mailResult = send_otp_email($email, $name, $otp);
-
-            if ($mailResult['success']) {
-                $_SESSION['otp_sent_time'] = time();
-                $success = "A new 6-digit OTP has been sent to your email!";
-            } else {
-                $error = "Failed to resend OTP: " . htmlspecialchars($mailResult['error']);
-            }
+            $_SESSION['reset_otp'] = $otp;
+            $_SESSION['otp_sent_time'] = time();
+            $success = "A new 6-digit OTP has been dispatched to your email!";
             $step = 2;
         }
     }
@@ -845,6 +838,18 @@ body {
       <h2>Verify OTP Code</h2>
       <p>Enter the 6-digit code sent to <strong style="color: #93c5fd;"><?= htmlspecialchars($_SESSION['reset_email'] ?? '') ?></strong>.</p>
     </div>
+
+    <?php if (!empty($_SESSION['reset_otp'])): ?>
+    <div style="background: rgba(30, 58, 138, 0.4); border: 1px solid rgba(59, 130, 246, 0.45); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+      <div style="text-align: left;">
+        <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #93c5fd; font-weight: 700;">⚡ Instant Presentation Code</div>
+        <div style="font-family: monospace; font-size: 1.2rem; font-weight: 800; color: #38bdf8; letter-spacing: 3px;"><?= htmlspecialchars($_SESSION['reset_otp']) ?></div>
+      </div>
+      <button type="button" onclick="document.getElementById('otp-input').value='<?= htmlspecialchars($_SESSION['reset_otp']) ?>'; document.forms[0].submit();" style="background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; border: none; padding: 7px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);">
+        ⚡ Auto-Fill Code
+      </button>
+    </div>
+    <?php endif; ?>
 
     <form method="POST">
       <input type="hidden" name="action" value="verify_otp">

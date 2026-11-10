@@ -52,7 +52,7 @@ function send_brevo_api_mail(string $apiKey, string $toEmail, string $toName, st
             'api-key: ' . trim($apiKey),
             'content-type: application/json',
         ],
-        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_TIMEOUT        => 4,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
     ]);
@@ -120,7 +120,7 @@ function send_smtp_mail(string $toEmail, string $toName, string $subject, string
         ];
     }
 
-    $timeout = 15;
+    $timeout = 4;
     $errorNumber = 0;
     $errorMessage = '';
 
