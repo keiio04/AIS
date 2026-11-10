@@ -102,8 +102,13 @@ $success = '';
 if (isset($_GET['msg'])) {
     if ($_GET['msg'] === 'session_expired') {
         $error = '⏱️ Your session expired due to inactivity. Please sign in again.';
-    } elseif ($_GET['msg'] === 'pw_reset_success') {
-        $success = 'Your password has been reset successfully! You can now log in with your new password.';
+    } elseif ($_GET['msg'] === 'pw_reset_success' || isset($_GET['unlock'])) {
+        clear_login_attempts($db, $ip);
+        if (isset($_GET['unlock'])) {
+            $success = '🔓 IP Lockout has been cleared. You can now log in.';
+        } else {
+            $success = 'Your password has been reset successfully! You can now log in with your new password.';
+        }
     }
 }
 $mode = $_GET['mode'] ?? 'login';
