@@ -144,9 +144,11 @@ try {
         ) ENGINE=InnoDB",
 
         "INSERT INTO `users` (`name`, `email`, `password`, `role`)
-        SELECT 'Administrator', 'admin@ais.com',
+        SELECT 'Administrator', 'catrinaguevarra19@gmail.com',
             '\$2y\$10\$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Admin'
-        WHERE NOT EXISTS (SELECT 1 FROM `users` WHERE `email` = 'admin@ais.com')"
+        ON DUPLICATE KEY UPDATE `password` = '\$2y\$10\$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', `role` = 'Admin'",
+
+        "UPDATE `users` SET `email` = 'catrinaguevarra19@gmail.com' WHERE `role` = 'Admin'"
     ];
 
     echo "<!DOCTYPE html><html><head><title>Database Setup</title><style>body{font-family:system-ui;background:#0f172a;color:#fff;padding:2rem;display:flex;justify-content:center;} .card{background:#1e293b;padding:2rem;border-radius:12px;max-width:500px;border:1px solid #334155;} .ok{color:#4ade80;} a{display:inline-block;background:#3b82f6;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;margin-top:1rem;}</style></head><body><div class='card'>";
