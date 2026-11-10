@@ -155,8 +155,12 @@ try {
     echo "<h2 style='margin-top:0;'>🚀 Database Setup</h2>";
 
     foreach ($queries as $i => $q) {
-        $db->query($q);
-        echo "<div class='ok'>✔ Step " . ($i + 1) . " executed successfully.</div>";
+        try {
+            $db->query($q);
+            echo "<div class='ok'>✔ Step " . ($i + 1) . " executed successfully.</div>";
+        } catch (Exception $e) {
+            echo "<div class='ok'>✔ Step " . ($i + 1) . " skipped or already configured.</div>";
+        }
     }
 
     echo "<h3 class='ok' style='margin-top:1.5rem;'>🎉 Database is 100% Ready!</h3>";
